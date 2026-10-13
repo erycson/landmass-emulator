@@ -2,6 +2,8 @@
 
 Fonte da verdade: o cliente em `D:\landmass\cliente\system` (2009). Os servidores em `D:\landmass\servidor` são de 2006-07.
 
+Protocolo consolidado (opcodes C→S/S→C, layouts, pares e lacunas): `re/protocol_full.md`. Pseudocódigo em lote por função: `re/<binário>/all/` (índice `_index.tsv`).
+
 ## Linha de comando do LandMass.exe (`re/LandMass.exe/main_loop.c`)
 
 - `version=<n>` **obrigatório** — sem ele o jogo fecha. Vira `LocalVersion()`.

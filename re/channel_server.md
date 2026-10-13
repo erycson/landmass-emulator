@@ -47,6 +47,8 @@ Tamanho `N` nos helpers: `N = body ? tail_len + K : 2`, com `K` = 2 + tamanho fi
 
 ## 2. Requisições do cliente ao Channel (`Cchannel_interface`)
 
+> Granularidade: a coluna Corpo mostra a cópia do helper (dwords ou bytes). Campos, tipos e ordem reais, com o endereço do wrapper de comando, estão em `protocol_full.md` §3.1 e prevalecem quando divergem. Linhas revisadas: 105, 451, 471, 555, 560, 570, 580, 615, 700.
+
 Direção: todas as linhas desta seção são C→S (cliente → Channel). Struct: tipo entre parênteses, na coluna método. Colunas: opcode (decimal) | método (endereço) | helper (AX) | N | corpo (offsets de corpo) | evidência (`channel_interface.c`, linha). `lit` = literal de cabeçalho passado no método (`LIT=0x...`; opcode = LIT >> 5). `p?k:2` = `N = k` se o ponteiro `p` não for nulo, senão 2.
 
 Métodos sem opcode (não são requisições): `Init` 0x10001140, `Connect` 0x100012d0, `Disconnect` 0x10001330, `Tick` 0x10001350, `IsConnect` 0x10001130, `Ping` 0x10001370, ctor 0x10003440, `operator=` 0x10001000. Total de procedimentos: 68. Requisições com opcode: 60.
@@ -61,7 +63,7 @@ Métodos sem opcode (não são requisições): `Init` 0x10001140, `Connect` 0x10
 | 68 | `RegisterChannelServer(char *p17)` (0x10002240) | `FUN_10001420`, AX=0x44 | 19 | 17 bytes: 4 dwords (@0,@4,@8,@12) + `u8` @16 | L117 |
 | 72 | `RequestForceUserQuit(char *p17)` (0x100022a0) | `FUN_10001420`, AX=0x48 | 19 | 17 bytes (igual a 68) | L118 |
 | 100 | `InChannelServer(CS_IN_CHANNEL_SERVER_IN *p)` (0x10002360) | `FUN_100014e0`, AX=0x64 | 35 | 33 bytes: 8 dwords (@0..@31) + `u8` @32 | L120 |
-| 105 | `SetRegular(CS_SET_REGULAR_IN *p)` (0x10002960) | lit 0xd20 | p?4:2 | `u16` @0 | L82–83 |
+| 105 | `SetRegular(CS_SET_REGULAR_IN *p)` (0x10002960) | lit 0xd20 | p?4:2 | `u8 @0` = param[0]; `u8 @1` = param[1] (wrapper `0x10017dd0`) | L82–83 |
 | 120 | `InChannel(CS_IN_CHANNEL_IN *p)` (0x10002390) | lit 0xf00 | p?6:2 | `u32` @0 (primeiro dword de `*p`) | L59–60 |
 | 122 | `OutChannel()` (0x10002410) | lit 0xf40 | 2 | — | L62 |
 | 240 | `SendMsg(CS_SEND_MESSAGE_IN *p, char *texto)` (0x100027f0) | `FUN_10001790`, AX=0xf0 | len+4 | `u16` @0 (`p[0..1]`); texto a partir de @2, `len = p[1]` bytes | L135–137 |
@@ -72,10 +74,10 @@ Métodos sem opcode (não são requisições): `Init` 0x10001140, `Connect` 0x10
 | 401 | `ReadyGame(CS_READY_GAME_IN *p)` (0x100026c0) | lit 0x3220 | p?3:2 | `u8` @0 | L72–73 |
 | 411 | `ChangeRoomProperty(CS_CHANGE_ROOM_PROPERTY_IN *p)` (0x10002530) | `FUN_100016e0`, AX=0x19b | 12 | 10 bytes: `u32` @0, `u32` @4, `u16` @8 | L124 |
 | 420 | `ChangeRoomSlot(CS_CHANGE_ROOM_SLOT_IN *p)` (0x10002560) | lit 0x3480 | p?3:2 | `u8` @0 | L66–67 |
-| 451 | `RoomExpel(CS_ROOM_EXPEL_IN *p)` (0x100025e0) | `FUN_10001830`, AX=0x1c3 | 20 | 18 bytes: 4 dwords (@0..@12) + `u16` @16 | L125; `FUN_10001830` (`puVar2[9]`, byte 18 do buffer = corpo @16) |
+| 451 | `RoomExpel(CS_ROOM_EXPEL_IN *p)` (0x100025e0) | `FUN_10001830`, AX=0x1c3 | 20 | 18 bytes: `@0` não preenchido pelo wrapper `0x10017a10` (gap); nick `char[17]` a partir de @1 | L125; `FUN_10001830` (`puVar2[9]`, byte 18 do buffer = corpo @16) |
 | 461 | `RoomInvite(CS_ROOM_INVITE_IN *p)` (0x10002610) | `FUN_10001420`, AX=0x1cd | 19 | 17 bytes (igual a 68) | L126 |
 | 464 | `GetChannelPlayerInfo()` (0x10002db0) | lit 0x3a00 | 2 | — | L94 |
-| 471 | `RoomInviteAnswer(CS_ROOM_INVITE_ANSWER_IN *p)` (0x10002640) | lit 0x3ae0 | p?10:2 | `u32` @0, `u32` @4 | L69–70 |
+| 471 | `RoomInviteAnswer(CS_ROOM_INVITE_ANSWER_IN *p)` (0x10002640) | lit 0x3ae0 | p?10:2 | `i32 @0` = atoi(param[1]); `u8 @4` = aceite (wrapper `0x10017b10`); @5..@7 não inicializados | L69–70 |
 | 500 | `ExitPlay()` (0x10002740) | lit 16000 (0x3e80) | 2 | — | L75 |
 | 540 | `GetChannelRoomDetail(CS_CHANNEL_ROOM_DETAIL_IN *p)` (0x10002880) | lit 0x4380 | p?10:2 | `u32` @0, `u32` @4 | L79–80 |
 | 542 | `GetChannelPlayerDetail(CS_CHANNEL_PLAYER_DETAIL_IN *p)` (0x10002900) | `FUN_10001420`, AX=0x21e | 19 | 17 bytes (igual a 68) | L127 |
@@ -83,16 +85,16 @@ Métodos sem opcode (não são requisições): `Init` 0x10001140, `Connect` 0x10
 | 545 | `RefreshRoomList(CS_REFRESH_ROOM_LIST_IN *p)` (0x10002c10) | `FUN_10001a40`, AX=0x221 | 46 | 44 bytes: `i32 nChannel @0`; `u8 count @4` (> 8 vira 9; 0 = nada enviado); `i32 room_guid[i] @8+4i` (i < 9); parse de `p2` sem limite | L129; `FUN_100183d0` (`re/LM_Engine.dll/FUN_100183d0_RefreshRoomList.c`) |
 | 546 | `RefreshPlayerList(CS_REFRESH_PLAYER_LIST_IN *p)` (0x10002c40) | `FUN_10001ae0`, AX=0x222 | 66 | 64 bytes: `i32 nChannel @0`; `u8 count @4` (> 14 vira 14; 0 = nada enviado); `i32 client_guid[i] @8+4i` (i < 14); parse sem limite | L130; `FUN_10018540` (`re/LM_Engine.dll/FUN_10018540_RefreshPlayerList.c`) |
 | 550 | `ItemBuy(CS_ITEM_BUY_IN *p)` (0x100029e0) | `FUN_10001990`, AX=0x226 | 14 | 12 bytes: 3 dwords | L131 |
-| 555 | `ItemDestroy(CS_ITEM_DESTROY_IN *p)` (0x10002a10) | lit 0x4560 | p?10:2 | `u32` @0, `u32` @4 | L85 |
-| 560 | `ItemUsed(CS_ITEM_USED_IN *p)` (0x10002a90) | lit 0x4600 | p?10:2 | `u32` @0, `u32` @4 | L86 |
-| 570 | `ItemUnused(CS_ITEM_UNUSED_IN *p)` (0x10002b10) | lit 0x4740 | p?6:2 | `u32` @0 | L87 |
-| 580 | `ItemExtend(CS_ITEM_EXTEND_IN *p)` (0x10002b90) | lit 0x4880 | p?10:2 | `u32` @0, `u32` @4 | L88 |
+| 555 | `ItemDestroy(CS_ITEM_DESTROY_IN *p)` (0x10002a10) | lit 0x4560 | p?10:2 | `i32 nItemID @0`; `u16 nIndex @4`; @6..@7 = 0 (wrapper `0x10018190`) | L85 |
+| 560 | `ItemUsed(CS_ITEM_USED_IN *p)` (0x10002a90) | lit 0x4600 | p?10:2 | `u16 nItemIndex @0`; `u16 nGateIndex @2`; @4..@7 = 0; `ItemUsedByValue` usa `i32 @4` = param[2] | L86 |
+| 570 | `ItemUnused(CS_ITEM_UNUSED_IN *p)` (0x10002b10) | lit 0x4740 | p?6:2 | `u16 nItemIndex @0`; `u16 nGateIndex @2` (wrapper `0x100182e0`) | L87 |
+| 580 | `ItemExtend(CS_ITEM_EXTEND_IN *p)` (0x10002b90) | lit 0x4880 | p?10:2 | `i32 nItemID @0`; `u16 nItemIndex @4`; `u8 @6`; `u8 @7` (wrapper `0x10018340`) | L88 |
 | 586 | `InHangar()` (0x10002cf0) | lit 0x4940 | 2 | — | L92 |
 | 588 | `OutHangar()` (0x10002d50) | lit 0x4980 | 2 | — | L93 |
 | 600 | `ClearTutorial(CS_CLEAR_TUTORIAL_IN *p)` (0x10002c70) | lit 0x4b00 | p?3:2 | `u8` @0 | L90 |
 | 610 | `GetGiftItem(CS_GET_GIFTITEM_IN *p)` (0x100031e0) | lit 0x4c40 | p?6:2 | `u32` @0 | L108 |
 | 612 | `GiftItemUsed(CS_GIFTITEM_USED_IN *p)` (0x10003260) | lit 0x4c80 | p?6:2 | `u32` @0 | L109 |
-| 615 | `ItemGift(CS_ITEM_GIFT_IN *p)` (0x100032e0) | `FUN_10001c20`, AX=0x267 | 26 | 24 bytes: 6 dwords | L133 |
+| 615 | `ItemGift(CS_ITEM_GIFT_IN *p)` (0x100032e0) | `FUN_10001c20`, AX=0x267 | 26 | `i32 nItemID @0`; `u8 bPoint @4`; `u8 @5`; `char strNick[18] @6` (wrapper `0x10018050`) | L133 |
 | 640 | `RegisterGroup()` (0x10002e10) | lit 0x5000 | 2 | — | L96 |
 | 642 | `GetMatchingGroup()` (0x10002e70) | lit 0x5040 | 2 | — | L97 |
 | 644 | `RequestMatch(CS_REQUEST_MATCH_IN *p)` (0x10002ed0) | lit 0x5080 | p?10:2 | `u32` @0, `u32` @4 | L99 |
@@ -102,7 +104,7 @@ Métodos sem opcode (não são requisições): `Init` 0x10001140, `Connect` 0x10
 | 655 | `EndMatch()` (0x100030d0) | lit 0x51e0 | 2 | — | L104 |
 | 657 | `ChangeGroupSlot(CS_CHANGE_ROOM_SLOT_IN *p)` (0x10003130) | lit 0x5220 | p?3:2 | `u8` @0 | L106 |
 | 659 | `RefreshClanMatchInfo(CS_REFRESH_CLAN_MATCH_INFO_IN *p)` (0x100031b0) | `FUN_10001b80`, AX=0x293 | 42 | 40 bytes: 10 dwords | L132 |
-| 700 | `ExpelPlayer(CS_EXPEL_PLAYER_IN *p)` (0x10002850) | `FUN_10001830`, AX=0x2bc | 20 | 18 bytes (igual a 451) | L142 |
+| 700 | `ExpelPlayer(CS_EXPEL_PLAYER_IN *p)` (0x10002850) | `FUN_10001830`, AX=0x2bc | 20 | `u8 tipo @0` = atoi(param[0]); `char nick[17] @1` (wrapper `0x10017bb0`) | L142 |
 | 850 | `RequestLoadChannelServer()` (0x10001ee0) | lit 0x6a40 | 2 | — | L47 |
 | 851 | `RequestLoadMessageServer()` (0x10001f40) | lit 0x6a60 | 2 | — | L48 |
 | 852 | `RequestLoadServerManager()` (0x10002060) | lit 0x6a80 | 2 | — | L51 |
@@ -179,7 +181,7 @@ Direção: todas as linhas desta seção são S→C (Channel → cliente). Colun
 
 ### 3.2 Apêndice: todos os rótulos do switch
 
-Valores em decimal. Evento = `Notify*` do bloco (do rótulo até o próximo). Blocos fora do `switch` principal: por label `goto` — 121 (`caseD_79`), 312 (`caseD_138`), 402 (`caseD_192`), 701 (`caseD_2bd`, alcançado por `goto` em L2387); por guarda `if` — 123 (`!= 0x7b`, L807), 317 (`!= 0x13d`, bloco em L1386 em diante), 556 (`== 0x22c`, L110). Blocos com goto ainda não reatribuídos por label: 0x22f (559), 0x269 (617), 0x290 (656), 0x386 (902) e os blocos com `goto LAB_1002xxxx` (ver §6). O bloco 0x24f (591) é delimitado em §3.2 pela linha de `NotifyGetGatchaPrize`.
+Valores em decimal. Evento = `Notify*` do bloco (do rótulo até o próximo). Blocos fora do `switch` principal: por label `goto` — 121 (`caseD_79`), 312 (`caseD_138`), 402 (`caseD_192`), 701 (`caseD_2bd`, alcançado por `goto` em L2387); por guarda `if` — 123 (`!= 0x7b`, L807), 317 (`!= 0x13d`, bloco em L1386 em diante), 556 (`== 0x22c`, L110). Gotos reatribuídos (ver `protocol_full.md` §6): 0x22f (559), 0x23b–0x246 (571–582), 0x24f (591, com retorno em L2771), 0x269 (617), 0x290 (656) e 0x386 (902, com a cauda `LAB_10021279` em `NotifyClanInsertPlayer`).
 
 | op | evento (bloco) | linhas (.c) |
 |---|---|---|
@@ -269,7 +271,9 @@ Valores em decimal. Evento = `Notify*` do bloco (do rótulo até o próximo). Bl
 | 701 | `NotifyExpelPlayer` (ver §3.1) | 2386–2387 |
 | 900 | `NotifyChargeCash` (`i32 @0` → `local+0x58` se `FUN_10018aa0` ≠ 0) | 2388–2401 |
 | 901 | `NotifyChargePremium` | 2402–2415 |
-| 902 | `NotifyChargePoint`, `NotifyClanInsertPlayer`, `NotifyTutorialClear` | 2416–2451 |
+| 902 | `NotifyChargePoint` | 2416–2429 |
+| (cauda) | `NotifyClanInsertPlayer` via `LAB_10021279`, alcançada por `goto` de 661 e 662 (L2233–2380); opcode próprio não identificado (inferido) | 2430–2439 |
+| 601 | `NotifyTutorialClear` (`if (param_1 == 0x259)`, ver §3.1) | 2440–2449 |
 
 Pareamento pedido/resposta: somente o log e o código observados; o resto é inferido.
 - Sequência observada (`re/NOTES.md`, fluxo do Channel): 101, 111, 103 (repetido), 151, 141, 121. Mostra a ordem, não o par.
@@ -336,7 +340,7 @@ Layout de pilha (inferido de `MOV [ESP+…]`): `local_10` @+0, `local_c` @+4, `l
 
 ## 6. Lacunas
 
-1. **Labels e gotos**: a atribuição de evento por intervalo de linhas (§3.2) está errada onde há goto. Exemplos: `goto LAB_10020a0e` (L2116, cauda de `NotifyRoomPlayerInfo`), `goto LAB_10021279` (L2233–2380), `goto LAB_1001fdb3` (L2555), `goto LAB_1001fb03` (L2601, L2615). A reatribuição por label está concluída só para 121, 123, 312, 317, 402 e 701. Os blocos 0x22f, 0x24f, 0x269, 0x290 e 0x386 seguem com atribuição aproximada.
+1. **Labels e gotos**: a atribuição de evento por intervalo de linhas (§3.2) está errada onde há goto. Exemplos: `goto LAB_10020a0e` (L2116, cauda de `NotifyRoomPlayerInfo`), `goto LAB_10021279` (L2233–2380), `goto LAB_1001fdb3` (L2555), `goto LAB_1001fb03` (L2601, L2615). A reatribuição por label está concluída para 121, 123, 312, 317, 402, 701 e, nesta revisão, para 571, 572, 581, 582, 591, 617, 656, 661, 662 e 902. Os blocos 0x22f, 0x24f, 0x269, 0x290 e 0x386 foram reatribuídos em `protocol_full.md` §3.2 e §6.
 2. **Layouts não decodificados**: passo das entradas de 141, 151, 547 e 548 (a partir de @8 em 547/548), registro de sala de 302 e 314 (bytes além dos lidos), 342, 421, 462 e 543 (passados raw), 541 (zeros em @0x00..0x27, ordem em relação às leituras ambígua).
 3. **Caminho de entrada do Channel**: quem chama `FUN_1001da60` e o tratamento de net_code/cabeçalho das respostas não foram analisados. Só o log (@0x10031574, xref @0x1001daa6) foi confirmado. O envelope 0x36 é inferido do código, não do transporte.
 4. **Pareamento pedido/resposta**: só a sequência do log (`re/NOTES.md`) é observada; os demais pares da §3 são inferidos por rótulo e nome do evento.

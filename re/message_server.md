@@ -100,9 +100,9 @@ Nomes de struct: os de `LM_Engine.dll` aparecem como string (`MS_LOGIN_OUT`, `MS
 | 184 | `NotifyDelFriend()` | `MS_DEL_FRIEND_LIST_OUT` | `i32 @4` = resultado | remove amigo se `== 0` | `FUN_10025120` case 0xb8 |
 | 188 | `NotifyBlackList()` | `MS_GET_BLACK_LIST_OUT` | igual a 183 **exceto**: não grava `@0x25` em `+0xB0`; usa a lista de bloqueados `FUN_100233E0` (183 usa `FUN_10023350`) | insere bloqueado | `FUN_10025120` case 0xbc |
 | 189 | `NotifyDelBlack()` | `MS_DEL_BLACK_LIST_OUT` | `i32 @4` = resultado | remove bloqueado se `== 0` | `FUN_10025120` case 0xbd |
-| 191 | `(break)` | — | `u8 @0` = count; entradas de `0x14` bytes a partir de `@4` | atualiza amigos em lote | `FUN_10025120` case 0xbf |
-| 193 | `(break)` | — | `u8 @0` = count; registros de `0x14` bytes a partir de `@4`; por registro: `i32 @0` → `+0xA0`, `i32 @4` → `+0x3C`, `i32 @8` → `+0x28`, `i32 @0xC` → `+0x2C`, `u8 @0x10` → `+0x30`, `u8 @0x11` → flag `+0xB0` (0x22 ou 0) | atualiza lista em lote (nó localizado por `FUN_10007830`) | `FUN_10025120` case 0xc1: bloco = alvo `0x10025BE4` (índice `0x16` em `0x10025D7C+0xC1`); stores `MOV [EDI+0xa0],EDX` @0x10025C12, `MOV [EDI+0x28],EDX` @0x10025C27, `MOV [EDI+0x2c],EAX` @0x10025C2D, máscara `AND ECX,0x22` @0x10025C3A (`.c` linhas 567–590) |
-| 195 | `(break)` | — | cabeçalho: `i32 @0` → `+0x28`, `i32 @4` → `+0x2C`, `u8 @8` → `+0x30`; `u8 @9` = count; registros de `0x0C` bytes **a partir de `@0x0C`** (não de `@0`); em cada registro: `i32 @0` → `+0xA0`, `i32 @4` → `+0x3C`, `u8 @8` → flag `+0xB0` (asm 0x10025c69–0x10025ce2, `ADD EDI,0xC`) | atualiza lista em lote (`NotifyChangePlayerProperty` no fim) | `FUN_10025120` case 0xc3 |
+| 191 | (sem evento; lote, par 190/192/194 inferido) | — | `u8 @0` = count; entradas de `0x14` bytes a partir de `@4` | atualiza amigos em lote | `FUN_10025120` case 0xbf |
+| 193 | (sem evento; lote, par 190/192/194 inferido) | — | `u8 @0` = count; registros de `0x14` bytes a partir de `@4`; por registro: `i32 @0` → `+0xA0`, `i32 @4` → `+0x3C`, `i32 @8` → `+0x28`, `i32 @0xC` → `+0x2C`, `u8 @0x10` → `+0x30`, `u8 @0x11` → flag `+0xB0` (0x22 ou 0) | atualiza lista em lote (nó localizado por `FUN_10007830`) | `FUN_10025120` case 0xc1: bloco = alvo `0x10025BE4` (índice `0x16` em `0x10025D7C+0xC1`); stores `MOV [EDI+0xa0],EDX` @0x10025C12, `MOV [EDI+0x28],EDX` @0x10025C27, `MOV [EDI+0x2c],EAX` @0x10025C2D, máscara `AND ECX,0x22` @0x10025C3A (`.c` linhas 567–590) |
+| 195 | (sem evento; lote, par 190/192/194 inferido) | — | cabeçalho: `i32 @0` → `+0x28`, `i32 @4` → `+0x2C`, `u8 @8` → `+0x30`; `u8 @9` = count; registros de `0x0C` bytes **a partir de `@0x0C`** (não de `@0`); em cada registro: `i32 @0` → `+0xA0`, `i32 @4` → `+0x3C`, `u8 @8` → flag `+0xB0` (asm 0x10025c69–0x10025ce2, `ADD EDI,0xC`) | atualiza lista em lote (`NotifyChangePlayerProperty` no fim) | `FUN_10025120` case 0xc3 |
 | 3 | — | — | — | **sem caso**: nenhuma resposta ao Heartbeat é processada | `default` de `FUN_10025120` |
 
 ### 4.1 `LM_REGISTER_INFO` (37 bytes `u8` em ordem, seguidos de `int result`)
@@ -134,6 +134,8 @@ Offsets: campo `i` em `@i` (i = 0..36). Tamanho 37 = 0x25 (`LM_Engine.u`, `struc
 A semântica dos campos vem do leitor `execGetChannelServerInfo`; o cliente não valida os campos. Offsets e larguras foram confirmados no leitor nativo (`ushort`, `byte`). UnrealScript declara `server_id` e os contadores como `int`, mas o fio usa `u16`.
 
 ## 5. Requisições do cliente (MS_*_IN)
+
+> Granularidade: os layouts desta seção são cópias do helper (dwords ou bytes). Os campos reais dos pedidos 100–195 estão em `protocol_full.md` §2.1, por wrapper de comando. Por exemplo, 140 e 152 são `char nick[17]` (não '4 dwords + u8'), e 190/192/194 são `u8 count @0` + ids a partir de @4.
 
 Todas com o cabeçalho u16 da §1. Corpo a partir de `buf+2`.
 
