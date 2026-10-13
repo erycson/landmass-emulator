@@ -35,3 +35,20 @@ Os demais `.wdb` (magic `f7 db 00 00 72 f3 31 01`) são tabelas proprietárias (
 
 - Message: `0 → 101 → 111 → 121 → 131`
 - Channel: `0 → 101 → 111 → 103×n → 151 → 141 → 121 …`; salas/jogo 3xx/4xx/5xx.
+
+## Protocolo do Message/Channel (`_core_network.dll` + `+server_interface.dll`)
+
+- **Framing (TCP):** `u16 LE tamanho` + corpo (tamanho não inclui os 2 bytes). Máx. 65000. Sem criptografia.
+- **Cabeçalho do corpo:** `u16 LE = (opcode << 5) | net_code`. `net_code`: Message=13, Channel=14, Update=12
+  (`system\config.ini` do cliente). Resposta do servidor = opcode do pedido + 1.
+- Opcodes do cliente → Message: Heartbeat 2 (a cada 10 s), Login 100, Register 110, InMessageServer 120,
+  GetChannelServerInfo 130, CreateNickname 150.
+- `MS_LOGIN_IN` (44 bytes fixos): `i32 id_len, i32 pw_len, char login_num[33]` (+3 padding), seguido de
+  `id` (id_len bytes) e `senha` (pw_len bytes). Lixo de pilha no padding — ignorar.
+- O evento local "Recived from Message Server 0" é a própria conexão (`CnetworkClient::OnConnect`), não um pacote.
+
+## Login no cliente (UnrealScript em `XInterface.u`, fonte embutida)
+
+- `login_num=DEVELOPERGUID` (const em `Core.u`) → mostra o formulário e faz `NetLogin(id, senha)`.
+- Qualquer outro `login_num` → login automático por token (`NetGuidLogin`), sem formulário.
+- Os `.u` trazem o código-fonte UnrealScript; extrair strings UTF-16 é suficiente para ler.
