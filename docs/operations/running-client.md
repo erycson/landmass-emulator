@@ -54,6 +54,9 @@ Não use `Launcher.exe`: ele tenta FTP de patch inexistente. Inicie `LandMass.ex
 - Modo janela: wrapper **dgVoodoo2 v2.87.5** (D3D8 → D3D11), em `D:\landmass\tools\dgvoodoo2`.
   - Instalação por pasta do cliente: copie `extracted\MS\x86\D3D8.dll` e `dgVoodoo.landmass.conf` (renomeado para `dgVoodoo.conf`) para `system\`.
   - Config: `FullScreenMode=false`, `AppControlledScreenMode=false`, `DisableAltEnterToToggleScreenMode=false`, `dgVoodooWatermark=false`.
+  - Janela sem borda do tamanho da tela, para o cursor do Windows não clicar fora do jogo: `WindowedAttributes = borderless, fullscreensize` e `CenterAppWindow = true`. `CaptureMouse=False` no `LandMass.ini` não resolve o cursor duplo.
+  - Proporção: `ScalingMode = stretched_ar` mantém 4:3 com faixas pretas em `fullscreensize`. `KeepWindowAspectRatio` só vale para redimensionar janela comum.
+  - Sair do jogo: Alt+Tab ou tecla Windows. Alt+Enter alterna para tela cheia real.
   - Remoção: apague `system\D3D8.dll` e `system\dgVoodoo.conf`.
 - `LandMass.exe` reconstrói a linha de comando e a engine a recebe vazia (`Init: Command line:`): `-windowed`, `EXEC=`, `INI=` e `-server` não têm efeito.
 

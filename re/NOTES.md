@@ -17,6 +17,10 @@ O Launcher monta: `LandMass.exe %s%s?%s%I64d?%s%s` com `login_server=`, `version
 - Causa estática: `TryRenderDevice` grava `UWV+0xD0` = 1 no cliente, então o SetRes sai em tela cheia. Sem foco, o SetRes não roda e a janela é minimizada.
 - Não há chave de ini nem token de linha de comando para janela. Patch de 1 byte proposto em `WinDrv.dll` offset `0x1349D` (não aplicado).
 
+## Widescreen (`re/widescreen.md`)
+
+- A UI posiciona por frações da tela: acompanha qualquer resolução, mas estica em 16:9. Caminho proposto: área 4:3 no Canvas.
+
 ## Config do cliente
 
 `system\landmass.wdb` é SQLite comum. Tabelas úteis: `message_server` (idx, name, address, port),
