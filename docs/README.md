@@ -28,6 +28,7 @@ flowchart LR
 | [04-persistence.md](architecture/04-persistence.md) | Banco portável (SQLAlchemy/Alembic), convenção de nomes (Laravel), schema de contas, tabelas do legado não migradas, dados estáticos do cliente. |
 | [05-configuration.md](architecture/05-configuration.md) | Variáveis `LANDMASS_*`, valores padrão e regras de segredos. |
 | [06-game-server-host.md](architecture/06-game-server-host.md) | Processo que hospeda a partida (componente ausente a reconstruir). |
+| [07-progression.md](architecture/07-progression.md) | Progressão e economia: modelo de dados (contas, inventário, morats, opções, social, clãs), regras de compra, uso, presente, patente, recompensa e tutorial, mapeamento opcode → tabela e ordem de implementação. |
 
 ### Protocolo — [`protocol/`](protocol/)
 
