@@ -25,14 +25,14 @@ sequenceDiagram
   participant B as .bat do jogador
   participant C as Cliente
   participant M as Message (7313)
-  A->>DB: account create <nome> → grava sha256(token)
+  A->>DB: account create --user <u> --nickname <n> → grava sha256(token)
   A->>B: gera login_server=..?version=..?login_num=<token>
   C->>M: MS_LOGIN_IN {id_len=0, pw_len=0, login_num=<token>}
-  M->>DB: busca conta por sha256(token)
+  M->>DB: busca conta por sha256(token(lower))
   alt token válido
-    M-->>C: 101 sucesso (+ dados da conta)
+    M-->>C: 101 com result = 0; conexão fica autenticada
   else inválido
-    M-->>C: 101 erro (código de msg_error)
+    M-->>C: 101 com result = -160 (senha inválida)
   end
 ```
 

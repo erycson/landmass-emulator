@@ -12,3 +12,4 @@ Formato: uma linha por decisão. Ao substituir uma decisão, marque a antiga com
 | D6 | Nomes de tabela/coluna do `LM_account.sql` preservados. | Conferência direta com o comportamento original. | aceita |
 | D7 | Dados estáticos lidos de `landmass.wdb` do cliente, não copiados. | O cliente é a fonte da verdade (R1). | aceita |
 | D8 | Tokens com `sha256` + `compare_digest`; senhas com `argon2id`. | Substitui XP Crypt; custo adequado a cada tipo de segredo. | aceita |
+| D9 | Handlers devolvem `Sequence[Reply]`; `net/server.py` envia. | Handler testável sem socket; a assinatura `ctx.session.send` do plano inicial foi descartada. | aceita |

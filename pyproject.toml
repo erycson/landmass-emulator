@@ -7,7 +7,12 @@ authors = [
     { name = "Érycson Nóbrega", email = "egdn2004@gmail.com" }
 ]
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "aiosqlite>=0.22.1",
+    "alembic>=1.20.0",
+    "pydantic-settings>=2.15.0",
+    "sqlalchemy[asyncio]>=2.1.4",
+]
 
 [project.scripts]
 landmass-emu = "landmass_emu.__main__:main"
