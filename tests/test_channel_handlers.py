@@ -23,7 +23,14 @@ class _Recebedor:
 def test_tabela_do_roteador_cobre_entrada_chat_salas_e_listas() -> None:
     # As opções não são usadas na montagem; o teste só confere as chaves do roteador.
     handlers = ChannelHandlers(
-        MemorySessionKeyRegistry(), Lobby(), Rooms(), None, None, GameEndpoint("127.0.0.1", 7777)
+        MemorySessionKeyRegistry(),
+        Lobby(),
+        Rooms(),
+        None,
+        None,
+        GameEndpoint("127.0.0.1", 7777),
+        None,
+        None,
     )
     esperados = {
         CsOp.HEARTBEAT,

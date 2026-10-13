@@ -60,3 +60,23 @@ class SqlAccountRepository:
                 .where(AccountRow.id == account_id)
                 .values(token_hash=token_hash, updated_at=datetime.now(UTC))
             )
+
+    async def regular_nest(self, account_id: int) -> int:
+        """Nest regular da conta; 0 quando não escolheu (o 101 manda ucNest 0)."""
+        async with self._sessions() as session:
+            nest = await session.scalar(
+                select(AccountRow.regular_nest_id).where(AccountRow.id == account_id)
+            )
+        return nest or 0
+
+    async def set_regular(self, account_id: int, nest: int, morat_class: int) -> None:
+        async with self._sessions.begin() as session:
+            await session.execute(
+                update(AccountRow)
+                .where(AccountRow.id == account_id)
+                .values(
+                    regular_nest_id=nest,
+                    regular_morat_class=morat_class,
+                    updated_at=datetime.now(UTC),
+                )
+            )

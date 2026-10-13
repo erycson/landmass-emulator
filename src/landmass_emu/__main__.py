@@ -4,14 +4,22 @@ import contextlib
 import logging
 from pathlib import Path
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from landmass_emu import sniffer
 from landmass_emu.admin import AccountAdmin, ProgressionAdmin
+from landmass_emu.admin_inventory import InventoryAdmin, StarterKitAdmin
 from landmass_emu.app import game_servers, open_accounts, open_database
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
+from landmass_emu.db.inventory import SqlInventoryRepository
+from landmass_emu.db.item_catalog import ItemCatalog
 from landmass_emu.db.progression import SqlProgressionRepository
+from landmass_emu.domain.inventory import InventoryService
 from landmass_emu.domain.progression import Grant, ProgressionService
+from landmass_emu.domain.starter_kit import StarterKit
 from landmass_emu.ports.accounts import AccountConflict
+from landmass_emu.ports.inventory import InventoryConflict
 from landmass_emu.settings import Settings
 
 
@@ -29,11 +37,17 @@ class Cli:
         """Ações de conta; devolve o texto a imprimir."""
         if args.action == "grant":
             return await self.grant(args)
+        if args.action == "item":
+            return await self.item_add(args)
+        if args.action == "morat":
+            return await self.morat_add(args)
+        if args.action == "kit":
+            return await self.kit_apply(args)
+        if args.action == "create":
+            return await self.create(args)
         client_dir: Path = args.client_dir or self._settings.client_dir
         async with open_accounts(self._settings) as accounts:
             admin = AccountAdmin(accounts, self._settings)
-            if args.action == "create":
-                return str(await admin.create(args.user, args.nickname, client_dir))
             return str(await admin.rotate_token(args.user, client_dir))
 
     async def grant(self, args: argparse.Namespace) -> str:
@@ -48,8 +62,48 @@ class Cli:
             )
             return await admin.grant(args.user, grant)
 
+    def _inventory_service(self) -> InventoryService:
+        return InventoryService(ItemCatalog.open(self._settings.client_dir / "landmass.wdb"))
 
-def main() -> None:
+    async def create(self, args: argparse.Namespace) -> str:
+        client_dir: Path = args.client_dir or self._settings.client_dir
+        # Catálogo e kit são validados antes de gravar a conta: wdb ou kit inválido não deixa
+        # conta pela metade.
+        kit = StarterKit(self._inventory_service())
+        async with open_database(self._settings) as db:
+            admin = AccountAdmin(SqlAccountRepository(db), self._settings)
+            bat = await admin.create(args.user, args.nickname, client_dir)
+            await self._kit_admin(db, kit).apply(args.user)
+        return str(bat)
+
+    async def item_add(self, args: argparse.Namespace) -> str:
+        async with open_database(self._settings) as db:
+            admin = InventoryAdmin(
+                SqlAccountRepository(db), SqlInventoryRepository(db), self._inventory_service()
+            )
+            unit = await admin.add_item(args.username, args.catalog, args.days)
+        return f"item {unit.catalog_id} (índice {unit.inventory_index}) para {args.username}"
+
+    async def morat_add(self, args: argparse.Namespace) -> str:
+        async with open_database(self._settings) as db:
+            admin = InventoryAdmin(
+                SqlAccountRepository(db), SqlInventoryRepository(db), self._inventory_service()
+            )
+            unit = await admin.add_morat(args.username, args.catalog, args.gate)
+        return f"morat {unit.catalog_id} no gate {unit.gate_index} para {args.username}"
+
+    async def kit_apply(self, args: argparse.Namespace) -> str:
+        kit = StarterKit(self._inventory_service())
+        async with open_database(self._settings) as db:
+            created = await self._kit_admin(db, kit).apply(args.username)
+        return f"kit aplicado a {args.username}: {created} morat(s) novo(s)"
+
+    @staticmethod
+    def _kit_admin(db: async_sessionmaker[AsyncSession], kit: StarterKit) -> StarterKitAdmin:
+        return StarterKitAdmin(SqlAccountRepository(db), SqlInventoryRepository(db), kit)
+
+
+def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="landmass-emu")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sniff = sub.add_parser("sniff", help="grava os bytes enviados pelo cliente, sem responder")
@@ -70,7 +124,30 @@ def main() -> None:
     grant.add_argument("--exp", type=int, default=0)
     grant.add_argument("--ld", type=int, default=0)
     grant.add_argument("--cash", type=int, default=0)
-    args = parser.parse_args()
+    item = actions.add_parser("item", help="itens do inventário")
+    item_add = item.add_subparsers(dest="op", required=True).add_parser(
+        "add", help="cria um item com prazo em dias"
+    )
+    item_add.add_argument("username")
+    item_add.add_argument("--catalog", type=int, required=True)
+    item_add.add_argument("--days", type=int, required=True)
+    morat = actions.add_parser("morat", help="morats do inventário")
+    morat_add = morat.add_subparsers(dest="op", required=True).add_parser(
+        "add", help="cria um morat em um gate (0 a 7)"
+    )
+    morat_add.add_argument("username")
+    morat_add.add_argument("--catalog", type=int, required=True)
+    morat_add.add_argument("--gate", type=int, required=True)
+    kit = actions.add_parser("kit", help="kit inicial da conta (morats com peças padrão)")
+    kit_apply = kit.add_subparsers(dest="op", required=True).add_parser(
+        "apply", help="aplica o kit a uma conta existente (pula gates ocupados)"
+    )
+    kit_apply.add_argument("username")
+    return parser
+
+
+def main() -> None:
+    args = _parser().parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     settings = Settings()
@@ -84,7 +161,7 @@ def main() -> None:
         else:
             try:
                 saida = asyncio.run(cli.account(args))
-            except (ValueError, AccountConflict) as e:
+            except (ValueError, AccountConflict, InventoryConflict) as e:
                 raise SystemExit(f"erro: {e}") from None
             print(saida)
 

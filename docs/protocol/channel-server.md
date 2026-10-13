@@ -55,7 +55,7 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 2 | C↔S | `HEARTBEAT` | vazio | implementado |
 | 54 | S→C | `ERROR` (envelope) | 8 bytes: opcode real e código | implementado |
 | 100 | C→S | `IN_CHANNEL_SERVER` | `char session_key[33]` | implementado |
-| 101 | S→C | `IN_CHANNEL_SERVER_OUT` | 176 bytes | implementado (progressão de `@0x28` a `@0x4C`, F2 e F3; ver Layouts) |
+| 101 | S→C | `IN_CHANNEL_SERVER_OUT` | 176 bytes | implementado (progressão de `@0x28` a `@0x4C`, F2 e F3; nest em `@0x20` e gates em `@0x5A`, com `bEnable` em `@0x5C`, F5; ver Layouts) |
 | 111 | S→C | `CHANNEL_INFO_OUT` | `u8 count` = 1 | implementado (shortcut) |
 | 120 | C→S | `IN_CHANNEL` | `u32 num` ou vazio | implementado (`num` ignorado) |
 | 121 | S→C | `IN_CHANNEL_OUT` | entrada de jogador, 40 bytes | implementado (`total_exp` = exp do banco, F3: o 121 sobrescreve o nó do próprio jogador) |
@@ -73,6 +73,10 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 601 | S→C | `TUTORIAL_CLEAR_OUT` | `i32` máscara @0, `i32` LD @4 | implementado (F2); o LD vai no @4 porque o cliente o grava em `iPoint` |
 | 900 | S→C (push) | `CHARGE_CASH_OUT` | `i32` Cash | implementado (F3): enviado depois do 111 no login |
 | 902 | S→C (push) | `CHARGE_POINT_OUT` | `i32` LD | implementado (F3): enviado depois do 111 no login; bloco misto no dispatcher (shortcut) |
+| 102 | S→C (push) | `GET_ITEM_OUT` | 56 bytes | implementado (F4): um por item, no login, depois de 900 e 902 |
+| 103 | S→C (push) | `GET_MORATS_OUT` | 96 bytes | implementado (F5): um por morat com gate, no login. Morat sem gate não sai |
+| 104 | S→C | `SET_REGULAR_OUT` | vazio | implementado (F5): resposta do 105 |
+| 105 | C→S | `SET_REGULAR_IN` | `u8 nest` @0, `u8 classe` @1 | implementado (F5): faixa validada (nest 1 a 3, classe 1 a 4); grava `accounts.regular_nest_id` e `regular_morat_class` |
 | 301 | C→S | `CREATE_ROOM` | 74 bytes | implementado (shortcut) |
 | 302 | S→C | `CREATE_ROOM_OUT` | registro de sala, 612 bytes | implementado (shortcut) |
 | 311 | C→S | `IN_ROOM` | 20 bytes | implementado (shortcut) |
@@ -453,7 +457,7 @@ Só quem está no lobby entra na resposta; sem nenhum, não há resposta. O clie
 
 Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cliente real, remova a inferência ou corrija o layout.
 
-1. **Nick e progressão.** O nick vem em `R+0x08` de 151, 121 e 317 (`re/layouts_f0.md` §1.2), copiado de `account.nickname`. `total_exp` do 121 de quem entra e do 101 vem do banco (F3); na 151 e no 317 sai zero (`ChannelRecords` só tem o nick). Clã, marca e nest vão zerados até o marco 5.
+1. **Nick e progressão.** O nick vem em `R+0x08` de 151, 121 e 317 (`re/layouts_f0.md` §1.2), copiado de `account.nickname`. `total_exp` do 121 de quem entra e do 101 vem do banco (F3); na 151 e no 317 sai zero (`ChannelRecords` só tem o nick). Clã e marca vão zerados até o marco 5. O nest do próprio jogador sai só no 101 (F5).
 2. **111 com `count` 1.** `FUN_1001c170` não lê o corpo da entrada (`re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` L978–992). Nenhum dado do canal é enviado. Se o cliente exigir nome de canal, o layout precisa ser decodificado.
 3. **`num` do `120`.** O servidor original tem `channel_count 1`; o emulador ignora o `num`. Se o cliente escolher canais por índice, a lista de 111 precisa de mais de uma entrada.
 4. **`result` recusado.** -160 é o código de senha inválida do Message. O canal original pode usar outro código.
@@ -478,6 +482,7 @@ Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cli
 23. **Troca de dono (332).** Passa para o primeiro membro na ordem de entrada. Regra escolhida, não observada no cliente.
 24. **Progressão no login (F2 e F3).** O 101 leva tutorial, exp, Cash e LD em `@0x28`, `@0x2C`, `@0x48` e `@0x4C` (`PlayerRecord`), e os pushes 900 e 902 saem depois do 111. Inferido dos layouts `LM_PLAYER_INFO` (`re/layouts_f0.md` §1.1 e §7.6); não confirmado no cliente real. O 902 vai no bloco misto do dispatcher (shortcut).
 25. **Exp nos demais registros.** Só o 101 e o 121 de quem entra levam a exp do banco. A 151 da lista, a 548 (resposta ao 546) e o 317 da sala saem com `total_exp` zero, e a 549 não é tratada. A 151 traz o próprio jogador, mas o 121 chega depois e corrige a exp dele. Se o cliente grava a 548 e o 317 no nó do jogador como faz com o 121, a exp própria pode voltar a zero após um 546 ou uma entrada em sala. Não verificado no cliente real. Correção natural, fora deste marco: guardar `total_exp` no membro do lobby ao entrar e preenchê-lo na 151, na 317 e na 548.
+26. **Inventário e morat regular (F4/F5).** 102 e 103 saem no login depois de 900 e 902; 103 só para morat com gate. Peças em -1 e skins em 0 (inferido, D31). Offsets de 102 e 103 além do que o RE dá (GUID, `apply_flag` em `@0x2D`, skins) são inferidos ([re/layouts_f0.md](../../re/layouts_f0.md) §8). Conta sem morat: a sala trava no cliente, e habilitar gate sem morat não corrige (dúvida 24 em [07-progression](../architecture/07-progression.md)). Nada disso foi confirmado no cliente real.
 
 ## Checklist no cliente real
 

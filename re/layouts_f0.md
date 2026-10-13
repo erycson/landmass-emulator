@@ -338,3 +338,47 @@ Obs.: 601 e 616 gravam nos campos de dinheiro e pontos conforme o código (601 g
 - Os campos de progressão do próprio jogador (`iCash` +0x58, `iPoint` +0x5c, `premium_end` +0x94, `iTutorialClear` +0x38) são atualizados por 900-902, 551/552, 616 e 601. Nenhum deles cria o nó: se o nó do próprio jogador não existe, o efeito é nulo (`FUN_10018aa0`/`if` de existência em 900-902, 551, 552).
 - O próprio nó é criado por 101 (`DAT_1005ada0`, disp@853-882) e 151/317/549 (§1.2).
 - 601 não tem guarda de existência (disp@2443-2446): se o próprio nó não existe, grava no sentinela da lista (inferido).
+
+## 8. Inventário e morat regular (F4 e F5)
+
+Fontes: `re/protocol_full.md` §2.1, §3.1 e §3.2 (102, 103, 104 e 105), `LM_PLAYER_INFO` em §1.1 (nest e `sGate`) e `GetMoratsInfoByGate` no dump de `LM_Engine` (L2288–2298). Código: `protocol/inventory.py` e `PlayerRecord` em `protocol/progression.py`.
+
+**(RE)** = visto no dump ou no dispatcher. **(inferido)** = o emulador escreve assim, sem prova no cliente real.
+
+| Mensagem | Campo | Offset | Tipo | Marca |
+|---|---|---|---|---|
+| 101 | `ucNest` | 0x20 | u8 | (RE) §1.1 |
+| 101 | `sGate[k].siIdx` | 0x5A + 4k | i16 | (RE) §1.1; o emulador grava `siIdx = k` |
+| 101 | `sGate[k].bEnable` | 0x5C + 4k | u8 | (RE) §1.1; 1 quando o gate tem morat |
+| 102 | chave `siIdx` | 0 | u16 | (RE) §3.2 |
+| 102 | id do catálogo | 4 | i32 | (inferido) |
+| 102 | GUID | 8 | char[37] | (inferido) |
+| 102 | `apply_flag` | 0x2D | u8 | (inferido) |
+| 102 | `apply_value` | 0x30 | i32 | (RE) §3.2 |
+| 102 | zerar `apply_value` | 0x35 | u8 | (RE) §3.2; o emulador manda 0 |
+| 103 | chave (gate) | 0 | u16 | (RE) §3.2 |
+| 103 | id, GUID, `apply_flag`, `apply_value` | 4, 8, 0x2D, 0x30 | — | (inferido), igual ao 102 |
+| 103 | peças (`siMainWeapon` ...) | 0x34 a 0x53 (16 × i16) | i16 | (inferido) |
+| 103 | skins | 0x54 a 0x59 (3 × i16) | i16 | (inferido) |
+| 103 | zerar | 0x5D | u8 | (RE) §3.2 |
+| 104 | corpo | — | vazio | (RE) §3.2, L934–937 |
+| 105 | `nest`, classe | 0, 1 | u8, u8 | (RE) §3.1 |
+
+### Peças, skins e índices
+
+- Índice de item começa em 1. O morat usa o gate (0 a 7) como índice ([D30](../docs/decisions/README.md)).
+- Peça -1 é o padrão: o `GetWeaponInfo` do XInterface usa o índice explícito quando é `>= 0` e cai no `DefaultSet` da espécie quando é negativo (dump do XInterface, `GetWeaponInfo` e `SetMorats`). Peça 0 não resolve (`GetItemInfoByID(0)` falha) e deixa a arma vazia.
+- Skin: o emulador grava 0 (o kit antigo deixa NULL). Com 0, o botão de skin pode ficar vazio (inferido). Com -1, o cliente mostraria a skin do `DefaultSet`. Não alterado: decidir com captura no cliente.
+- Morat no gate 0 tem chave 0. Não verificado se `GetMoratsInfoByID(0)` resolve.
+
+### Gates e conta sem morat
+
+- O 101 habilita `sGate[k]` só para os gates com morat, e o 103 vem para cada um. Teste: `test_kit_aplicado_vai_no_login_com_gates_habilitados`.
+- Conta sem morat trava a sala no cliente (observado ao vivo pelo coordenador, `LM_RoomPage`, "Infinite script recursion"). `GetMoratsInfoByGate` devolve false quando `bEnable` é 0 e também quando o `siIdx` não tem morat (dump, L2288–2298). Por isso habilitar gate sem morat não corrige: é preciso um morat. Dúvida 24 em [07-progression](../docs/architecture/07-progression.md).
+- Nada disso foi confirmado no cliente real.
+
+### Divergências com o RE
+
+- `sEventSlot[10]`: o dump declara `LM_GATE_SLOT` (passo 4); a §1.1 lê `u8[10]` em 0x50..0x59. Resolver antes da F6 (equipar).
+- 569 (`NotifyChangeNest`) não é enviado. O nest sai só no 101 (inferido).
+- Layouts de 550, 555, 560, 570 e 580 (`re/protocol_full.md` §2.1) são de F6 a F8. Ainda não há codec: ao implementar, usar esses layouts.

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.engine import Migrator
+from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.domain.channel import Channel
@@ -19,6 +20,7 @@ from landmass_emu.handlers.channel.rooms import GameEndpoint
 from landmass_emu.handlers.message import MessageHandlers
 from landmass_emu.net.server import Service
 from landmass_emu.ports.accounts import AccountRepository
+from landmass_emu.ports.inventory import InventoryRepository
 from landmass_emu.ports.options import OptionsRepository
 from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
@@ -93,11 +95,15 @@ async def channel_server(
     sessions: SessionKeyRegistry,
     options: OptionsRepository,
     progression: ProgressionRepository,
+    accounts: AccountRepository,
+    inventory: InventoryRepository,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
     game = GameEndpoint(settings.game_host, settings.game_port)
-    handlers = ChannelHandlers(sessions, lobby, rooms, options, progression, game)
+    handlers = ChannelHandlers(
+        sessions, lobby, rooms, options, progression, game, accounts, inventory
+    )
     server = await Service(
         net_code=CHANNEL_NET_CODE,
         router=handlers.router,
@@ -119,8 +125,11 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         accounts = SqlAccountRepository(db)
         options = SqlOptionsRepository(db)
         progression = SqlProgressionRepository(db)
+        inventory = SqlInventoryRepository(db)
         async with (
             message_server(settings, sessions, accounts, options) as message,
-            channel_server(settings, sessions, options, progression) as channel,
+            channel_server(
+                settings, sessions, options, progression, accounts, inventory
+            ) as channel,
         ):
             yield message, channel

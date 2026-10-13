@@ -4,20 +4,26 @@ from collections.abc import Sequence
 
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.progression import ProgressionService
+from landmass_emu.domain.regular import RegularService
 from landmass_emu.domain.rooms import Rooms
 from landmass_emu.handlers.channel.chat import ChatHandlers
 from landmass_emu.handlers.channel.entry import EntryHandlers
 from landmass_emu.handlers.channel.lists import ListHandlers
+from landmass_emu.handlers.channel.login import LoginHandlers
+from landmass_emu.handlers.channel.morat import MoratHandlers
 from landmass_emu.handlers.channel.options import OptionHandlers
 from landmass_emu.handlers.channel.progression import ProgressionHandlers
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.handlers.channel.rooms import GameEndpoint, RoomHandlers
 from landmass_emu.net.server import Reply, Router
 from landmass_emu.net.session import Session
+from landmass_emu.ports.accounts import AccountRepository
+from landmass_emu.ports.inventory import InventoryRepository
 from landmass_emu.ports.options import OptionsRepository
 from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.protocol.channel import CsOp
+from landmass_emu.protocol.inventory import CsInventoryOp
 from landmass_emu.protocol.progression import CsProgressionOp
 
 
@@ -32,6 +38,8 @@ class ChannelHandlers:
         player_options: OptionsRepository,
         progression: ProgressionRepository,
         game: GameEndpoint,
+        accounts: AccountRepository,
+        inventory: InventoryRepository,
     ) -> None:
         records = ChannelRecords(lobby)
         room_handlers = RoomHandlers(lobby, rooms, records, game)
@@ -39,13 +47,15 @@ class ChannelHandlers:
         self._entry = EntryHandlers(
             sessions, lobby, rooms, records, room_handlers, progression_handlers
         )
+        self._login = LoginHandlers(self._entry, accounts, inventory)
+        self._morats = MoratHandlers(accounts, RegularService())
         self._chat = ChatHandlers(lobby, rooms)
         self._lists = ListHandlers(lobby, rooms, records)
         self._options = OptionHandlers(player_options)
         self._rooms = room_handlers
         self.router: Router = {
             CsOp.HEARTBEAT: self.heartbeat,
-            CsOp.IN_CHANNEL_SERVER: self._entry.in_channel_server,
+            CsOp.IN_CHANNEL_SERVER: self._login.in_channel_server,
             CsOp.IN_CHANNEL: self._entry.in_channel,
             CsOp.OUT_CHANNEL: self._entry.out_channel,
             CsOp.SEND_MESSAGE: self._chat.send_message,
@@ -59,6 +69,7 @@ class ChannelHandlers:
             CsOp.EXPEL_PLAYER: self._rooms.expel_player,
             CsOp.REFRESH_PLAYER_LIST: self._lists.refresh_player_list,
             CsOp.REFRESH_ROOM_LIST: self._lists.refresh_room_list,
+            CsInventoryOp.SET_REGULAR_IN: self._morats.set_regular,
         }
 
     async def heartbeat(self, session: Session, payload: bytes) -> Sequence[Reply]:

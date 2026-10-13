@@ -49,7 +49,7 @@ Cada linha registra a regra que sobrevive. O mecanismo do legado não é reprodu
 
 - Tipos portáveis ([04-persistence.md](04-persistence.md)): `Integer`, `String(n)`, `Boolean`, `DateTime(timezone=True)`.
 - Toda tabela tem `id` (`Integer`, PK, autoincremento), `created_at` e `updated_at`.
-- `catalog_id` (`Integer`, sem FK): id do cliente. Identidade no catálogo: `item.type` (consumíveis e skins), `Item_Equip.item_id` (equipamentos) e `Morats.id` (espécies). Ver [D19](../decisions/README.md).
+- `catalog_id` (`Integer`, sem FK): id do cliente. No `landmass.wdb` (formato EAV), o id é a coluna `type` das tabelas `item` (consumíveis e skins), `Item_Equip` (equipamentos) e `Morats` (espécies). `Item_Equip.item_id` não é usada. Ver [D19](../decisions/README.md).
 - `item_guid` (`String(36)`): UUID v4 gerado pelo servidor. O cliente identifica a unidade por ele (`LM_ITEM_INFO.strItemGuid`).
 - `inventory_index` (`Integer`): índice por conta, o `siIdx` do cliente. É o menor índice livre na criação e só é reaproveitado após `DELETE` ([D22](../decisions/README.md)).
 - Constraints e índices seguem `<tabela>_<coluna>_unique|index|foreign`; constraints compostas unem as colunas com `_`.
@@ -181,7 +181,7 @@ A tabela `accounts` existente ([04-persistence.md](04-persistence.md)) recebe as
 
 ### 4.4 `account_items`
 
-Inventário. Uma linha por unidade ([D22](../decisions/README.md)). "Equipado" é derivado: `account_morat_id IS NOT NULL OR system_slot IS NOT NULL`. O gate de um item montado é o `gate_index` da morat dona.
+Inventário, implementado em F4. Uma linha por unidade ([D22](../decisions/README.md)). Índices de item começam em 1 ([D30](../decisions/README.md)). "Equipado" é derivado: `account_morat_id IS NOT NULL OR system_slot IS NOT NULL`. O gate de um item montado é o `gate_index` da morat dona.
 
 | Coluna | Tipo | Nulo | Regra |
 |--------|------|------|-------|
@@ -200,12 +200,12 @@ Inventário. Uma linha por unidade ([D22](../decisions/README.md)). "Equipado" �
 
 ### 4.5 `account_morats`
 
-Unidade de combate (espécie `SPECIES_*`), não moeda ([features §10](../../re/features.md)).
+Unidade de combate (espécie `SPECIES_*`), não moeda ([features §10](../../re/features.md)). Implementado em F5.
 
 | Coluna | Tipo | Nulo | Regra |
 |--------|------|------|-------|
 | `account_id` | `Integer` | não | FK `accounts.id`: `account_morats_account_id_foreign`. |
-| `inventory_index` | `Integer` | não | Único por conta: `account_morats_account_id_inventory_index_unique`. Dúvida 19. |
+| `inventory_index` | `Integer` | não | Igual ao `gate_index` (0 a 7), em namespace separado do item ([D30](../decisions/README.md)). Único por conta: `account_morats_account_id_inventory_index_unique`. |
 | `catalog_id` | `Integer` | não | `Morats.id` (ex.: `101000001`). Sem FK. |
 | `item_guid` | `String(36)` | não | Único: `account_morats_item_guid_unique`. |
 | `gate_index` | `Integer` | sim | 0 a 7 (`sGate[8]`). Nulo = fora do gate. Único por conta: `account_morats_account_id_gate_index_unique`. |
@@ -431,10 +431,10 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 
 | Opcode | Direção | Caso de uso | Tabelas | Layout (re) | Estado |
 |-------:|:-------:|-------------|---------|-------------|--------|
-| 102 | S→C (push) | Lista de itens da conta | `account_items` | falta (bloco 883–900) | falta |
-| 103 | S→C (push) | Lista de morats | `account_morats` | parcial: `i16 @0` chave, `u8 @0x5d`, registro de 92 bytes | falta |
-| 104 | S→C | Resposta de `SetRegular` | `accounts` | falta | falta |
-| 105 | C→S | Morat regular | `accounts` | parcial: 2 bytes, `u16 @0` | falta |
+| 102 | S→C (push) | Lista de itens da conta | `account_items` | parcial: `u16 @0` chave, zerar `@0x35` ([layouts_f0 §8](../../re/layouts_f0.md)) | implementado (F4, no login) |
+| 103 | S→C (push) | Lista de morats com gate | `account_morats` | parcial: `u16 @0` gate, `u8 @0x5d`, registro de 92 bytes ([layouts_f0 §8](../../re/layouts_f0.md)) | implementado (F5, no login) |
+| 104 | S→C | Resposta de `SetRegular` | `accounts` | corpo vazio | implementado (F5) |
+| 105 | C→S | Morat regular | `accounts` | `u8 nest @0`, `u8 classe @1` | implementado (F5) |
 | 107 / 108 | S→C | Morat de treino / criado | `account_morats` | falta | falta |
 | 544 | C→S | Gravar opções | `account_options` | completo: 37 `u8` na ordem de `LM_REGISTER_INFO` ([channel-server.md](../protocol/channel-server.md)) | implementado (F1) |
 | 550 | C→S | Compra (LD ou Cash) | `account_items`, `account_morats`, `accounts` | parcial: 12 bytes (3 `u32`); ordem `id, bPoint, opção` (features §2.2) | falta |
@@ -511,8 +511,8 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F1 (implementada) | `account_options`. 544 grava 37 bytes; 110 → 111 devolve os valores. | — | Mudar sensibilidade do mouse em Opções, sair do jogo, logar: valor mantido. |
 | F2 (implementada) | `accounts.tutorial_clear`. 600 marca o bit; 601 responde. | F0 (601) | Concluir passo 1; reiniciar o servidor; passo aparece concluído e não é reenviado. |
 | F3 (implementada) | `total_exp`, `ld`, `cash`; patente derivada; push 900/902; CLI `account grant --exp --ld --cash`. | F0 (151/317/900/902) | `grant --exp 2800 --ld 1000`: cliente mostra LD 1000, patente "Praça" e progresso. `grant --cash 500`: Cash 500 na loja. |
-| F4 | `account_items`; 102; CLI `account item add --catalog <id> --days <n>`. | F0 (102) | Item da CLI aparece no hangar com nome e validade; some após `DELETE` e reconexão. |
-| F5 | `account_morats`; 103; 105/104; CLI `account morat add --catalog <id> --gate <n>`. | F0 (103) | Morat aparece no gate indicado; classe regular persiste após reconexão. |
+| F4 (implementada) | `account_items`; 102; CLI `account item add --catalog <id> --days <n>`. | F0 (102) | Item da CLI aparece no hangar com nome e validade; some após `DELETE` e reconexão. |
+| F5 (implementada) | `account_morats`; 103; 105/104; CLI `account morat add --catalog <id> --gate <n>`. | F0 (103) | Morat aparece no gate indicado; classe regular persiste após reconexão. |
 | F6 | Equipar e desequipar (560, 570, 573); montagem de parte e de item de sistema. | F4, F5 | Equipar arma no gate; reconectar; continua montada. Buff vai para `system_slot`. |
 | F7 | Destruir e estender (555, 556, 580, 582, 585). | F4 | Destruir some do hangar após reconexão. Estender muda o prazo exibido. Vencido abre renovação. |
 | F8 | Compra por LD e Cash (550, 551, 552). | F3, F4; dúvida 1 | Item comprado com LD debita `ld` pelo preço do wdb e cria a linha; saldo 902 atualiza. Saldo insuficiente: resultado ≠ 0 e nada muda. |
@@ -552,11 +552,12 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 16. **Opcodes não medidos:** remover amigo, adicionar e remover bloqueio, lista de clã, membros, chat de clã, corpo de 152. Também `NotifyFriendLog` não tem opcode.
 17. **Resultado da partida:** opcode do GS_* que entrega o resultado ao canal [bloqueia F9]. Limite de amigos e de bloqueados.
 18. **Clã:** criação e gestão só pela CLI? Confirmar.
-19. **Índice de inventário:** `account_items` e `account_morats` compartilham `inventory_index` ou têm namespaces separados?
+19. **Índice de inventário (resolvida em F4/F5, [D30](../decisions/README.md)):** `account_items` e `account_morats` têm namespaces separados. Morat usa o gate como índice; item começa em 1. Inferido do dump de `GetMoratsInfoByGate`: confirmar no cliente real.
 20. **Campo de exp e saldo no registro do jogador:** qual pacote (151, 317 ou 549) entrega `iTotalExp`, `iPoint` e `iCash` ao cliente [bloqueia F3]. **Resolvida em F3 (inferido, confirmar no cliente real):** o 101 entrega `iTutorialClear`, `iTotalExp`, `iCash` e `iPoint` (`@0x28`, `@0x2c`, `@0x48`, `@0x4c`), pelo layout de `LM_PLAYER_INFO`. O 121 de quem entra entrega `iTotalExp` em `@4`. 151, 317 e 549 também trazem `iTotalExp` (`R+0x04`): quem implementar salas precisa preenchê-lo, senão zera o nó do próprio jogador.
 21. **Penalidades:** entram neste escopo? O cliente não tem tela de penalidade (features §12).
 22. **Ranking por nest** (`oddeye`, `shadow`, `leon` do legado): não migrado no primeiro corte. Confirmar.
 23. **Pacotes `gift_okcashback1..3`:** quem os concede e quando?
+24. **Conta sem morat trava a sala (observado ao vivo) [bloqueia a sala para contas sem morat].** O cliente trava em `LM_RoomPage` quando nenhum gate tem morat. Habilitar gate sem morat não resolve ([layouts_f0 §8](../../re/layouts_f0.md)). Conceder o kit no login quando a conta não tem morat muda o login e escreve no banco. Decisão do usuário: conceder no login, ou só pela CLI (`account kit apply`)?
 
 ## 9. Decisões
 
@@ -568,3 +569,5 @@ Registradas em [decisions/README.md](../decisions/README.md):
 - **D20** Saldos em `accounts`; débito por `UPDATE` condicional na mesma transação; sem ledger.
 - **D21** Patente e abandono derivados; sem coluna.
 - **D22** Inventário com uma linha por unidade, `item_guid` e `inventory_index` por conta.
+- **D30** Morat usa o gate como índice de inventário; itens e morats têm namespaces separados.
+- **D31** Morats do kit inicial entram sem itens, com peças em -1 (padrão do cliente); conta sem morat fica sem solução server-side (dúvida 24).

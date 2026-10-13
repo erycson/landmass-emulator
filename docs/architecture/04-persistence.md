@@ -47,7 +47,7 @@ Fonte: `D:\landmass\servidor\db\LM_account.sql`. Modelo: `db/models.py`. Migraç
 - `username` não é FK para `users`: é o próprio login da conta.
 - Único em `nickname`: regra de nickname do jogo (`CheckNickname`, 140, responde "nome disponível").
 - Único em `token_hash`: é a chave de busca do login.
-- Colunas de progressão (F2 e F3): `tutorial_clear`, `total_exp`, `ld` e `cash`, todas `Integer NOT NULL` com padrão `0`. Migrações `01ad613f288a` e `31c91374dcba`. Regras em [07-progression §4.3](07-progression.md).
+- Colunas de progressão (F2 e F3): `tutorial_clear`, `total_exp`, `ld` e `cash`, todas `Integer NOT NULL` com padrão `0`. Migrações `01ad613f288a` e `31c91374dcba`. Regras em [07-progression §4.3](07-progression.md). Colunas de morat regular (F5): `regular_nest_id` e `regular_morat_class`, migração `ff38814bc227`. Tabelas `account_items` (migração `0d72e556d5d3`) e `account_morats` (migração `2100454de3ec`), com regras em [07-progression §4.4 e §4.5](07-progression.md).
 - As demais colunas do original (estatísticas, opções, quickslot, morats) entram nos marcos que as usam.
 
 ## Tabela `account_options` (F1)

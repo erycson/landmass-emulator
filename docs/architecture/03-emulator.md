@@ -52,7 +52,7 @@ Regras de dependência:
 | `src/landmass_emu/ports/options.py` | Protocol `OptionsRepository` (`get` e `save` das opções do jogador, `account_options`). |
 | `src/landmass_emu/ports/progression.py` | Protocol `ProgressionRepository` (`get`, `mark_tutorial` e `grant` da progressão em `accounts`). |
 | `src/landmass_emu/ports/session_keys.py` | Protocol `SessionKeyRegistry` (`issue` e `resolve` de chaves de sessão). |
-| `src/landmass_emu/db/` | `models.py` (`accounts`, `account_options`), `accounts.py` (repositório SQLAlchemy), `options.py` (repositório de opções), `progression.py` (progressão da conta), `catalog.py` (`WdbCatalog`: leitura somente leitura do `landmass.wdb`), `engine.py` (`Migrator`: migrações no start), `migrations/` (Alembic). |
+| `src/landmass_emu/db/` | `models.py` (`accounts`, `account_options`, `account_items`, `account_morats`), `accounts.py` (repositório SQLAlchemy), `inventory.py` (inventário), `item_catalog.py` (`ItemCatalog`: itens e morats do `landmass.wdb`), `options.py` (repositório de opções), `progression.py` (progressão da conta), `catalog.py` (`WdbCatalog`: leitura somente leitura do `landmass.wdb`), `engine.py` (`Migrator`: migrações no start), `migrations/` (Alembic). |
 | `src/landmass_emu/sniffer.py` | `Sniffer`: captura de tráfego do cliente (ferramenta de RE). `hexdump` é utilitário sem estado. |
 | `tests/fixtures/` | Capturas reais usadas como golden files. |
 

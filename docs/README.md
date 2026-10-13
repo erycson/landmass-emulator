@@ -25,7 +25,7 @@ flowchart LR
 | [01-scope.md](architecture/01-scope.md) | Objetivos, fora de escopo e restrições obrigatórias (R1–R6). |
 | [02-context.md](architecture/02-context.md) | Componentes do sistema, topologia, portas e fluxo ponta a ponta. |
 | [03-emulator.md](architecture/03-emulator.md) | Camadas, regras de dependência, estrutura de pacotes, concorrência, codec e handlers. |
-| [04-persistence.md](architecture/04-persistence.md) | Banco portável (SQLAlchemy/Alembic), convenção de nomes (Laravel), schema de contas e opções, tabelas do legado não migradas, dados estáticos do cliente. |
+| [04-persistence.md](architecture/04-persistence.md) | Banco portável (SQLAlchemy/Alembic), convenção de nomes (Laravel), schema de contas, opções, inventário (`account_items`, `account_morats`) e colunas de morat regular, tabelas do legado não migradas, dados estáticos do cliente. |
 | [05-configuration.md](architecture/05-configuration.md) | Variáveis `LANDMASS_*`, valores padrão e regras de segredos. |
 | [06-game-server-host.md](architecture/06-game-server-host.md) | Processo que hospeda a partida (componente ausente a reconstruir). |
 | [07-progression.md](architecture/07-progression.md) | Progressão e economia: modelo de dados (contas, inventário, morats, opções, social, clãs), regras de compra, uso, presente, patente, recompensa e tutorial, mapeamento opcode → tabela e ordem de implementação. |
