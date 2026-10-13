@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from landmass_emu.db.accounts import SqlAccountRepository
-from landmass_emu.db.engine import migrate
+from landmass_emu.db.engine import Migrator
 from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.domain.channel import Channel
 from landmass_emu.domain.lobby import Lobby
@@ -15,8 +15,8 @@ from landmass_emu.domain.rooms import Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.handlers.channel import ChannelHandlers
 from landmass_emu.handlers.channel.rooms import GameEndpoint
-from landmass_emu.handlers.message import build_router
-from landmass_emu.net.server import start_service
+from landmass_emu.handlers.message import MessageHandlers
+from landmass_emu.net.server import Service
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.options import OptionsRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
@@ -44,7 +44,7 @@ def channels_from(settings: Settings) -> Sequence[Channel]:
 
 @asynccontextmanager
 async def open_database(settings: Settings) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
-    await migrate(settings.database_url)
+    await Migrator(settings.database_url).upgrade()
     engine = create_async_engine(settings.database_url)
     try:
         yield async_sessionmaker(engine, expire_on_commit=False)
@@ -75,13 +75,12 @@ async def message_server(
     accounts: AccountRepository,
     options: OptionsRepository,
 ) -> AsyncIterator[asyncio.Server]:
-    server = await start_service(
-        settings.bind_host,
-        settings.message_port,
+    handlers = MessageHandlers(accounts, channels_from(settings), sessions, options)
+    server = await Service(
         net_code=MESSAGE_NET_CODE,
-        router=build_router(accounts, channels_from(settings), sessions, options),
+        router=handlers.router,
         recv_timeout=settings.recv_timeout,
-    )
+    ).start(settings.bind_host, settings.message_port)
     async with _listening(server) as listening:
         yield listening
 
@@ -94,16 +93,14 @@ async def channel_server(
     rooms = Rooms()
     game = GameEndpoint(settings.game_host, settings.game_port)
     handlers = ChannelHandlers(sessions, lobby, rooms, options, game)
-    server = await start_service(
-        settings.bind_host,
-        settings.channel_port,
+    server = await Service(
         net_code=CHANNEL_NET_CODE,
         router=handlers.router,
         recv_timeout=settings.recv_timeout,
         on_close=handlers.disconnect,
         heartbeat=CsHeartbeat(),
         heartbeat_every=CHANNEL_HEARTBEAT_SECONDS,
-    )
+    ).start(settings.bind_host, settings.channel_port)
     async with _listening(server) as listening:
         yield listening
 

@@ -5,23 +5,29 @@ import logging
 from pathlib import Path
 
 from landmass_emu import sniffer
-from landmass_emu.admin import create_account, rotate_token
+from landmass_emu.admin import AccountAdmin
 from landmass_emu.app import game_servers, open_accounts
 from landmass_emu.ports.accounts import AccountConflict
 from landmass_emu.settings import Settings
 
 
-async def _serve(settings: Settings) -> None:
-    async with game_servers(settings) as (message, channel):
-        await asyncio.gather(message.serve_forever(), channel.serve_forever())
+class Cli:
+    """Comandos `serve` e `account`. As settings entram no `__init__`."""
 
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
 
-async def _account(settings: Settings, args: argparse.Namespace) -> Path:
-    client_dir: Path = args.client_dir or settings.client_dir
-    async with open_accounts(settings) as accounts:
-        if args.action == "create":
-            return await create_account(accounts, settings, args.user, args.nickname, client_dir)
-        return await rotate_token(accounts, settings, args.user, client_dir)
+    async def serve(self) -> None:
+        async with game_servers(self._settings) as (message, channel):
+            await asyncio.gather(message.serve_forever(), channel.serve_forever())
+
+    async def account(self, args: argparse.Namespace) -> Path:
+        client_dir: Path = args.client_dir or self._settings.client_dir
+        async with open_accounts(self._settings) as accounts:
+            admin = AccountAdmin(accounts, self._settings)
+            if args.action == "create":
+                return await admin.create(args.user, args.nickname, client_dir)
+            return await admin.rotate_token(args.user, client_dir)
 
 
 def main() -> None:
@@ -44,15 +50,16 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     settings = Settings()
+    cli = Cli(settings)
     with contextlib.suppress(KeyboardInterrupt):
         if args.cmd == "sniff":
             args.out.mkdir(parents=True, exist_ok=True)
-            asyncio.run(sniffer.run(args.out, args.ports))
+            asyncio.run(sniffer.Sniffer(args.out).run(args.ports))
         elif args.cmd == "serve":
-            asyncio.run(_serve(settings))
+            asyncio.run(cli.serve())
         else:
             try:
-                bat = asyncio.run(_account(settings, args))
+                bat = asyncio.run(cli.account(args))
             except (ValueError, AccountConflict) as e:
                 raise SystemExit(f"erro: {e}") from None
             print(bat)

@@ -14,7 +14,7 @@ from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.domain.account import hash_token
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.net.framing import encode_frame, read_frame
-from landmass_emu.net.server import start_service
+from landmass_emu.net.server import Service
 from landmass_emu.protocol.header import MESSAGE_NET_CODE, pack_header, unpack_header
 from landmass_emu.protocol.message import MsLoginIn, MsOp
 from landmass_emu.settings import Settings
@@ -150,8 +150,8 @@ async def test_token_invalido_mantem_conexao_sem_login(tmp_path: Path) -> None:
 
 
 async def test_sem_trafego_desconecta(tmp_path: Path) -> None:
-    server = await start_service(
-        "127.0.0.1", 0, net_code=MESSAGE_NET_CODE, router={}, recv_timeout=0.2
+    server = await Service(net_code=MESSAGE_NET_CODE, router={}, recv_timeout=0.2).start(
+        "127.0.0.1", 0
     )
     port = server.sockets[0].getsockname()[1]
     async with server:

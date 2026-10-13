@@ -5,7 +5,7 @@ from landmass_emu import sniffer
 
 
 async def test_grava_bytes_recebidos(tmp_path: Path) -> None:
-    [server] = await sniffer.start(tmp_path, ports=[0], host="127.0.0.1")
+    [server] = await sniffer.Sniffer(tmp_path).start(ports=[0], host="127.0.0.1")
     port = server.sockets[0].getsockname()[1]
     async with server:
         _, writer = await asyncio.open_connection("127.0.0.1", port)

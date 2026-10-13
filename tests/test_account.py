@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Engine, create_engine, inspect, select, update
 
-from landmass_emu import admin
+from landmass_emu.admin import AccountAdmin
 from landmass_emu.app import open_accounts
 from landmass_emu.db.models import AccountRow
 from landmass_emu.domain.account import hash_token, new_token, verify_token
@@ -47,7 +47,7 @@ def _token_do_bat(bat: Path) -> str:
 async def test_cria_conta_regenera_token_e_grava_bat(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     async with open_accounts(settings) as accounts:
-        bat = await admin.create_account(accounts, settings, "fulano", "Fulano", tmp_path)
+        bat = await AccountAdmin(accounts, settings).create("fulano", "Fulano", tmp_path)
         token = _token_do_bat(bat)
         assert bat.name == "jogar_fulano.bat"
         raw = bat.read_bytes()
@@ -58,9 +58,9 @@ async def test_cria_conta_regenera_token_e_grava_bat(tmp_path: Path) -> None:
         assert verify_token(token, account.token_hash)
 
         with pytest.raises(ValueError, match="já existe"):
-            await admin.create_account(accounts, settings, "fulano", "Outro", tmp_path)
+            await AccountAdmin(accounts, settings).create("fulano", "Outro", tmp_path)
 
-        await admin.rotate_token(accounts, settings, "fulano", tmp_path)
+        await AccountAdmin(accounts, settings).rotate_token("fulano", tmp_path)
         novo = _token_do_bat(bat)
         assert novo != token
         account = await accounts.find_by_username("fulano")
@@ -73,13 +73,11 @@ async def test_rejeita_usuario_invalido_e_pasta_inexistente(tmp_path: Path) -> N
     settings = _settings(tmp_path)
     async with open_accounts(settings) as accounts:
         with pytest.raises(ValueError, match="usuário"):
-            await admin.create_account(accounts, settings, "..\\x", "Nick", tmp_path)
+            await AccountAdmin(accounts, settings).create("..\\x", "Nick", tmp_path)
         with pytest.raises(ValueError, match="usuário"):
-            await admin.create_account(accounts, settings, "Fulano", "Nick", tmp_path)
+            await AccountAdmin(accounts, settings).create("Fulano", "Nick", tmp_path)
         with pytest.raises(ValueError, match="diretório"):
-            await admin.create_account(
-                accounts, settings, "fulano", "Nick", tmp_path / "nao_existe"
-            )
+            await AccountAdmin(accounts, settings).create("fulano", "Nick", tmp_path / "nao_existe")
         assert await accounts.find_by_username("fulano") is None
 
 
@@ -106,13 +104,13 @@ async def test_rotacao_atualiza_updated_at(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     antigo = datetime(2000, 1, 1)
     async with open_accounts(settings) as accounts:
-        await admin.create_account(accounts, settings, "fulano", "Fulano", tmp_path)
+        await AccountAdmin(accounts, settings).create("fulano", "Fulano", tmp_path)
     engine = _sync_engine(tmp_path)
     try:
         with engine.begin() as conn:
             conn.execute(update(AccountRow).values(updated_at=antigo))
         async with open_accounts(settings) as accounts:
-            await admin.rotate_token(accounts, settings, "fulano", tmp_path)
+            await AccountAdmin(accounts, settings).rotate_token("fulano", tmp_path)
         with engine.connect() as conn:
             atualizado = conn.scalar(select(AccountRow.updated_at))
     finally:

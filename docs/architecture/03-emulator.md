@@ -32,27 +32,26 @@ Regras de dependência:
 
 | Caminho | Responsabilidade |
 |---------|------------------|
-| `src/landmass_emu/__main__.py` | CLI: `serve`, `sniff`, `account create`, `account token`. |
+| `src/landmass_emu/__main__.py` | `Cli` (`serve`, `account`); `main` é o entry point. Comandos: `serve`, `sniff`, `account create`, `account token`. |
 | `src/landmass_emu/app.py` | Composição: repositório, registro de chaves, roteador, servidores (`game_servers`, `message_server`, `channel_server`, `open_accounts`). |
-| `src/landmass_emu/admin.py` | Operações de conta da CLI: criar, regenerar token, gravar `.bat`. |
+| `src/landmass_emu/admin.py` | `AccountAdmin`: operações de conta da CLI (criar, regenerar token, gravar `.bat`). |
 | `src/landmass_emu/settings.py` | Configuração (`pydantic-settings`), ver [05-configuration.md](05-configuration.md). |
 | `src/landmass_emu/net/framing.py` | Leitura/escrita de frames `u16 + body`. |
 | `src/landmass_emu/net/session.py` | Estado por conexão: peer, conta autenticada e `outbox` (corpos a enviar). |
-| `src/landmass_emu/net/server.py` | `start_service` por serviço: loop de leitura, timeout, roteamento, task de escrita, heartbeat opcional e `on_close`. |
+| `src/landmass_emu/net/server.py` | `Service` (`start(host, port)`): um serviço TCP com loop de leitura, timeout, roteamento, task de escrita, heartbeat opcional e `on_close`. `reply_body` é o envelope de cabeçalho. |
 | `src/landmass_emu/protocol/header.py` | Cabeçalho `(opcode << 5) \| net_code`. |
 | `src/landmass_emu/protocol/message.py` | Structs `MS_*` e `LM_*` do Message Server (requisições e respostas). |
 | `src/landmass_emu/protocol/channel.py` | Structs `CS_*` do Channel Server (marcos 2 e 3): entrada, lobby, chat, heartbeat, salas e listas. |
 | `src/landmass_emu/protocol/game.py` | Structs `GS_*` (marco 4). |
-| `src/landmass_emu/handlers/message/` | `__init__.py` (roteador `build_router`), `account.py` (100, 110, 120), `channel_list.py` (130). |
-| `src/landmass_emu/handlers/login.py` | Autenticação por token (`login_num`), usada pelo Message (100). O Channel usa a chave de sessão. |
-| `src/landmass_emu/handlers/channel/` | `__init__.py` (`ChannelHandlers`: monta os handlers e a tabela opcode → método), `entry.py` (`EntryHandlers`: 100, 120, 122, queda), `chat.py` (`ChatHandlers`: 240), `rooms.py` (`RoomHandlers`: 301, 311, 321, 401, 420, 700), `lists.py` (`ListHandlers`: 545, 546), `records.py` (`ChannelRecords`: registros de sala e de jogador), `options.py` (544). Loja, hangar e partida nos marcos 4 e 5. |
+| `src/landmass_emu/handlers/message/` | `__init__.py` (`MessageHandlers`: monta o `router`), `account.py` (`AccountHandlers`: 100, 110, 120 e a autenticação por token de 100), `channel_list.py` (`ChannelListHandlers`: 130). |
+| `src/landmass_emu/handlers/channel/` | `__init__.py` (`ChannelHandlers`: monta os handlers e a tabela opcode → método), `entry.py` (`EntryHandlers`: 100, 120, 122, queda), `chat.py` (`ChatHandlers`: 240), `rooms.py` (`RoomHandlers`: 301, 311, 321, 401, 420, 700), `lists.py` (`ListHandlers`: 545, 546), `records.py` (`ChannelRecords`: registros de sala e de jogador), `options.py` (`OptionHandlers`: 544). Loja, hangar e partida nos marcos 4 e 5. |
 | `src/landmass_emu/domain/lobby.py` | Lobby em memória: membros por `client_guid`, `broadcast` com exclusão opcional. |
 | `src/landmass_emu/domain/` | `account.py` (conta, token), `channel.py` (canal), `lobby.py` (presença do lobby), `rooms.py` (salas em memória: `Rooms`, `Room`), `session_keys.py` (chaves de sessão em memória). Demais entidades nos marcos seguintes. |
 | `src/landmass_emu/ports/accounts.py` | Protocol `AccountRepository` e exceção `AccountConflict`. |
 | `src/landmass_emu/ports/options.py` | Protocol `OptionsRepository` (`get` e `save` das opções do jogador, `account_options`). |
 | `src/landmass_emu/ports/session_keys.py` | Protocol `SessionKeyRegistry` (`issue` e `resolve` de chaves de sessão). |
-| `src/landmass_emu/db/` | `models.py` (`accounts`, `account_options`), `accounts.py` (repositório SQLAlchemy), `options.py` (repositório de opções), `engine.py` (migrações no start), `migrations/` (Alembic). |
-| `src/landmass_emu/sniffer.py` | Captura de tráfego do cliente (ferramenta de RE). |
+| `src/landmass_emu/db/` | `models.py` (`accounts`, `account_options`), `accounts.py` (repositório SQLAlchemy), `options.py` (repositório de opções), `engine.py` (`Migrator`: migrações no start), `migrations/` (Alembic). |
+| `src/landmass_emu/sniffer.py` | `Sniffer`: captura de tráfego do cliente (ferramenta de RE). `hexdump` é utilitário sem estado. |
 | `tests/fixtures/` | Capturas reais usadas como golden files. |
 
 ## Concorrência
@@ -73,9 +72,9 @@ Regras de dependência:
 
 - Assinatura: `async def handler(session: Session, payload: bytes) -> Sequence[Reply]`. O handler não escreve no socket: devolve as respostas e `net/server.py` as enfileira, com cabeçalho `(reply.opcode << 5) | net_code` (`reply_body`).
 - Difusão para outras conexões (lobby): o handler chama `Lobby.broadcast(body)`, que enfileira na `outbox` de cada destinatário. Os corpos são montados com `reply_body`.
-- Dependências (repositórios, lista de canais) entram por `functools.partial` na montagem do roteador (`handlers/message/__init__.py`).
+- Dependências (repositórios, lista de canais) entram no `__init__` das classes de handler. `MessageHandlers` e `ChannelHandlers` montam `router` com métodos ligados (`self.metodo`).
 - Lista vazia = sem resposta: opcode sem handler, pedido antes do login, heartbeat. Nada disso derruba a conexão.
-- Um módulo por grupo de opcodes, com uma classe por assunto e as dependências injetadas no `__init__`. Handlers e serviços são classes; funções soltas ficam só em constantes e utilitários sem estado. Roteador em tabela explícita (`ChannelHandlers.router`), sem descoberta automática.
+- Um módulo por grupo de opcodes, com uma classe por assunto e as dependências injetadas no `__init__`. Handlers e serviços são classes; funções soltas ficam só em constantes, utilitários sem estado, codec e a composição de `app.py` (context managers). Roteador em tabela explícita (`ChannelHandlers.router`, `MessageHandlers.router`), sem descoberta automática.
 
 ## Ciclo de uma requisição
 

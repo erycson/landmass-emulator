@@ -10,7 +10,7 @@ import pytest
 from landmass_emu.app import game_servers, open_accounts
 from landmass_emu.domain.account import hash_token
 from landmass_emu.net.framing import encode_frame, read_frame
-from landmass_emu.net.server import start_service
+from landmass_emu.net.server import Service
 from landmass_emu.protocol.channel import CsHeartbeat, CsOp
 from landmass_emu.protocol.header import (
     CHANNEL_NET_CODE,
@@ -341,15 +341,13 @@ async def test_lobby_lista_todos_com_nick_e_546_responde_so_a_quem_esta_no_lobby
 
 
 async def test_servidor_envia_heartbeat_periodico() -> None:
-    server = await start_service(
-        "127.0.0.1",
-        0,
+    server = await Service(
         net_code=CHANNEL_NET_CODE,
         router={},
         recv_timeout=60,
         heartbeat=CsHeartbeat(),
         heartbeat_every=0.05,
-    )
+    ).start("127.0.0.1", 0)
     async with server:
         port = server.sockets[0].getsockname()[1]
         reader, writer = await asyncio.open_connection("127.0.0.1", port)
