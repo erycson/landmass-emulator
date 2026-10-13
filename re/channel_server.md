@@ -114,11 +114,11 @@ Métodos sem opcode (não são requisições): `Init` 0x10001140, `Connect` 0x10
 | 881 | `RequestUnloadGameServerManager()` (0x10002180) | lit 0x6e20 | 2 | — | L54 |
 | 890 | `RequestGameServerInfo()` (0x10002300) | lit 0x6f40 | 2 | — | L56 |
 
-Nota: `LoginServerMonitor` descreve o corpo de 32 bytes como `nome[16] ; u16 porta ; extra[14]` (L114). A posição exata de `extra` em @18 é inferência.
+Nota: `LoginServerMonitor` descreve o corpo de 32 bytes como `nome[16] ; u16 porta ; extra[14]` (L114). A posição exata de `extra` em @18 é inferência. Revisão: os 60 opcodes foram conferidos nos bytes de `+server_interface.dll` (imediato do opcode ou literal presente no método, e `CALL` para o helper quando houver); os offsets e tamanhos `N` dos 14 helpers foram conferidos no pseudocódigo REA, com correção do offset de `FUN_10001830` (linhas 451 e 700).
 
 ## 3. Respostas do Channel (`FUN_1001da60`)
 
-Entrada: `FUN_1001da60(ushort opcode, CS_IN_CHANNEL_SERVER_OUT *body)`, com `body` = corpo (offset 0).
+Entrada: `FUN_1001da60(ushort opcode, CS_IN_CHANNEL_SERVER_OUT *body)`, com `body` = corpo (offset 0). Revisão: `channel_dispatch_FUN_1001da60.c` coincide com o pseudocódigo REA do mesmo endereço (`diff -w`: só o cabeçalho de 4 linhas difere; o REA tem 2936 linhas).
 
 Envelope de erro, opcode `0x36` (54), L96–108: `u16 @0` = opcode real; `i32 @4` = código de erro. Se o erro for ≠ 0, chama `ULM_ServerInterface::NotifyErrorMessage(erro)`. Em seguida, o dispatch continua com o opcode real sobre o **mesmo** buffer (corpo real sobreposto ao envelope, inferido).
 
@@ -136,7 +136,7 @@ Direção: todas as linhas desta seção são S→C (Channel → cliente). Colun
 |---|---|---|---|---|---|
 | 101 | `NotifyInChannelServer` | `CS_IN_CHANNEL_SERVER_OUT` | `i32 @0xa8` = resultado; com resultado 0: `i32 @0x90` → `DAT_1005ada0`, `i32 @0xac` → `_DAT_1005ae08`, 168 bytes (0x2a dwords) do corpo @0 copiados para um nó novo (`FUN_1001d5d0`) | resultado 0: registra o nó e `DAT_1005ada4 = timeGetTime()`. Resultado ∉ {0, −0x17, −0x1a} recebe o erro do envelope 0x36 quando este é −0x1d ou −0x1e (inferido) | L853–882 |
 | 103 | `NotifyGetMorats` | `CS_GET_MORATS_OUT` | `i16 @0` = chave (`*(short*)param_2`); `u8 @0x5d` ≠ 0 zera `i32 @0x30`; 92 bytes (0x17 dwords) copiados para o registro novo de `FUN_1001d7f0` quando a chave **não** é encontrada (ramo `== fim da lista`) | insere registro novo se a chave não existir (L919–930); notifica sempre | L901–933 |
-| 111 | `NotifyChannelInfo` | — | `u8 @0` = `count`; `count` iterações chamam `FUN_1001c170`; tamanho da entrada não decodificado | reset (`FUN_10024560`) e depois uma entrada por iteração; `FUN_1001c170` recebe o retorno de `FUN_100230a0()`, não o corpo (L981–989) | L978–992 |
+| 111 | `NotifyChannelInfo` | — | `u8 @0` = `count`; `count` iterações chamam `FUN_1001c170`; tamanho da entrada não decodificado | reset (`FUN_10024560`) e depois uma entrada por iteração; `FUN_1001c170` recebe só o objeto de lista devolvido por `FUN_100230a0()` (REA: parâmetro único; insere um nó via `FUN_10019640`; o corpo não é passado a ela; globais lidos por `FUN_10019640` não verificados) (L981–989) | L978–992 |
 | 121 | `NotifyInChannel` | — | `i32 @0` = id; `i32 @0 < 0`: erro via `FUN_10021c80((short)_DAT_1005aa88)`; `i32 @0 >= 0`: busca o nó pela chave do corpo (`FUN_10007830`); se não achar, cria nó (`FUN_1001d5d0`) com 168 bytes zerados (inferido) e preenche: `i32 @0` → +0xa0; `i32 @4` → +0x3c; `u8 @0x19` → +0x23; `u8 @0x1a` → +0x21; `u8 @0x24` → +0x30; +0xb0 = 0x22; `i32 @0x1c` → +0x28; `i32 @0x20` → +0x2c; `i32 @8` → +0x10; `i32 @0xc` → +0x14; `i32 @0x10` → +0x18; `i32 @0x14` → +0x1c; `u8 @0x18` → +0x20 | entra no canal; `NotifyInChannel()` sem argumento; guarda `_DAT_1005aa88 = i32 @0` | L2772–2824 (label `switchD_1001db47_caseD_79`) |
 | 123 | `NotifyOutChannel` (ramo de 0x7b) | `CS_OUT_CHANNEL_OUT` | `i32 @0` = id; o gate `i32 @0 >= 0` controla só a atualização da lista; `i32 @0` → `_DAT_1005aa68` | ramo por igualdade com `DAT_1005ada0` (inferido: canal atual × outros); `NotifyOutChannel` é chamado fora do gate | L807 (`if (param_1 != 0x7b)`), L997–1037 (L993 é o `goto` de 0x79) |
 | 141 | `NotifyChannelRoomInfo` | — | `u16 @0` = `count`; entradas a partir de `@2` (passo não decodificado) | `count` iterações (corpo de cada iteração não decodificado) | L1039–1081 |
@@ -163,7 +163,7 @@ Direção: todas as linhas desta seção são S→C (Channel → cliente). Colun
 | 543 | `NotifyDetailPlayerInfo` | `PLAYER_INFO_DETAIL` | passado raw; layout não decodificado | detalhes do jogador | L535–540 |
 | 547 | `NotifyChangeRoomProperty` (lista) | — | `u8 @0` = `count`; entradas a partir de `@8` (passo não decodificado) | lista de salas (inferido pelo layout; resposta a 545) | L541–576 |
 | 548 | `NotifyChangePlayerProperty` (lista) | — | `u8 @0` = `count`; entradas a partir de `@8` (passo não decodificado) | lista de jogadores (inferido pelo layout; resposta a 546) | L577–607 |
-| 549 | `NotifyInRoom` | — | `i32 @0` → `+0xa0`; `i32 @4` → `+0x3c`; `i32 @8`, `@0xc`, `@0x10`, `@0x14` → `+0x10..+0x1c`; `i32 @0x1c` → `+0x28`; `i32 @0x20` → `+0x2c`; `u8 @0x19` → `+0x23`; `u8 @0x1a` → `+0x21`; `u8 @0x24` → `+0x30`; `u8 @0x29` bit0 (XOR com `+0xac`); `i32 @0x2c` → `+0xb4`; `u8 @0x2b` → `+0x90` | entra na sala e preenche o nó; `u8 @0x28` = índice de inserção: `i32 @0` gravado em `nó + 4·(u8 @0x28 + 0x18)` (L675) | L608–691 |
+| 549 | `NotifyInRoom` | — | `i32 @0` → `+0xa0`; `i32 @4` → `+0x3c`; `i32 @8`, `@0xc`, `@0x10`, `@0x14` → `+0x10..+0x1c`; `i32 @0x1c` → `+0x28`; `i32 @0x20` → `+0x2c`; `u8 @0x19` → `+0x23`; `u8 @0x1a` → `+0x21`; `u8 @0x24` → `+0x30`; `u8 @0x29` bit0 (XOR com `+0xac`); `i32 @0x2c` → `+0xb4`; `u8 @0x2b` → `+0x90` | entra na sala e preenche o nó; `u8 @0x28` = índice do jogador na sala: `i32 @0` gravado em `sala + 0x60 + 4·idx` (`sala` = `local_89c`, obtida por `FUN_10019e90` na lista de `FUN_10023500`, L670–673; escrita em L675); contador `sala+0x4b` se `idx < 0x3c`, senão `sala+0x4c` (L677–681) | L608–691 |
 | 54 (0x36) | `NotifyErrorMessage` | — | `u16 @0` = opcode real; `i32 @4` = erro | envelope de erro (§3) | L96–108 |
 
 ### 3.2 Apêndice: todos os rótulos do switch
@@ -279,7 +279,7 @@ Evidência geral: `FUN_1000bcd0` @0x1000bcd0..0x1000bedf. Frame: `u16` tamanho @
 | 1 (0x01) | debug (`Cdebug::Dump`, string @0x1002d804) | entrada | sem corpo | só dump | `FUN_1000bcd0` @0x1000bd26–0x1000bd4a |
 | 1010 (0x3f2) | `GS_IN_PLAYER` (log "OnRecv(GS_IN_PLAYER)", @0x1002d770) | Channel → GS | ver §4.1 | adiciona o jogador à sala se o room guid bater; responde 1011 | `FUN_1000bcd0` @0x1000be11–0x1000bed5 |
 | 1011 (0x3f3) | resposta de `GS_IN_PLAYER` | GS → Channel | ver §4.2 | resultado 0 ou −4000 (0xfffff060) | `FUN_1000bcd0` @0x1000bec7 (`MOV EAX, 0x3f3`), @0x1000bed0 (`CALL FUN_1000bb80`) |
-| 1020 (0x3fc) | `GS_OUT_PLAYER` (logs "Succeed/Failed OnRecv[GS_OUT_PLAYER…]", @0x1002d788, @0x1002d7b8) | Channel → GS | `i32 @0` = room guid; `i32 @4` = chave do jogador (não confirmado) | remove o jogador da sala se a chave bater (`CServerRoom::OutPlayer`; leitura de `@4` não vista em `FUN_1000bcd0`); sem resposta | `FUN_1000bcd0` @0x1000bda6–0x1000bdfc; `CServerRoom::OutPlayer` @0x100171c0 |
+| 1020 (0x3fc) | `GS_OUT_PLAYER` (logs "Succeed/Failed OnRecv[GS_OUT_PLAYER…]", @0x1002d788, @0x1002d7b8) | Channel → GS | `i32 @0` = room guid; `i32 @4` = chave do jogador | remove o jogador da sala se a chave bater (`CServerRoom::OutPlayer` @0x100171c0: compara `body+4` com `this+0x4bc+4·i`, laço `i < 0x46`, e passa o registro de 17 bytes do slot a `UServerLevel::DestroyPlayer`; `FUN_1000bcd0` compara só `body+0` com a sala); sem resposta | `FUN_1000bcd0` @0x1000bda6–0x1000bdfc; `CServerRoom::OutPlayer` @0x100171c0 |
 
 Regra de aceitação do Channel: `(hdr & 0x1f)` deve ser 0 ou igual a `ChannelNetCode()` (= 14). Outros valores são descartados (`FUN_1000bcd0` @0x1000bcd9–0x1000bcf3).
 
@@ -291,7 +291,7 @@ Offsets em bytes a partir do início do corpo (frame @4). Evidências: `FUN_1000
 |---|---|---|---|---|
 | 0x00..0x83 | 132 bytes (33 dwords) | dados do jogador (não decodificado) | copiados para `this + slot*0x90 + 0x604` por `CServerRoom::InPlayer` | `InPlayer` @0x100159a0 (laço de 0x21 dwords) |
 | 0x84 | `u8` | flag (não decodificado) | eco no reply @12 | `FUN_1000bcd0` @0x1000be1b (`MOV CL,[ESI+0x84]`) |
-| 0x85 | `u8` (signed, `(char)`) | índice do slot `s` (limite 0..69 não confirmado: `FUN_1000bcd0` não verifica o índice) | `this + s*0x11 + 0x13` (registro de 17 bytes), `this + s*4 + 0x4bc`, `this + s*0x90 + 0x604` | `InPlayer` @0x100159a0 (`(char)param_1[0x85]`); `FUN_1000bcd0` @0x1000be31 |
+| 0x85 | `u8` (signed, `(char)`) | índice do slot `s` (0..69 inferido do laço de `OutPlayer`, `i < 0x46`; `InPlayer` e `FUN_1000bcd0` não verificam o limite) | `this + s*0x11 + 0x13` (registro de 17 bytes), `this + s*4 + 0x4bc`, `this + s*0x90 + 0x604` | `InPlayer` @0x100159a0 (`(char)param_1[0x85]`); `FUN_1000bcd0` @0x1000be31 |
 | 0x88 | `i32` | room guid | comparado com `ServerRoom+0x00`; se `ServerRoom+0x5e4 == 6`, também com `ServerRoom+0x600` | `FUN_1000bcd0` @0x1000be21, @0x1000be4d–0x1000be74 |
 | 0x8c | `i32` | chave do jogador | guardado em `this + s*4 + 0x4bc`; usado como chave em `GS_OUT` | `InPlayer` @0x100159a0; `FUN_1000bcd0` @0x1000be27 |
 | 0x90..0x9f | 4 dwords (16 bytes) | registro do jogador (string, inferido) | registro de 17 bytes junto com `@0xa0`; passado como `char*` a `UServerLevel::DestroyPlayer` (em `OutPlayer`) e como `%s` no log | `InPlayer` @0x100159a0 (`+0x90..+0x9c`); `OutPlayer` @0x100171c0 |
