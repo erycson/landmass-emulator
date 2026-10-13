@@ -12,6 +12,11 @@ Fonte da verdade: o cliente em `D:\landmass\cliente\system` (2009). Os servidore
 
 O Launcher monta: `LandMass.exe %s%s?%s%I64d?%s%s` com `login_server=`, `version=`, `login_num=`.
 
+## Tela cheia x janela (`re/fullscreen.md`)
+
+- Causa estática: `TryRenderDevice` grava `UWV+0xD0` = 1 no cliente, então o SetRes sai em tela cheia. Sem foco, o SetRes não roda e a janela é minimizada.
+- Não há chave de ini nem token de linha de comando para janela. Patch de 1 byte proposto em `WinDrv.dll` offset `0x1349D` (não aplicado).
+
 ## Config do cliente
 
 `system\landmass.wdb` é SQLite comum. Tabelas úteis: `message_server` (idx, name, address, port),

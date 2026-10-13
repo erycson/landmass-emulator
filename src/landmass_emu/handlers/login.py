@@ -1,4 +1,4 @@
-"""Autenticação por token (`login_num`), compartilhada por Message (100) e Channel (100)."""
+"""Autenticação por token (`login_num`) do Message (100). O Channel usa a chave de sessão."""
 
 from landmass_emu.domain.account import Account, hash_token, verify_token
 from landmass_emu.ports.accounts import AccountRepository

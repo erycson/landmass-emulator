@@ -33,7 +33,7 @@ Regras de dependência:
 | Caminho | Responsabilidade |
 |---------|------------------|
 | `src/landmass_emu/__main__.py` | CLI: `serve`, `sniff`, `account create`, `account token`. |
-| `src/landmass_emu/app.py` | Composição: repositório, roteador, servidor (`message_server`, `channel_server`, `open_accounts`). |
+| `src/landmass_emu/app.py` | Composição: repositório, registro de chaves, roteador, servidores (`game_servers`, `message_server`, `channel_server`, `open_accounts`). |
 | `src/landmass_emu/admin.py` | Operações de conta da CLI: criar, regenerar token, gravar `.bat`. |
 | `src/landmass_emu/settings.py` | Configuração (`pydantic-settings`), ver [05-configuration.md](05-configuration.md). |
 | `src/landmass_emu/net/framing.py` | Leitura/escrita de frames `u16 + body`. |
@@ -44,11 +44,12 @@ Regras de dependência:
 | `src/landmass_emu/protocol/channel.py` | Structs `CS_*` do Channel Server (marco 2): entrada, lobby, chat, heartbeat. |
 | `src/landmass_emu/protocol/game.py` | Structs `GS_*` (marco 4). |
 | `src/landmass_emu/handlers/message/` | `__init__.py` (roteador `build_router`), `account.py` (100, 110, 120), `channel_list.py` (130). |
-| `src/landmass_emu/handlers/login.py` | Autenticação por token, usada por Message (100) e Channel (100). |
+| `src/landmass_emu/handlers/login.py` | Autenticação por token (`login_num`), usada pelo Message (100). O Channel usa a chave de sessão. |
 | `src/landmass_emu/handlers/channel/` | `__init__.py` (roteador `build_router`), `entry.py` (100, 120, 122, queda), `chat.py` (240). Salas, loja, hangar e partida nos marcos 3 a 5. |
 | `src/landmass_emu/domain/lobby.py` | Lobby em memória: membros por `client_guid`, `broadcast` com exclusão opcional. |
-| `src/landmass_emu/domain/` | `account.py` (conta, token), `channel.py` (canal), `lobby.py` (presença do lobby). Demais entidades nos marcos seguintes. |
+| `src/landmass_emu/domain/` | `account.py` (conta, token), `channel.py` (canal), `lobby.py` (presença do lobby), `session_keys.py` (chaves de sessão em memória). Demais entidades nos marcos seguintes. |
 | `src/landmass_emu/ports/accounts.py` | Protocol `AccountRepository` e exceção `AccountConflict`. |
+| `src/landmass_emu/ports/session_keys.py` | Protocol `SessionKeyRegistry` (`issue` e `resolve` de chaves de sessão). |
 | `src/landmass_emu/db/` | `models.py` (`accounts`), `accounts.py` (repositório SQLAlchemy), `engine.py` (migrações no start), `migrations/` (Alembic). |
 | `src/landmass_emu/sniffer.py` | Captura de tráfego do cliente (ferramenta de RE). |
 | `tests/fixtures/` | Capturas reais usadas como golden files. |

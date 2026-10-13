@@ -47,15 +47,28 @@ Jogador: executar `jogar_U.bat` (ou `cliente\system\jogar_local.bat` para teste 
 
 Não use `Launcher.exe`: ele tenta FTP de patch inexistente. Inicie `LandMass.exe` diretamente.
 
-## Vídeo (`LandMass.ini`)
+## Vídeo
 
-- Defina `Use16bit=False` em `[D3DDrv.D3DRenderDevice]`. Com `True`, drivers atuais não oferecem modo 16 bits e o cliente aborta em `OpenWindow → SetRes` com "No acceptable display modes found".
-- Com `Use16bit=False` o cliente abre em janela 800x600 (`Enter SetRes: 800x600 Fullscreen 0`).
-- `LandMass.exe` limpa a linha de comando antes da engine (`Init: Command line:` vazio): `-windowed`, `EXEC=` e `INI=` não têm efeito.
-- Backup do original: `cliente\system\LandMass.ini.bak`.
+- `LandMass.ini`, `[D3DDrv.D3DRenderDevice]`: `Use16bit=False`. Com `True`, drivers atuais não oferecem modo 16 bits e o cliente aborta em `OpenWindow → SetRes` ("No acceptable display modes found"). Backup do original: `cliente\system\LandMass.ini.bak`.
+- O cliente força tela cheia (`WinDrv` grava `UWindowsViewport+0xD0=1` em `TryRenderDevice`; ver [`../../re/fullscreen.md`](../../re/fullscreen.md)). Não há chave de `.ini` nem opção de linha de comando para janela.
+- Modo janela: wrapper **dgVoodoo2 v2.87.5** (D3D8 → D3D11), em `D:\landmass\tools\dgvoodoo2`.
+  - Instalação por pasta do cliente: copie `extracted\MS\x86\D3D8.dll` e `dgVoodoo.landmass.conf` (renomeado para `dgVoodoo.conf`) para `system\`.
+  - Config: `FullScreenMode=false`, `AppControlledScreenMode=false`, `DisableAltEnterToToggleScreenMode=false`, `dgVoodooWatermark=false`.
+  - Remoção: apague `system\D3D8.dll` e `system\dgVoodoo.conf`.
+- `LandMass.exe` reconstrói a linha de comando e a engine a recebe vazia (`Init: Command line:`): `-windowed`, `EXEC=`, `INI=` e `-server` não têm efeito.
 
 ## Testes automatizados com o cliente
 
-- Máximo de 4 instâncias simultâneas.
-- Inicie e minimize conforme [`../../re/windowed.md`](../../re/windowed.md).
-- Valide pelo log do servidor (`login de <user>`) e pela UI; `LandMass.log` só é gravado por completo no encerramento normal.
+- Máximo de 4 instâncias simultâneas. Duas instâncias não compartilham pasta (`LandMass.log`, `User.ini`, `Running.ini`): use `D:\landmass\cliente` e `D:\landmass\cliente2`.
+- Captura do Windows (GDI/`PrintWindow`) sai branca com o swapchain D3D11. Use o screenshot do próprio jogo (`F11` = `shot`, grava em `..\ScreenShots`).
+- O cursor da GUI é movido por deltas (DirectInput), não por `SetCursorPos`, e não é limitado às bordas.
+- Ferramenta: `scripts/gui.py` (malha fechada: screenshot → localiza o cursor → delta).
+
+```
+uv run --no-project --with pillow python -I scripts/gui.py shot saida.png [--pid N]
+uv run --no-project --with pillow python -I scripts/gui.py click <x> <y> [--double] [--pid N]
+uv run --no-project --with pillow python -I scripts/gui.py type <texto> [--pid N]
+```
+
+- Coordenadas são da área do jogo (800x600). O script aborta se o jogo não estiver em primeiro plano, para não clicar em outra janela.
+- Validação: log do emulador e screenshot do jogo. `LandMass.log` só é gravado por completo no encerramento normal.

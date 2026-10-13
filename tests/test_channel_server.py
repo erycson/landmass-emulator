@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from landmass_emu.app import channel_server, message_server, open_accounts
+from landmass_emu.app import game_servers, open_accounts
 from landmass_emu.domain.account import hash_token
 from landmass_emu.net.framing import encode_frame, read_frame
 from landmass_emu.net.server import start_service
@@ -18,7 +18,7 @@ from landmass_emu.protocol.header import (
     pack_header,
     unpack_header,
 )
-from landmass_emu.protocol.message import MsLoginIn, MsOp
+from landmass_emu.protocol.message import MsLoginIn, MsOp, cstr
 from landmass_emu.settings import Settings
 
 TOKEN_ANA = "0123456789abcdef0123456789abcdef"
@@ -35,9 +35,21 @@ def _settings(tmp_path: Path) -> Settings:
     )
 
 
-def _login_payload(token: str) -> bytes:
-    """CS_IN_CHANNEL_SERVER_IN: login_num em char[33]."""
-    return token.encode("ascii").ljust(33, b"\0")
+def _chave_payload(chave: str) -> bytes:
+    """CS_IN_CHANNEL_SERVER_IN: session_key em char[33]."""
+    return chave.encode("ascii").ljust(33, b"\0")
+
+
+async def _chave_de_sessao(msg: asyncio.Server, token: str) -> str:
+    """Login (100) e registro (110) no Message. A chave vem no 111, `char[33]` @0x25."""
+    async with _connect(msg, MESSAGE_NET_CODE) as m:
+        await m.send(MsOp.LOGIN, MsLoginIn(login_num=token).pack())
+        assert struct.unpack_from("<i", await m.expect(MsOp.LOGIN_OUT), 4) == (0,)
+        await m.send(MsOp.REGISTER)
+        body = await m.expect(MsOp.REGISTER_OUT)
+    chave = cstr(body[0x25:0x46])
+    assert len(chave) == 32
+    return chave
 
 
 class Client:
@@ -82,9 +94,9 @@ async def _connect(server: asyncio.Server, net_code: int) -> AsyncIterator[Clien
             await writer.wait_closed()
 
 
-async def _entra_no_canal(c: Client, token: str, guid: int) -> None:
+async def _entra_no_canal(c: Client, chave: str, guid: int) -> None:
     """100 → 101/111, depois 120 → 151/141/121. Confere o id nos offsets do cliente."""
-    await c.send(CsOp.IN_CHANNEL_SERVER, _login_payload(token))
+    await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
     body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
     assert struct.unpack_from("<i", body, 0x90) == (guid,)
     assert struct.unpack_from("<i", body, 0xA0) == (guid,)
@@ -103,19 +115,18 @@ async def test_dois_clientes_se_veem_no_lobby(tmp_path: Path) -> None:
         ana = await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
         bia = await accounts.create("bia", "Bia", hash_token(TOKEN_BIA))
 
-    async with message_server(settings) as msg, channel_server(settings) as ch:
-        async with _connect(msg, MESSAGE_NET_CODE) as m:
-            await m.send(MsOp.LOGIN, MsLoginIn(login_num=TOKEN_ANA).pack())
-            assert struct.unpack_from("<i", await m.expect(MsOp.LOGIN_OUT), 4) == (0,)
+    async with game_servers(settings) as (msg, ch):
+        chave_ana = await _chave_de_sessao(msg, TOKEN_ANA)
+        chave_bia = await _chave_de_sessao(msg, TOKEN_BIA)
 
         async with (
             _connect(ch, CHANNEL_NET_CODE) as a,
             _connect(ch, CHANNEL_NET_CODE) as b,
         ):
-            await _entra_no_canal(a, TOKEN_ANA, ana.id)
+            await _entra_no_canal(a, chave_ana, ana.id)
 
             # B: a lista já traz A; A recebe o broadcast de B.
-            await b.send(CsOp.IN_CHANNEL_SERVER, _login_payload(TOKEN_BIA))
+            await b.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave_bia))
             await b.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             await b.expect(CsOp.CHANNEL_INFO_OUT)
             await b.send(CsOp.IN_CHANNEL)
@@ -162,21 +173,58 @@ async def test_pedidos_fora_de_ordem_e_opcodes_desconhecidos_nao_derrubam(tmp_pa
     async with open_accounts(settings) as accounts:
         await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
 
-    async with channel_server(settings) as ch, _connect(ch, CHANNEL_NET_CODE) as c:
-        await c.send(182, b"\x01\x02")  # opcode sem handler
-        await c.send(CsOp.IN_CHANNEL)  # sem login: ignorado
-        await c.send(CsOp.SEND_MESSAGE, bytes([0, 1]) + b"x")  # sem login: ignorado
-        await c.send(CsOp.HEARTBEAT)  # cliente: sem resposta
-        await c.assert_silencio()
+    async with game_servers(settings) as (msg, ch):
+        chave = await _chave_de_sessao(msg, TOKEN_ANA)
+        async with _connect(ch, CHANNEL_NET_CODE) as c:
+            await c.send(182, b"\x01\x02")  # opcode sem handler
+            await c.send(CsOp.IN_CHANNEL)  # sem login: ignorado
+            await c.send(CsOp.SEND_MESSAGE, bytes([0, 1]) + b"x")  # sem login: ignorado
+            await c.send(CsOp.HEARTBEAT)  # cliente: sem resposta
+            await c.assert_silencio()
 
-        await c.send(CsOp.IN_CHANNEL_SERVER, _login_payload("f" * 32))
-        body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
-        assert struct.unpack_from("<i", body, 0xA8) == (-160,)
-        await c.send(CsOp.IN_CHANNEL_SERVER, b"curto")  # payload inválido: ignorado
-        await c.send(182, b"")
-        await c.send(CsOp.IN_CHANNEL_SERVER, _login_payload(TOKEN_ANA))
-        await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
-        await c.expect(CsOp.CHANNEL_INFO_OUT)
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload("f" * 32))
+            body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            assert struct.unpack_from("<i", body, 0xA8) == (-160,)
+            await c.send(CsOp.IN_CHANNEL_SERVER, b"curto")  # payload inválido: ignorado
+            await c.send(182, b"")
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
+            await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            await c.expect(CsOp.CHANNEL_INFO_OUT)
+
+
+async def test_chave_zerada_ou_inventada_e_recusada(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+
+    async with game_servers(settings) as (msg, ch):
+        await _chave_de_sessao(msg, TOKEN_ANA)  # há uma chave válida; as recusadas não são ela
+        async with _connect(ch, CHANNEL_NET_CODE) as c:
+            for payload in (bytes(33), _chave_payload("0" * 32), _chave_payload("f" * 32)):
+                await c.send(CsOp.IN_CHANNEL_SERVER, payload)
+                body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+                assert struct.unpack_from("<i", body, 0xA8) == (-160,)
+            # Recusado não entra no lobby: o pedido 120 sem login é ignorado.
+            await c.send(CsOp.IN_CHANNEL)
+            await c.assert_silencio()
+
+
+async def test_chave_reemitida_invalida_a_antiga(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+
+    async with game_servers(settings) as (msg, ch):
+        antiga = await _chave_de_sessao(msg, TOKEN_ANA)
+        nova = await _chave_de_sessao(msg, TOKEN_ANA)
+        assert nova != antiga
+        async with _connect(ch, CHANNEL_NET_CODE) as c:
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(antiga))
+            body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            assert struct.unpack_from("<i", body, 0xA8) == (-160,)
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(nova))
+            body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            assert struct.unpack_from("<i", body, 0xA8) == (0,)
 
 
 async def test_servidor_envia_heartbeat_periodico() -> None:

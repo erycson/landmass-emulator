@@ -4,10 +4,9 @@ import logging
 from collections.abc import Sequence
 
 from landmass_emu.domain.lobby import Lobby
-from landmass_emu.handlers.login import login_by_token
 from landmass_emu.net.server import Reply, reply_body
 from landmass_emu.net.session import Session
-from landmass_emu.ports.accounts import AccountRepository
+from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.protocol.channel import (
     MAX_LOBBY_ENTRIES,
     CsChannelInfoOut,
@@ -20,23 +19,24 @@ from landmass_emu.protocol.channel import (
     CsOutChannelOut,
 )
 from landmass_emu.protocol.header import CHANNEL_NET_CODE
+from landmass_emu.sniffer import hexdump
 
 log = logging.getLogger(__name__)
 
 RESULT_OK = 0
-# shortcut: -160 (INVALID_PASSWORD do Message) para token recusado; o canal original pode usar
+# shortcut: -160 (INVALID_PASSWORD do Message) para chave recusada; o canal original pode usar
 # outro código. Confirmar no cliente real.
 RESULT_INVALID_LOGIN = -160
 
 
 async def in_channel_server(
-    accounts: AccountRepository, session: Session, payload: bytes
+    sessions: SessionKeyRegistry, session: Session, payload: bytes
 ) -> Sequence[Reply]:
     req = CsInChannelServerIn.unpack(payload)
     session.account = None
-    account = await login_by_token(accounts, req.login_num)
+    account = sessions.resolve(req.session_key)
     if account is None:
-        log.info("[%s] canal: login recusado", session.peer)
+        log.info("[%s] canal: login recusado\n%s", session.peer, hexdump(payload))
         return [CsInChannelServerOut(client_guid=0, result=RESULT_INVALID_LOGIN)]
     session.account = account
     log.info("[%s] canal: login de %s", session.peer, account.username)

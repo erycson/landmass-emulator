@@ -6,13 +6,13 @@ from pathlib import Path
 
 from landmass_emu import sniffer
 from landmass_emu.admin import create_account, rotate_token
-from landmass_emu.app import channel_server, message_server, open_accounts
+from landmass_emu.app import game_servers, open_accounts
 from landmass_emu.ports.accounts import AccountConflict
 from landmass_emu.settings import Settings
 
 
 async def _serve(settings: Settings) -> None:
-    async with message_server(settings) as message, channel_server(settings) as channel:
+    async with game_servers(settings) as (message, channel):
         await asyncio.gather(message.serve_forever(), channel.serve_forever())
 
 

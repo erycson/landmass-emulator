@@ -45,12 +45,14 @@ class CsHeartbeat:
 
 @dataclass(frozen=True, slots=True)
 class CsInChannelServerIn:
-    """IN_CHANNEL_SERVER (100): `char login_num[33]` @0 (32 hex + NUL). Mesmo token do MS_LOGIN_IN.
+    """IN_CHANNEL_SERVER (100): `char session_key[33]` @0 (32 hex + NUL).
 
-    Inferido do tamanho (33 bytes, como `login_num` do Message) e de `in->guid=%s` no log do
-    ChannelServer.exe original. Confirmar com captura da porta 7314."""
+    Evidência: no teste com o cliente real, o 100 chegou com 33 bytes zerados, depois de um 111 com
+    33 bytes zerados. O 111 copia 33 bytes para `DAT_1005AE20` (re/message_server.md §4). Inferido:
+    esses são os bytes de chave que o cliente devolve no 100. Não testado: o cliente aceitar uma
+    chave não zerada."""
 
-    login_num: str
+    session_key: str
     _SIZE = 33
 
     @classmethod

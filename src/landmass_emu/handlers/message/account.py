@@ -7,6 +7,7 @@ from landmass_emu.handlers.login import login_by_token
 from landmass_emu.net.server import Reply
 from landmass_emu.net.session import Session
 from landmass_emu.ports.accounts import AccountRepository
+from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.protocol.message import (
     MsInMessageServerOut,
     MsLoginIn,
@@ -31,11 +32,13 @@ async def login(accounts: AccountRepository, session: Session, payload: bytes) -
     return [MsLoginOut(MsResult.OK)]
 
 
-async def register(session: Session, payload: bytes) -> Sequence[Reply]:
+async def register(
+    sessions: SessionKeyRegistry, session: Session, payload: bytes
+) -> Sequence[Reply]:
     if session.account is None:
         log.warning("[%s] Register antes do login; ignorado", session.peer)
         return []
-    return [MsRegisterOut()]
+    return [MsRegisterOut(session_key=sessions.issue(session.account))]
 
 
 async def in_message_server(session: Session, payload: bytes) -> Sequence[Reply]:

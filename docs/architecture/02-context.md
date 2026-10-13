@@ -55,7 +55,7 @@ sequenceDiagram
   M-->>C: 111 / 121
   C->>M: GetChannelServerInfo (130)
   M-->>C: 131 lista de canais
-  C->>Ch: entrar no channel server
+  C->>Ch: entrar no channel server (100 com a chave de sessão do 111)
   Ch-->>C: 101 / 111 / 103 ... lobby
   C->>Ch: criar/entrar sala, pronto
   Ch->>G: GS_IN_PLAYER (sala, time, key)

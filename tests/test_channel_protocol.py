@@ -20,10 +20,15 @@ from landmass_emu.protocol.channel import (
 )
 
 
-def test_in_channel_server_in_le_login_num_de_33_bytes() -> None:
+def test_in_channel_server_in_le_session_key_de_33_bytes() -> None:
     payload = b"0123456789abcdef0123456789abcdef" + b"\0"
     assert CsInChannelServerIn.unpack(payload) == CsInChannelServerIn("0123456789abcdef" * 2)
-    assert CsInChannelServerIn.unpack(payload + b"\x07\x07").login_num == "0123456789abcdef" * 2
+    extra = CsInChannelServerIn.unpack(payload + b"\x07\x07")
+    assert extra.session_key == "0123456789abcdef" * 2
+
+
+def test_in_channel_server_in_chave_zerada_vira_string_vazia() -> None:
+    assert CsInChannelServerIn.unpack(bytes(33)).session_key == ""
 
 
 def test_in_channel_server_in_rejeita_payload_curto() -> None:

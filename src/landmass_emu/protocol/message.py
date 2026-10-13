@@ -126,16 +126,18 @@ class LmRegisterInfo:
 
 @dataclass(frozen=True, slots=True)
 class MsRegisterOut:
-    """MS_REGISTER_OUT (111): LM_REGISTER_INFO @0x00, zeros @0x25..0x45, result @0x48."""
+    """MS_REGISTER_OUT (111): LM_REGISTER_INFO @0x00, `char session_key[33]` @0x25 (32 hex + NUL),
+    padding @0x46..0x47, result @0x48. Total 0x4C. Layout: re/message_server.md §4."""
 
     options: LmRegisterInfo = LmRegisterInfo()
+    session_key: str = ""
     result: int = 0
     opcode: ClassVar[int] = MsOp.REGISTER_OUT
 
-    _FIXED = struct.Struct("<37s33x2xi")
+    _FIXED = struct.Struct("<37s33s2xi")
 
     def pack(self) -> bytes:
-        return self._FIXED.pack(self.options.pack(), self.result)
+        return self._FIXED.pack(self.options.pack(), cfield(self.session_key, 33), self.result)
 
 
 @dataclass(frozen=True, slots=True)

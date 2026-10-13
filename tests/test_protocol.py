@@ -96,6 +96,15 @@ def test_register_out_tamanho_e_offsets() -> None:
     assert struct.unpack_from("<i", raw, 0x48) == (0,)
 
 
+def test_register_out_session_key_em_0x25_char33() -> None:
+    chave = "0123456789abcdef" * 2
+    raw = MsRegisterOut(session_key=chave, result=7).pack()
+    assert len(raw) == 0x4C
+    assert raw[0x25:0x46] == chave.encode() + b"\0"
+    assert raw[0x46:0x48] == b"\0\0"
+    assert struct.unpack_from("<i", raw, 0x48) == (7,)
+
+
 def test_register_out_opcoes_na_ordem_do_layout() -> None:
     raw = MsRegisterOut(options=LmRegisterInfo(background=1, weapon1=2, screenshot=9)).pack()
     assert raw[0] == 1 and raw[7] == 2 and raw[36] == 9
