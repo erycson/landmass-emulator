@@ -6,14 +6,14 @@ from pathlib import Path
 
 from landmass_emu import sniffer
 from landmass_emu.admin import create_account, rotate_token
-from landmass_emu.app import message_server, open_accounts
+from landmass_emu.app import channel_server, message_server, open_accounts
 from landmass_emu.ports.accounts import AccountConflict
 from landmass_emu.settings import Settings
 
 
 async def _serve(settings: Settings) -> None:
-    async with message_server(settings) as server:
-        await server.serve_forever()
+    async with message_server(settings) as message, channel_server(settings) as channel:
+        await asyncio.gather(message.serve_forever(), channel.serve_forever())
 
 
 async def _account(settings: Settings, args: argparse.Namespace) -> Path:
@@ -30,7 +30,7 @@ def main() -> None:
     sniff = sub.add_parser("sniff", help="grava os bytes enviados pelo cliente, sem responder")
     sniff.add_argument("--out", type=Path, default=Path("captures"))
     sniff.add_argument("--ports", type=int, nargs="+", default=list(sniffer.DEFAULT_PORTS))
-    sub.add_parser("serve", help="sobe o Message Server (TCP 7313)")
+    sub.add_parser("serve", help="sobe o Message (TCP 7313) e o Channel (TCP 7314)")
     account = sub.add_parser("account", help="contas e tokens de login")
     actions = account.add_subparsers(dest="action", required=True)
     create = actions.add_parser("create", help="cria conta, gera token e grava o .bat")

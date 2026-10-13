@@ -11,9 +11,9 @@ flowchart BT
 
 | Nível | Escopo | Ferramenta | Local |
 |-------|--------|-----------|-------|
-| Unidade | Codec (offsets, ida e volta, golden files), token e configuração | pytest | `tests/test_protocol.py`, `tests/test_account.py`, `tests/test_settings.py` |
+| Unidade | Codec (offsets, ida e volta, golden files), token e configuração | pytest | `tests/test_protocol.py`, `tests/test_channel_protocol.py`, `tests/test_account.py`, `tests/test_settings.py` |
 | Handler | Handler + repositórios em memória | pytest-asyncio | ainda não criado; no marco 1 os handlers são cobertos pela integração |
-| Integração | Servidor em porta efêmera (0) + cliente de teste que fala o protocolo | pytest-asyncio | `tests/test_message_server.py` |
+| Integração | Servidor em porta efêmera (0) + cliente de teste que fala o protocolo | pytest-asyncio | `tests/test_message_server.py`, `tests/test_channel_server.py` |
 | Aceitação | Cliente real contra o emulador | script de automação | `scripts/` (ainda não criado) |
 
 Os testes ficam planos em `tests/` (`test_<área>.py`). Testes nunca usam as portas 7312 a 7314 nem o banco padrão: use porta 0 e `tmp_path`.

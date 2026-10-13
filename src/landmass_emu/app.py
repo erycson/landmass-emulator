@@ -9,11 +9,19 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.engine import migrate
 from landmass_emu.domain.channel import Channel
+from landmass_emu.domain.lobby import Lobby
+from landmass_emu.handlers.channel import build_router as build_channel_router
+from landmass_emu.handlers.channel import disconnect_handler
 from landmass_emu.handlers.message import build_router
 from landmass_emu.net.server import start_service
 from landmass_emu.ports.accounts import AccountRepository
-from landmass_emu.protocol.header import MESSAGE_NET_CODE
+from landmass_emu.protocol.channel import CsHeartbeat
+from landmass_emu.protocol.header import CHANNEL_NET_CODE, MESSAGE_NET_CODE
 from landmass_emu.settings import Settings
+
+# Heartbeat do servidor no canal. `time_out` do [CHANNEL] no config.ini do cliente é 20000
+# (unidade não confirmada); 10 s deixa margem para o cliente.
+CHANNEL_HEARTBEAT_SECONDS = 10.0
 
 
 def channels_from(settings: Settings) -> Sequence[Channel]:
@@ -40,6 +48,16 @@ async def open_accounts(settings: Settings) -> AsyncIterator[AccountRepository]:
 
 
 @asynccontextmanager
+async def _listening(server: asyncio.Server) -> AsyncIterator[asyncio.Server]:
+    try:
+        yield server
+    finally:
+        server.close()
+        server.close_clients()
+        await server.wait_closed()
+
+
+@asynccontextmanager
 async def message_server(settings: Settings) -> AsyncIterator[asyncio.Server]:
     async with open_accounts(settings) as accounts:
         server = await start_service(
@@ -49,9 +67,23 @@ async def message_server(settings: Settings) -> AsyncIterator[asyncio.Server]:
             router=build_router(accounts, channels_from(settings)),
             recv_timeout=settings.recv_timeout,
         )
-        try:
-            yield server
-        finally:
-            server.close()
-            server.close_clients()
-            await server.wait_closed()
+        async with _listening(server) as listening:
+            yield listening
+
+
+@asynccontextmanager
+async def channel_server(settings: Settings) -> AsyncIterator[asyncio.Server]:
+    async with open_accounts(settings) as accounts:
+        lobby = Lobby()
+        server = await start_service(
+            settings.bind_host,
+            settings.channel_port,
+            net_code=CHANNEL_NET_CODE,
+            router=build_channel_router(accounts, lobby),
+            recv_timeout=settings.recv_timeout,
+            on_close=disconnect_handler(lobby),
+            heartbeat=CsHeartbeat(),
+            heartbeat_every=CHANNEL_HEARTBEAT_SECONDS,
+        )
+        async with _listening(server) as listening:
+            yield listening

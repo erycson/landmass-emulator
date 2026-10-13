@@ -26,11 +26,11 @@ class MsResult(IntEnum):
     INVALID_PASSWORD = -160
 
 
-def _cstr(raw: bytes) -> str:
+def cstr(raw: bytes) -> str:
     return raw.split(b"\0", 1)[0].decode(ENCODING, errors="replace")
 
 
-def _cfield(text: str, size: int) -> bytes:
+def cfield(text: str, size: int) -> bytes:
     """`char[size]` terminado em NUL. Texto que não cabe com o NUL é truncado."""
     return text.encode(ENCODING, errors="replace")[: size - 1].ljust(size, b"\0")
 
@@ -52,9 +52,9 @@ class MsLoginIn:
             raise ValueError(f"MS_LOGIN_IN inconsistente: id_len={id_len} pw_len={pw_len}")
         off = cls._FIXED.size
         return cls(
-            login_num=_cstr(guid),
-            user_id=_cstr(payload[off : off + id_len]),
-            password=_cstr(payload[off + id_len : off + id_len + pw_len]),
+            login_num=cstr(guid),
+            user_id=cstr(payload[off : off + id_len]),
+            password=cstr(payload[off + id_len : off + id_len + pw_len]),
         )
 
     def pack(self) -> bytes:
@@ -151,7 +151,7 @@ class MsInMessageServerOut:
     _FIXED = struct.Struct("<i17s3xi")
 
     def pack(self) -> bytes:
-        return self._FIXED.pack(self.result, _cfield(self.nickname, 17), self.clan_code)
+        return self._FIXED.pack(self.result, cfield(self.nickname, 17), self.clan_code)
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,8 +185,8 @@ class LmServerInfo:
             self.curr_client_count,
             self.pick_client_count,
             self.service_port,
-            _cfield(self.service_address, 16),
-            _cfield(self.server_name, 36),
+            cfield(self.service_address, 16),
+            cfield(self.server_name, 36),
         )
 
 

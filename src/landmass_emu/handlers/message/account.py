@@ -3,7 +3,7 @@
 import logging
 from collections.abc import Sequence
 
-from landmass_emu.domain.account import hash_token, verify_token
+from landmass_emu.handlers.login import login_by_token
 from landmass_emu.net.server import Reply
 from landmass_emu.net.session import Session
 from landmass_emu.ports.accounts import AccountRepository
@@ -22,8 +22,8 @@ async def login(accounts: AccountRepository, session: Session, payload: bytes) -
     # Só o fluxo por token: id/pw são ignorados até a senha ser implementada (D8, argon2id).
     req = MsLoginIn.unpack(payload)
     session.account = None
-    account = await accounts.find_by_token_hash(hash_token(req.login_num))
-    if account is None or not verify_token(req.login_num, account.token_hash):
+    account = await login_by_token(accounts, req.login_num)
+    if account is None:
         log.info("[%s] login recusado", session.peer)
         return [MsLoginOut(MsResult.INVALID_PASSWORD)]
     session.account = account
