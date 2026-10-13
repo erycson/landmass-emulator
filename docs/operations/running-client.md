@@ -60,6 +60,8 @@ Não use `Launcher.exe`: ele tenta FTP de patch inexistente. Inicie `LandMass.ex
 ## Testes automatizados com o cliente
 
 - Máximo de 4 instâncias simultâneas. Duas instâncias não compartilham pasta (`LandMass.log`, `User.ini`, `Running.ini`): use `D:\landmass\cliente` e `D:\landmass\cliente2`.
+- O cliente encaminha a linha de comando para uma instância já aberta (janela de classe `WLog` com a propriedade `IsBrowser`) e fecha. No `LandMass.exe` da segunda pasta, troque o byte do offset `0x209E4` de `0x57` (`W`) para `0x58` (`X`); o original fica em `LandMass.exe.orig`.
+- `scripts/launch.ps1 cliente:teste cliente2:teste2` fecha os clientes abertos e inicia cada pasta pelo seu `jogar_<usuário>.bat`.
 - Captura do Windows (GDI/`PrintWindow`) sai branca com o swapchain D3D11. Use o screenshot do próprio jogo (`F11` = `shot`, grava em `..\ScreenShots`).
 - O cursor da GUI é movido por deltas (DirectInput), não por `SetCursorPos`, e não é limitado às bordas.
 - Ferramenta: `scripts/gui.py` (malha fechada: screenshot → localiza o cursor → delta).
@@ -68,7 +70,9 @@ Não use `Launcher.exe`: ele tenta FTP de patch inexistente. Inicie `LandMass.ex
 uv run --no-project --with pillow python -I scripts/gui.py shot saida.png [--pid N]
 uv run --no-project --with pillow python -I scripts/gui.py click <x> <y> [--double] [--pid N]
 uv run --no-project --with pillow python -I scripts/gui.py type <texto> [--pid N]
+uv run --no-project --with pillow python -I scripts/gui.py key 0x0D [--pid N]
 ```
 
+- `key` recebe o virtual-key code. O cursor fica oculto enquanto há texto em edição; use `key` direto após `type`.
 - Coordenadas são da área do jogo (800x600). O script aborta se o jogo não estiver em primeiro plano, para não clicar em outra janela.
 - Validação: log do emulador e screenshot do jogo. `LandMass.log` só é gravado por completo no encerramento normal.

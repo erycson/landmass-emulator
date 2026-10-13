@@ -90,12 +90,36 @@ def find_cursor(png: Path) -> tuple[int, int] | None:
     im = Image.open(png).convert("RGB")
     px = im.load()
     w, h = im.size
-    # O banner do topo e o rodapé também são azuis.
-    pts = [(x, y) for y in range(95, h - 50) for x in range(w) if _is_cursor(*px[x, y])]
-    if not pts:
-        return None
-    top = min(y for _, y in pts)
-    return min(x for x, y in pts if y <= top + 1), top
+    # O banner do topo também é azul; botões azuis (ex.: "Geral") são descartados pelo tamanho.
+    blue = {(x, y) for y in range(95, h) for x in range(w) if _is_cursor(*px[x, y])}
+    for comp in _components(blue):
+        xs = [x for x, _ in comp]
+        ys = [y for _, y in comp]
+        if max(xs) - min(xs) <= CURSOR_MAX and max(ys) - min(ys) <= CURSOR_MAX and len(comp) >= 8:
+            top = min(ys)
+            return min(x for x, y in comp if y <= top + 1), top
+    return None
+
+
+CURSOR_MAX = 24  # o cursor tem ~14x20 px
+
+
+def _components(pts: set[tuple[int, int]]) -> list[list[tuple[int, int]]]:
+    out, seen = [], set()
+    for p in sorted(pts, key=lambda q: (q[1], q[0])):
+        if p in seen:
+            continue
+        stack, comp = [p], []
+        seen.add(p)
+        while stack:
+            x, y = stack.pop()
+            comp.append((x, y))
+            for q in ((x + dx, y + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)):
+                if q in pts and q not in seen:
+                    seen.add(q)
+                    stack.append(q)
+        out.append(comp)
+    return out
 
 
 def _move(dx_px: float, dy_px: float) -> None:
