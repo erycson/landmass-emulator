@@ -94,13 +94,13 @@ Os índices [0..2] estão comentados (L64074-64089).
 
 1. UI: `CreateRoom` (`XInterface.src.txt` L60120-60192) → `NetCreateRoom(name, pw, scale, mode, map_num, max_player, team_count, limit_time, limit_score)` (L17277).
 2. UnrealScript `LM_ServerInterface.CreateRoom` (`LM_Engine.src.txt` L1603-1617): comando `/CreateRoom` com 9 parâmetros nesta ordem.
-3. Pedido 301 (`FUN_10001580`, `AX = 0x12d`, `N = 76`): corpo de 74 bytes = 18 dwords (@0..@71) + `u16 @72` (`channel_helpers.c` L47-52; `channel_server.md` §2 L69). Mapeamento dos 18 dwords para os 9 parâmetros: **gap**.
+3. Pedido 301 (`FUN_10001580`, `AX = 0x12d`, `N = 76`): corpo de 74 bytes = 18 dwords (@0..@71) + `u16 @72` (`channel_helpers.c` L47-52; `channel_server.md` §2 L69). Corpo decodificado (`re/LM_Engine.dll/FUN_10017530_CreateRoom.c`, `re/layouts_f0.md` §7.1): `u16 map_num @0` (p4); `char[51] name @2` (p0, sem limite); `char[13] pw @0x35` (p1, sem limite); `u8 game_scale @0x42` (p2); `u8 game_mode @0x43` (p3); `u8 team_count @0x44` (p6); `u8 max_player @0x45` (p5); `u8 limit_time @0x46` (p7); `u16 limit_score @0x48` (p8).
 4. Resposta 302 `NotifyCreateRoom`: o corpo vai para `FUN_1001d640` (insere a sala) e depois notifica (`disp@1312-1347`). Layout do registro de sala: **gap**.
 
 ## 2. Entrar na sala
 
 1. UI: `NetInRoom(num, password)` (L17284) → `InRoom(num, pw)` (`LM_Engine.src.txt` L1619): `/InRoom` com 2 parâmetros.
-2. Pedido 311 (`FUN_10001620`, `AX = 0x137`, `N = 22`): corpo de 20 bytes = 5 dwords (`channel_helpers.c` L55-61). Mapeamento: **gap** (presumivelmente `num` e a senha dentro do corpo; inferido).
+2. Pedido 311 (`FUN_10001620`, `AX = 0x137`, `N = 22`): corpo de 20 bytes = 5 dwords (`channel_helpers.c` L55-61). Mapeamento: `i32 num @0`, `char pw[16] @4` (resumo da rodada anterior; `re/layouts_f0.md` §7.2).
 3. Resposta 312 `NotifyInRoom` (`disp@1348-1349` e `2858-2934`):
    - `i32 @0` = resultado. Se `< 0`: código `i16 @0` via `FUN_10021c80`; copia `u8 @8..@0x0e` para o nó `+0x48..+0x4e`; `i16 @0x10` para `+0x50`; grava `-1` em `i32 @4` e `i32 @8` (inferido: marca registro inválido).
    - Envelope `0x36` com erro `0xfffff04b` retorna sem notificar.
@@ -126,12 +126,12 @@ Os índices [0..2] estão comentados (L64074-64089).
 3. Resposta 421 `NotifyChangeRoomSlot` (`disp@382-406`): layout **gap**. Evento de UI `NotifyChangeRoomSlot(client_guid, slot_num)` (`XInterface.src.txt` L23714-23717) → `OnChangeRoomSlot(nParam0, byte nParam1)` (L17522).
 4. `ChangeRoomSlot` não tem chamador ativo no cliente (`features.md` §6; cruzamento confirmado). **(inferido)** a troca de time da UI (L21760-21790, não lido em detalhe) usa outro caminho.
 5. Propriedades da sala (modo, mapa, limites):
-   - Pedido 411 (`FUN_100016e0`, `AX = 0x19b`, `N = 12`): corpo de 10 bytes = `u32 @0`, `u32 @4`, `u16 @8` (`channel_helpers.c` L64-68).
-   - UnrealScript `ChangeRoomProperty` (`LM_Engine.src.txt` L1636-1678) envia **7** valores em `/ChangeRoomProperty`: `flags, map_num, game_mode, team_count, max_player, limit_time, limit_score`. 10 bytes não cabem 7 valores sem empacotamento; o empacotamento é **gap** (pergunta ao REA).
+   - Pedido 411 (`FUN_100016e0`, `AX = 0x19b`, `N = 12`): corpo de 10 bytes; empacotamento abaixo (corrige a versão anterior `u32 @0`, `u32 @4`, `u16 @8`).
+   - UnrealScript `ChangeRoomProperty` (`LM_Engine.src.txt` L1636-1678) envia **7** valores em `/ChangeRoomProperty`: `flags, map_num, game_mode, team_count, max_player, limit_time, limit_score`. Empacotamento decodificado (`FUN_10017820`, `re/layouts_f0.md` §7.2): `u8 flags @0`; `u16 map @2` (se MAP); `u8 game_mode @4` e `u8 team_count @5` (se MODE); `u8 max_player @6`, `u8 limit_time @7`, `u16 limit_score @8` (sempre). 10 bytes.
    - Flags (`dump_Core.txt` L1194-1212): `ROOM_PROPERTY_MAP = 0x01`, `MODE = 0x02`, `LIMIT_PLAYER = 0x04`, `LIMIT_SCORE = 0x08`, `LIMIT_TIME = 0x10`, `STATE = 0x20`, `OPEN = 0x40`. `TEAM_DAMAGE = 0x0F` no dump, valor suspeito (conferir).
    - Resposta 412 `NotifyChangeRoomProperty` (`disp@352-381`): `u8 @4` é máscara: bit0 → `i16 @6`; bit1 → `u8 @8`, `u8 @9`; bit2 → `u8 @10`; bit3 → `i16 @0xc`; bit4 → `u8 @0xb`; bit5 → `u8 @0xf`; bit6 → `u8 @0xe`.
    - Evento de UI `NotifyChangeRoomProperty(map_num, game_mode, max_player, limit_time, limit_score)` (`XInterface.src.txt` L23704) recebe 5 campos e não a máscara: mapeamento bit → campo é **gap**.
-   - Lista de salas: 547 (`disp@541-576`, `u8 @0` = count, entradas a partir de `@8`, passo **gap**).
+   - Lista de salas: 547 (`disp@541-576`, `u8 @0` = count, entradas de 16 bytes a partir de `@4` (room_guid @4; state @8 … open @14; `u16 @0x10` → +0x50, gap; `re/layouts_f0.md` §4.2)).
 
 ## 5. Pronto (jogador)
 
@@ -145,7 +145,7 @@ Os índices [0..2] estão comentados (L64074-64089).
 4. Evento de UI `NotifyReadyGame(client_guid, ready, result)` (`XInterface.src.txt` L23652-23681):
    - `result` de erro vira diálogo: `CERR_ROOM_STATE_PLAYING` → 212000200; `CERR_READY_CLOSE_CHANNEL` → 300000502; `CERR_READY_GAME_DURABILITY` → 241002501; `CERR_READY_GAME_CLOSE` → 211002102; `CERR_READY_GAME_TEAMREADY` → 241002502; `CERR_READY_GAME_TEAMBALANCE` → 241002602; `CERR_READY_GAME_READY` → 241002702.
    - Sem erro: `OwnerPage.OnNotify(NType_ReadyGame, client_guid, ready)`.
-   - Valores numéricos dos `CERR_*`: **gap** (`dump_Core.txt` tem só nomes). Correspondência entre `(corpo, erro)` nativo e `(client_guid, ready, result)` do evento: **gap**.
+   - Valores numéricos dos `CERR_*`: resolvidos (`dump_Core.txt` L1212-1340; `re/layouts_f0.md` §7.3). Correspondência entre `(corpo, erro)` nativo e `(client_guid, ready, result)` do evento: **gap**.
 
 ## 6. Chat da sala
 
@@ -162,7 +162,7 @@ Os índices [0..2] estão comentados (L64074-64089).
   - Aceite: `NetRoomInviteAnswer(yes_no, room_guid)` → `RoomInviteAnswer` (L1705): `"Y"/"N"` como string e `room_guid` como decimal. Pedido 471 (`lit 0x3ae0`, `N = 10`): `u32 @0` = yes/no, `u32 @4` = room_guid (**inferido**).
 - Expulsão pelo dono:
   - UI: `NetRoomExpel(nickname)` → `RoomExpel` (`LM_Engine.src.txt` L1689): `/RoomExpel`, 1 parâmetro → pedido 451 (`FUN_10001830`, `AX = 0x1c3`, `N = 20`): 18 bytes = 4 dwords (@0..@12) + `u16 @16` (`channel_server.md` L75).
-  - Resposta a 451: não aparece na tabela §3 (**gap**).
+  - Resposta a 451: não há `case` 452 no dispatcher; a resposta de expulsão de sala é **gap** (`re/layouts_f0.md` §7.5). A expulsão confirmada pelo cliente é 701 (resposta a 700).
   - `NetExpelPlayer(position, nickname)` (`XInterface.src.txt`, logo após `NetExitPlayer` L17387) → `ExpelPlayer` (`LM_Engine.src.txt` L1730, `/ExpelPlayer`, 2 parâmetros) → pedido 700 (mesmo `FUN_10001830`, `AX = 0x2bc`, `N = 20`).
   - Resposta 701 `NotifyExpelPlayer` (`disp@2386-2387`, `428-431`): `i32 @0 → _DAT_1005aa54`, compartilha código com 501.
   - Mapeamento de `position` em 700 e `u16 @16`: **gap** (a versão de 451 não tem posição).
@@ -175,12 +175,12 @@ Os índices [0..2] estão comentados (L64074-64089).
 2. 402 atualiza os flags (seção 5).
 3. Quando o Channel decide iniciar, envia 403 `NotifyStartGame` (`disp@301-346`, label `case 0x193`):
    - Corpo de 18 bytes: 4 dwords @0..@15, copiados para `_DAT_1005ac34..40`; `u16 @16` → `_DAT_1005ac44`.
-   - Pré-condição (**inferido**): o cliente já tem o próprio nó de jogador (key `DAT_1005ada0`, vindo do 101) com a chave da sala em `+0xa4`. Quem grava `+0xa4` não foi identificado (gap).
+   - Pré-condição (**inferido**): o cliente já tem o próprio nó de jogador (key `DAT_1005ada0`, vindo do 101) com a chave da sala em `+0xa4`. Quem grava `+0xa4`: 317 e 549 (sala do próprio jogador, `disp@1438`/`disp@650`); 312 grava `body@0` (`re/layouts_f0.md` §1.2).
    - `FUN_10007830(FUN_10023470(), &it, &DAT_1005ada0)` acha o próprio jogador (`it`); `FUN_10018aa0` testa `it != fim`. Se não achar, nada é feito (o `if` engloba o laço e as gravações abaixo).
    - Se achar: `FUN_1001d640(FUN_10023500(), it+0xa4)` devolve a sala. Os slots de jogador ficam em `sala+0x50` (`piVar22 + 0x14`), 0x3c entradas. Para cada slot diferente de -1, `FUN_1001d5d0` devolve o jogador; se o bit0 de `+0x9c` estiver setado, grava `0x24` em `+0xa0` (valor, ver §10.5).
    - Depois grava `it+0xb0 = 0x24` no próprio jogador (estado "jogando", **inferido**) e copia os dwords e o `u16` para `_DAT_1005ac34..44`.
    - Chama `ULM_ServerInterface::NotifyStartGame(g_server_interface, body)` → evento `NotifyStartGame(string address, int port)` (`XInterface.src.txt` L23684-23687): `OwnerPage.OnNotify(NType_StartGame, port, , , address)`.
-   - Conversão dos 16 bytes em `address` e do `u16` em `port` no native: **gap**. Hipótese **(inferido)**: 16 bytes = string terminada em zero.
+   - Conversão fechada: `address` = C-string de `body[0..15]` (`FString(char*)`) e `port` = `u16 body[0x10]` (`re/LM_Engine.dll/NotifyStartGame_0x10004440.c`). Ligação aos parâmetros do evento: (inferido).
 4. Cliente: `OnStartGame(strAddress, nPort)` (`XInterface.src.txt` L29632-29667): `super.OnStartGame`; se o endereço está vazio ou `port < 0`, ou se `GetMyPlayerInfo` falha, chama `OnReadyGameError(0)`. Senão grava `PendingAddress = strAddress` e `PendingPort = nPort`.
    - `OnReadyGameError` (L29668+): `KillTimer`, reabilita botões, zera `Pending*`, mostra erro por código.
 5. Conexão ao servidor de jogo com `PendingAddress:PendingPort`: caminho não lido (**gap**; ver `bStartGame` L22800 e L64824-64838).
@@ -203,13 +203,13 @@ Detalhe completo em `channel_server.md` §4.
 1. Mapeamento dos dwords de 301 (CreateRoom, 74 bytes) e de 311 (InRoom, 20 bytes) para os parâmetros do UnrealScript.
 2. 411 (ChangeRoomProperty): 10 bytes para 7 valores. Como empacota `flags`, `map_num`, `game_mode`, `team_count`, `max_player`, `limit_time`, `limit_score`?
 3. Layout completo do registro de sala (302, 314 além dos bytes lidos) e de 317.
-4. Layouts ainda sem decodificação: 342, 421, 462, 543 (raw), 332, 412 (ligação máscara → campo) e 547 (passo).
+4. Layouts ainda sem decodificação: 342, 421, 462, 543 (raw), 332. 412 (máscara) e 547 (passo) foram fechados em `channel_server.md` §3.1 e `re/layouts_f0.md` §4.2.
 5. Offset de slots, resolvido por bytes de retorno (inferido): `FUN_1001d640` e `FUN_1001d5d0` devolvem `nó+0x10` (valor; `add eax,0x10` em `asm@0x1001d640` e `asm@0x1001d5d0`), enquanto `FUN_10019e90` e `FUN_10007830` devolvem o nó pelo out-param. Logo `+0x50` relativo ao valor = `+0x60` relativo ao nó (317 e 421 vs 312, 314, 322, 549). Os pares 402/403 (`+0xac/+0xb0` vs `+0x9c/+0xa0`) batem com a mesma regra. Não verificado: o par 101/121 (`guid` em `+0` do valor vs `+0xa0`).
 6. Conflito de estado/dono: `+0x38` é lido por 402 e 412 como estado; 332 trata `master`. Confirmar qual campo é o dono.
-7. Conversão de 403 (16 bytes + `u16`) em `address` e `port` no native.
-8. Quem envia 403 e sob qual condição. O binário cliente só recebe; a decisão de iniciar fica no Channel server. Também: quem grava `player+0xa4` (chave da sala) antes de 403 (pré-condição da seção 8).
-9. Valores numéricos de `CERR_*`, `MT_*`, `GM_*` (`dump_Core.txt` tem só nomes).
-10. Resposta de 451 (RoomExpel) não localizada na tabela §3.
+7. Conversão de 403 fechada (`re/LM_Engine.dll/NotifyStartGame_0x10004440.c`).
+8. Quem envia 403 e sob qual condição. O binário cliente só recebe; a decisão de iniciar fica no Channel server. `+0xa4` gravado por 317, 549 e 312 (`re/layouts_f0.md` §1.2).
+9. `CERR_*` resolvidos (`re/layouts_f0.md` §7.3); `MT_*` e `GM_*` continuam sem valor.
+10. Resposta de 451 (RoomExpel): sem `case` 452 no dispatcher (`re/layouts_f0.md` §7.5); aberto.
 11. 111 sem guarda de tamanho: confirmar se o framing do Channel garante que o corpo tem pelo menos `count + 1` bytes antes do dispatch (`FUN_10025120`/entrada de rede não analisada).
 12. Origem do 512 (resultado) no GS.
 13. Envelope `0x36`: se o corpo real começa em `@0` do mesmo buffer (**inferido**).
