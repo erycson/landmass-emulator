@@ -406,7 +406,7 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 | Id | Regra | Fonte |
 |----|-------|-------|
 | R-OPT-01 | `SaveOption` (544) grava as 37 opções de `account_options` (corpo de 37 bytes). Sem resposta conhecida. | `channel_server.md` §2 (544) |
-| R-OPT-02 | `Register` (110 → 111) devolve as 37 opções gravadas em `@0x00..0x24`. Hoje devolve zeros (`docs/protocol/message-server.md`). | `message_server.md` §4 (111) |
+| R-OPT-02 | `Register` (110 → 111) devolve as 37 opções gravadas em `@0x00..0x24`. Conta sem registro recebe zeros. Implementado (F1). | `message_server.md` §4 (111) |
 | R-OPT-03 | Valor padrão de conta nova: 0 (inferido). A tela do cliente define o que é apresentado. | (inferido) |
 
 ### 5.13 Social, clã e abandono
@@ -436,7 +436,7 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 104 | S→C | Resposta de `SetRegular` | `accounts` | falta | falta |
 | 105 | C→S | Morat regular | `accounts` | parcial: 2 bytes, `u16 @0` | falta |
 | 107 / 108 | S→C | Morat de treino / criado | `account_morats` | falta | falta |
-| 544 | C→S | Gravar opções | `account_options` | parcial: 37 bytes (tamanho confirmado) | falta |
+| 544 | C→S | Gravar opções | `account_options` | completo: 37 `u8` na ordem de `LM_REGISTER_INFO` ([channel-server.md](../protocol/channel-server.md)) | implementado (F1) |
 | 550 | C→S | Compra (LD ou Cash) | `account_items`, `account_morats`, `accounts` | parcial: 12 bytes (3 `u32`); ordem `id, bPoint, opção` (features §2.2) | falta |
 | 551 | S→C | Resultado da compra | — | inferido: `i32 @0` | falta |
 | 552 | S→C | Resultado da compra de morat | — | falta (bloco 720–748) | falta |
@@ -508,7 +508,7 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | Fatia | Entrega | Depende de | Critério de aceite no cliente real |
 |-------|---------|-----------|------------------------------------|
 | F0 | Decodificar layouts pendentes: 102, 103 (completo), 151/317/549 (exp e saldos), 171, 512, 551, 552, 601, 611, 616, 900–902. Cada um vira fixture em `tests/fixtures/` com teste de ida e volta. | — | Cada layout confere com captura real; `re/` atualizado. |
-| F1 | `account_options`. 544 grava 37 bytes; 110 → 111 devolve os valores. | — | Mudar sensibilidade do mouse em Opções, sair do jogo, logar: valor mantido. |
+| F1 (implementada) | `account_options`. 544 grava 37 bytes; 110 → 111 devolve os valores. | — | Mudar sensibilidade do mouse em Opções, sair do jogo, logar: valor mantido. |
 | F2 | `accounts.tutorial_clear`. 600 marca o bit; 601 responde. | F0 (601) | Concluir passo 1; reiniciar o servidor; passo aparece concluído e não é reenviado. |
 | F3 | `total_exp`, `ld`, `cash`; patente derivada; push 900/902; CLI `account grant --exp --ld --cash`. | F0 (151/317/900/902) | `grant --exp 2800 --ld 1000`: cliente mostra LD 1000, patente "Praça" e progresso. `grant --cash 500`: Cash 500 na loja. |
 | F4 | `account_items`; 102; CLI `account item add --catalog <id> --days <n>`. | F0 (102) | Item da CLI aparece no hangar com nome e validade; some após `DELETE` e reconexão. |
@@ -524,6 +524,13 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F14 | Ranking (Message 170/171). | F0 (171), F3 | Lista com top 100 por `total_exp`; empates com a mesma posição (1, 1, 3). |
 
 ## 8. Lacunas e dúvidas para o usuário
+
+### Decisões do usuário (2026-10-13)
+
+- **Preço de morat:** vale o valor exibido na loja, `buy_point[0] × 5` (resolve a dúvida 1).
+- **Validações que o cliente não faz:** o servidor aplica: requisitos `item_required_*` na compra, patente mínima para presente e `SelectNestExp` em `SetRegular` (resolve as dúvidas 2, 10 e 11). Recusa com `result ≠ 0`.
+- **Escopo:** penalidades (abandono, expulsão, banimento) e ranking por nest entram no escopo.
+
 
 Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 

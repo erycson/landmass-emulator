@@ -26,14 +26,16 @@ Os demais `.wdb` (magic `f7 db 00 00 72 f3 31 01`) são tabelas proprietárias (
 ## Game server (partida)
 
 - `LM_Engine.dll` tem o motor de servidor: `UServerEngine` (`LM_Engine.ServerEngine`), `UServerLevel`, `CServerRoom`.
-- `InitServer(cmdline)` (export) lê: `ip=`, `port=`, `mode=`, `ch_ip=`, `ch_port=`, `ch_code=`, `ch_pw=`
-  e conecta no Channel Server (`ch_pw` = `game_server_password` do ChannelServer, 4567).
+- `InitServer(cmdline)` (export, `0x1000C6D0`) lê: `ip=`, `port=`, `mode=`, `ch_ip=`, `ch_port=`, `ch_code=`, `ch_pw=`
+  e carrega `ServerMessage.wdb` e `error.wdb`. **Não conecta** no Channel Server (corrigido em 2026-10-13, REA; a conexão, se existir, fica no Tick do singleton de `FUN_1000BA90`). `ch_pw` = `game_server_password` do ChannelServer, 4567.
   Também exporta `ExitServer`, `ChannelServerTick`, `LogoutChannelServer`, `ServerRoom`.
 - **Nenhum binário disponível importa `InitServer`**: o executável host do game server dedicado não está
   nem no cliente nem em `servidor/`. `UServerEngine::Init/Tick` só repassam para `UGameEngine`.
 - `UServerLevel::NotifyReceivedText` trata o handshake Unreal (`CONNECT`, `NETSPEED`, `LOGIN`, `JOIN`).
   No `LOGIN URL=...?name=...?team=...?key=...`, chama `LoginPlayer(key, name, team)`, que confere o
-  jogador contra o `CServerRoom` (dados enviados pelo Channel via `GS_IN_PLAYER`). `-1` = recusa.
+  jogador contra o `CServerRoom` (dados enviados pelo Channel via `GS_IN_PLAYER`, gravados por `CServerRoom::InPlayer`
+  `0x100159A0`). `-1` = recusa. Com a sala vazia, todo LOGIN devolve -1 (ver `re/LM_Engine.dll/LoginPlayer.c`).
+  Esse ramo só roda se o nível for `UServerLevel`; no caminho `GameEngine` + `ULevel` não roda (inferido, `re/cmdline.md` §2).
   Ou seja: o LOGIN da partida é validado pela sala que o Channel Server informou.
 
 ## Fluxo observado (LandMass.log do cliente)

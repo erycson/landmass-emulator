@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from landmass_emu.app import message_server, open_accounts
+from landmass_emu.app import message_server, open_accounts, open_database
+from landmass_emu.db.accounts import SqlAccountRepository
+from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.domain.account import hash_token
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.net.framing import encode_frame, read_frame
@@ -63,13 +65,26 @@ async def _connect(server: asyncio.Server) -> AsyncIterator[Client]:
             await writer.wait_closed()
 
 
+@asynccontextmanager
+async def _servidor(
+    settings: Settings, registro: MemorySessionKeyRegistry
+) -> AsyncIterator[asyncio.Server]:
+    async with (
+        open_database(settings) as db,
+        message_server(
+            settings, registro, SqlAccountRepository(db), SqlOptionsRepository(db)
+        ) as server,
+    ):
+        yield server
+
+
 async def test_sequencia_de_login_ate_lista_de_canais(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     async with open_accounts(settings) as accounts:
         await accounts.create("fulano", "Fulano", hash_token(TOKEN))
 
     registro = MemorySessionKeyRegistry()
-    async with message_server(settings, registro) as server, _connect(server) as c:
+    async with _servidor(settings, registro) as server, _connect(server) as c:
         await c.send(MsOp.LOGIN, MsLoginIn(login_num=TOKEN).pack())
         op, body = await c.recv()
         assert op == MsOp.LOGIN_OUT and struct.unpack_from("<i", body, 4) == (0,)
@@ -101,7 +116,7 @@ async def test_sem_login_nao_responde_e_opcode_desconhecido_nao_derruba(tmp_path
         await accounts.create("fulano", "Fulano", hash_token(TOKEN))
 
     async with (
-        message_server(settings, MemorySessionKeyRegistry()) as server,
+        _servidor(settings, MemorySessionKeyRegistry()) as server,
         _connect(server) as c,
     ):
         await c.send(MsOp.GET_CHANNEL_SERVER_INFO)
@@ -124,7 +139,7 @@ async def test_token_invalido_mantem_conexao_sem_login(tmp_path: Path) -> None:
         await accounts.create("fulano", "Fulano", hash_token(TOKEN))
 
     async with (
-        message_server(settings, MemorySessionKeyRegistry()) as server,
+        _servidor(settings, MemorySessionKeyRegistry()) as server,
         _connect(server) as c,
     ):
         await c.send(MsOp.LOGIN, MsLoginIn(login_num="f" * 32).pack())

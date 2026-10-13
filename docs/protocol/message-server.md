@@ -10,7 +10,7 @@ Implementação: `protocol/message.py` (layouts), `handlers/message/` (comportam
 | 100 | C→S | Login | `MS_LOGIN_IN` | implementado (captura) |
 | 101 | S→C | Resultado do login | `MS_LOGIN_OUT` (8 bytes) | implementado |
 | 110 | C→S | Register | — | implementado: exige login; emite a chave de sessão |
-| 111 | S→C | Resultado do register | `MS_REGISTER_OUT` (0x4C bytes) | implementado: opções zeradas e chave de sessão |
+| 111 | S→C | Resultado do register | `MS_REGISTER_OUT` (0x4C bytes) | implementado: opções gravadas da conta (zeros se não houver) e chave de sessão |
 | 120 | C→S | InMessageServer | — (1 byte opcional, ignorado) | implementado: exige login |
 | 121 | S→C | Resultado da entrada | `MS_IN_MESSAGE_SERVER_OUT` (0x1C bytes) | implementado |
 | 130 | C→S | GetChannelServerInfo | — | implementado: exige login |
@@ -55,7 +55,7 @@ No fluxo por token, `id` e `pw` vêm vazios e são ignorados (senha fica para o 
 
 | Offset | Tamanho | Campo |
 |-------:|--------:|-------|
-| 0x00 | 37 | `LM_REGISTER_INFO`: 37 `u8` na ordem de `re/message_server.md` §4.1 (`background` … `screenshot`). Por ora zeros. |
+| 0x00 | 37 | `LM_REGISTER_INFO`: 37 `u8` na ordem de `re/message_server.md` §4.1 (`background` … `screenshot`). Opções gravadas pelo 544 do Channel (`account_options`); zeros se a conta não tem registro. |
 | 0x25 | `char[33]` | `session_key`, NUL-terminado: 32 caracteres hexadecimais minúsculos (`secrets.token_hex(16)`). Emitida para a conta logada. O cliente copia os 33 bytes para `DAT_1005AE20` (`re/message_server.md` §4) e os envia no `100` do Channel. |
 | 0x46 | 2 | padding |
 | 0x48 | `i32` | `result` = `0` |

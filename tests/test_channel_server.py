@@ -40,13 +40,18 @@ def _chave_payload(chave: str) -> bytes:
     return chave.encode("ascii").ljust(33, b"\0")
 
 
-async def _chave_de_sessao(msg: asyncio.Server, token: str) -> str:
-    """Login (100) e registro (110) no Message. A chave vem no 111, `char[33]` @0x25."""
+async def _register_body(msg: asyncio.Server, token: str) -> bytes:
+    """Login (100) e registro (110) no Message. Devolve o corpo do 111."""
     async with _connect(msg, MESSAGE_NET_CODE) as m:
         await m.send(MsOp.LOGIN, MsLoginIn(login_num=token).pack())
         assert struct.unpack_from("<i", await m.expect(MsOp.LOGIN_OUT), 4) == (0,)
         await m.send(MsOp.REGISTER)
-        body = await m.expect(MsOp.REGISTER_OUT)
+        return await m.expect(MsOp.REGISTER_OUT)
+
+
+async def _chave_de_sessao(msg: asyncio.Server, token: str) -> str:
+    """Login (100) e registro (110) no Message. A chave vem no 111, `char[33]` @0x25."""
+    body = await _register_body(msg, token)
     chave = cstr(body[0x25:0x46])
     assert len(chave) == 32
     return chave
@@ -101,7 +106,7 @@ async def _entra_no_canal(c: Client, chave: str, guid: int) -> None:
     assert struct.unpack_from("<i", body, 0x90) == (guid,)
     assert struct.unpack_from("<i", body, 0xA0) == (guid,)
     assert struct.unpack_from("<i", body, 0xA8) == (0,)
-    assert await c.expect(CsOp.CHANNEL_INFO_OUT) == b"\x01"
+    assert await c.expect(CsOp.CHANNEL_INFO_OUT) == b"\x01\x00"
     await c.send(CsOp.IN_CHANNEL)
     await c.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
     await c.expect(CsOp.CHANNEL_ROOM_INFO_OUT)
@@ -225,6 +230,59 @@ async def test_chave_reemitida_invalida_a_antiga(tmp_path: Path) -> None:
             await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(nova))
             body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             assert struct.unpack_from("<i", body, 0xA8) == (0,)
+
+
+# 37 valores distintos: cada byte identifica a sua posição em LM_REGISTER_INFO.
+OPCOES = bytes(range(1, 38))
+
+
+async def test_opcoes_do_canal_voltam_no_111_do_proximo_login(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+
+    async with game_servers(settings) as (msg, ch):
+        corpo = await _register_body(msg, TOKEN_ANA)
+        assert corpo[0x00:0x25] == bytes(0x25)  # conta sem registro: zeros
+
+        chave = cstr(corpo[0x25:0x46])
+        async with _connect(ch, CHANNEL_NET_CODE) as c:
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
+            await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            await c.expect(CsOp.CHANNEL_INFO_OUT)
+            await c.send(CsOp.SAVE_OPTION, OPCOES)  # sem resposta
+            # O 100 seguinte só é respondido depois de o canal processar o 544.
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
+            await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            await c.expect(CsOp.CHANNEL_INFO_OUT)
+
+        corpo = await _register_body(msg, TOKEN_ANA)
+        assert corpo[0x00:0x25] == OPCOES
+        assert corpo[0x00] == 1  # background
+        assert corpo[0x05] == 6  # mouse_sensitivity
+        assert corpo[0x24] == 37  # screenshot
+        assert struct.unpack_from("<i", corpo, 0x48) == (0,)
+
+
+async def test_save_option_sem_login_ou_curto_e_ignorado(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+
+    async with game_servers(settings) as (msg, ch):
+        chave = await _chave_de_sessao(msg, TOKEN_ANA)
+        async with _connect(ch, CHANNEL_NET_CODE) as c:
+            await c.send(CsOp.SAVE_OPTION, OPCOES)  # sem login: ignorado
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
+            await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            await c.expect(CsOp.CHANNEL_INFO_OUT)
+            await c.send(CsOp.SAVE_OPTION, OPCOES[:36])  # 36 bytes: logado e ignorado
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))  # a conexão continua viva
+            await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            await c.expect(CsOp.CHANNEL_INFO_OUT)
+
+        corpo = await _register_body(msg, TOKEN_ANA)
+        assert corpo[0x00:0x25] == bytes(0x25)
 
 
 async def test_servidor_envia_heartbeat_periodico() -> None:

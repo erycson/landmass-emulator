@@ -1,8 +1,8 @@
 # Channel Server (TCP 7314, `net_code` 14)
 
-Implementação: `protocol/channel.py` (codec), `domain/lobby.py` (presença), `handlers/channel/` (comportamento), `net/server.py` (transporte). Evidências e layouts completos: [`../../re/channel_server.md`](../../re/channel_server.md).
+Implementação: `protocol/channel.py` (codec), `domain/lobby.py` (presença), `handlers/channel/` (comportamento), `ports/options.py` (opções, gravadas pelo 544), `net/server.py` (transporte). Evidências e layouts completos: [`../../re/channel_server.md`](../../re/channel_server.md).
 
-Este documento cobre o que o emulador implementa (marco 2: entrada, lobby, chat). Os demais opcodes da tabela completa de `re/channel_server.md` seguem como não tratados: logados com hexdump e ignorados, sem derrubar a conexão.
+Este documento cobre o que o emulador implementa (marco 2: entrada, lobby, chat; F1: opções, 544). Os demais opcodes da tabela completa de `re/channel_server.md` seguem como não tratados: logados com hexdump e ignorados, sem derrubar a conexão.
 
 ## Grupos de opcodes
 
@@ -27,6 +27,7 @@ Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151
 | `120` InChannel, corpo ignorado | `151` (lista do lobby, sem o próprio jogador), `141` (salas vazias), `121` (próprio registro) | Entra no lobby. Os demais jogadores recebem `121` com o registro do recém-chegado. |
 | `122` OutChannel | `123` (próprio id) | Sai do lobby. Os demais jogadores recebem `123`. |
 | `240` SendMsg, `u8 msg_type`, `u8 len`, texto | `241` a todos do lobby, remetente incluído | Chat do lobby. Sem login ou fora do lobby: ignorado. |
+| `544` SaveOption, 37 bytes | nenhuma | Grava as 37 opções da conta logada em `account_options`. Sem login: ignorado. Payload curto: logado e ignorado. |
 | (queda da conexão) | `123` aos demais | Saída implícita. |
 | servidor, a cada 10 s | `2` heartbeat | O cliente responde com `2`; o servidor ignora essa resposta. |
 
@@ -54,6 +55,7 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 151 | S→C | `CHANNEL_PLAYER_INFO_OUT` | `u16 count` + entradas de 40 bytes | implementado |
 | 240 | C→S | `SEND_MESSAGE` | `u8 msg_type`, `u8 len`, texto | implementado |
 | 241 | S→C | `SEND_MESSAGE_OUT` | 8 bytes + texto | implementado |
+| 544 | C→S | `SAVE_OPTION` | 37 `u8`, ordem de `LM_REGISTER_INFO` | implementado: grava nas opções da conta; sem resposta |
 | 67, 64, 66, 464, 545, 546 | C→S | pedidos de lista | — | não tratados |
 
 ## Layouts
@@ -146,6 +148,14 @@ Os campos de estatística são enviados zerados até o marco 5 (persistência).
 | 0x06..0x07 | `byte[2]` | padding |
 | 0x08 | `char[len]` | texto, sem NUL final |
 
+**544 SAVE_OPTION (C→S), 37 bytes**
+
+| Offset | Tipo | Campo |
+|-------:|------|-------|
+| 0x00..0x24 | `u8[37]` | Opções, na ordem de `LM_REGISTER_INFO` (`protocol/message.py`, `LmRegisterInfo`). Cada byte é uma opção. |
+
+Evidência: `SaveOption` @0x10002930 chama `FUN_100018f0` com AX=0x220 (opcode 544) e N = 39 (2 de cabeçalho + 37 de corpo); o corpo é a cópia de `_OPTION_INFO`. Sem resposta conhecida.
+
 ## Lobby
 
 - Membros do lobby: `domain/lobby.py` (`Lobby`), chave `client_guid`, valor a conexão. Estado só em memória (D12).
@@ -166,12 +176,14 @@ Cada item com código afetado tem um `shortcut:` no código; o item 9 é ausênc
 7. **Heartbeat do servidor.** O cliente responde a `2` com `2`; o emulador envia `2` a cada 10 s e nunca responde. Não há evidência de que o cliente exija esse heartbeat; se a conexão cair em 20 s sem tráfego, reduzir o intervalo.
 8. **Limite de lobby.** Uma lista de 151 cabe em um quadro de 65000 bytes: no máximo 1600 entradas (`MAX_LOBBY_ENTRIES`).
 9. **Pedidos de lista (64, 66, 67, 464, 545, 546).** Não tratados. Se o lobby ficar vazio no cliente real, o próximo passo é tratar 545/546 (listas de salas e de jogadores), cujo layout de entrada ainda não foi decodificado.
+11. **544 sem resposta e ordem não confirmada.** O RE não tem opcode de retorno para `SaveOption`; o emulador não responde. A ordem dos 37 bytes segue `LM_REGISTER_INFO` (inferido: o RE mostra cópia de 37 bytes de `_OPTION_INFO`, e a struct `LM_OPTION_INFO` do UnrealScript não foi decodificada campo a campo). Se o cliente real mostrar uma opção trocada, decodificar `LM_OPTION_INFO` em `LM_Engine.u`. Conta sem registro devolve 0 em tudo (sem fonte no RE).
 10. **Chave de sessão não zerada.** O teste com o cliente real mostrou o `100` com 33 bytes zerados, depois de um `111` zerado. Não confirmado: o cliente aceitar a chave não zerada que o `111` entrega e reenviá-la em nova conexão ao canal. Se o cliente recusar, conferir `MsRegisterOut.session_key` e a regra de expiração em [authentication.md](authentication.md).
 
 ## Responsabilidades do serviço
 
 - Manter o lobby em memória (`domain/lobby.py`).
 - Resolver a chave de sessão do `100` no registro em memória (`ports/session_keys.py`).
+- Gravar as opções da conta no 544 pelo `OptionsRepository` (`ports/options.py`). Sem resposta.
 - Difundir entrada, saída e chat aos jogadores do lobby.
 - Enviar heartbeat do servidor a cada 10 s por conexão.
 - Salas, slots, pronto, partida e itens: marcos 3 a 5.

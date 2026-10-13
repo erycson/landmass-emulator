@@ -29,6 +29,7 @@ class CsOp(IntEnum):
     OUT_CHANNEL_OUT = 123
     CHANNEL_ROOM_INFO_OUT = 141
     CHANNEL_PLAYER_INFO_OUT = 151
+    SAVE_OPTION = 544
     SEND_MESSAGE = 240
     SEND_MESSAGE_OUT = 241
 
@@ -139,16 +140,17 @@ class CsInChannelOut:
 
 @dataclass(frozen=True, slots=True)
 class CsChannelInfoOut:
-    """CHANNEL_INFO_OUT (111): `u8 count` @0.
+    """CHANNEL_INFO_OUT (111): `u8 count` @0 e `u8 load` por canal em @1+i (re/rooms.md, asm
+    0x1001de7d..0x1001dea2). O nome exibido é `strChannel` + índice (texto do cliente).
+    Carga: >=100 FULL (desabilitado), >80 Tumulto, >50 Bom, senão Ótimo.
 
-    shortcut: count fixo em 1 (o servidor original tem `channel_count 1`) e entrada sem corpo;
-    o cliente não lê o corpo da entrada (`FUN_1001c170`). Revisar se o cliente pedir o nome do
-    canal, e conferir no cliente real se a entrada aparece."""
+    shortcut: um canal com carga 0; derivar a carga da lotação do lobby se houver mais canais."""
 
+    loads: tuple[int, ...] = (0,)
     opcode: ClassVar[int] = CsOp.CHANNEL_INFO_OUT
 
     def pack(self) -> bytes:
-        return b"\x01"
+        return bytes((len(self.loads), *self.loads))
 
 
 @dataclass(frozen=True, slots=True)

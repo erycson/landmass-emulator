@@ -106,8 +106,22 @@ def test_register_out_session_key_em_0x25_char33() -> None:
 
 
 def test_register_out_opcoes_na_ordem_do_layout() -> None:
-    raw = MsRegisterOut(options=LmRegisterInfo(background=1, weapon1=2, screenshot=9)).pack()
+    raw = MsRegisterOut(options=LmRegisterInfo(background=1, weapon_1=2, screenshot=9)).pack()
     assert raw[0] == 1 and raw[7] == 2 and raw[36] == 9
+
+
+def test_lm_register_info_ida_e_volta_e_tamanho_37() -> None:
+    opcoes = LmRegisterInfo(mouse_sensitivity=5, alt_fire=7, speech_menu_3=8)
+    raw = opcoes.pack()
+    assert len(raw) == 37
+    assert raw[5] == 5 and raw[22] == 7 and raw[32] == 8
+    assert LmRegisterInfo.unpack(raw) == opcoes
+    assert LmRegisterInfo.unpack(raw + b"\x09") == opcoes
+
+
+def test_lm_register_info_payload_curto_levanta_struct_error() -> None:
+    with pytest.raises(struct.error):
+        LmRegisterInfo.unpack(bytes(36))
 
 
 def test_in_message_server_out_offsets() -> None:

@@ -78,41 +78,45 @@ class MsLoginOut:
 
 @dataclass(frozen=True, slots=True)
 class LmRegisterInfo:
-    """LM_REGISTER_INFO: 37 bytes u8, nesta ordem (re/message_server.md §4.1)."""
+    """LM_REGISTER_INFO: 37 bytes u8, nesta ordem (re/message_server.md §4.1). O 544 do Channel
+    (`SaveOption`) envia o mesmo bloco de 37 bytes.
+
+    Nomes em snake_case, como em docs/architecture/07-progression.md §4.6. `mouse_sensitivity` é
+    `mousesence` no RE. A ordem dos campos é o layout: não reordenar."""
 
     background: int = 0
     effect: int = 0
-    voiceinfo: int = 0
-    voicecharacter: int = 0
-    mouseacc: int = 0
-    mousesence: int = 0
-    mouseinvert: int = 0
-    weapon1: int = 0
-    weapon2: int = 0
-    weapon3: int = 0
-    weapon4: int = 0
-    weapon5: int = 0
-    weapon6: int = 0
-    weapon7: int = 0
-    weapon8: int = 0
-    weapon9: int = 0
-    weapon0: int = 0
-    moveforward: int = 0
-    movebackward: int = 0
-    moveleft: int = 0
-    moveright: int = 0
+    voice_info: int = 0
+    voice_character: int = 0
+    mouse_acc: int = 0
+    mouse_sensitivity: int = 0
+    mouse_invert: int = 0
+    weapon_1: int = 0
+    weapon_2: int = 0
+    weapon_3: int = 0
+    weapon_4: int = 0
+    weapon_5: int = 0
+    weapon_6: int = 0
+    weapon_7: int = 0
+    weapon_8: int = 0
+    weapon_9: int = 0
+    weapon_0: int = 0
+    move_forward: int = 0
+    move_backward: int = 0
+    move_left: int = 0
+    move_right: int = 0
     fire: int = 0
-    altfire: int = 0
+    alt_fire: int = 0
     walk: int = 0
     down: int = 0
     jump: int = 0
-    changemag: int = 0
+    change_mag: int = 0
     chaff: int = 0
     booster: int = 0
     action: int = 0
-    speechmenu1: int = 0
-    speechmenu2: int = 0
-    speechmenu3: int = 0
+    speech_menu_1: int = 0
+    speech_menu_2: int = 0
+    speech_menu_3: int = 0
     object: int = 0
     mirror: int = 0
     minimap: int = 0
@@ -122,6 +126,11 @@ class LmRegisterInfo:
 
     def pack(self) -> bytes:
         return self._FIXED.pack(*astuple(self))
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> LmRegisterInfo:
+        """Lê os 37 primeiros bytes. Payload curto levanta `struct.error`, que o roteador loga."""
+        return cls(*cls._FIXED.unpack_from(payload))
 
 
 @dataclass(frozen=True, slots=True)

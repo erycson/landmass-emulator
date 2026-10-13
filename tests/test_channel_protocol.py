@@ -104,7 +104,8 @@ def test_lista_vazia_e_lista_grande_demais() -> None:
 
 
 def test_channel_info_e_room_info_com_contagem_zero_ou_um() -> None:
-    assert CsChannelInfoOut().pack() == b"\x01"
+    assert CsChannelInfoOut().pack() == b"\x01\x00"
+    assert CsChannelInfoOut((10, 100)).pack() == b"\x02\x0a\x64"
     assert CsChannelRoomInfoOut().pack() == b"\x00\x00"
 
 

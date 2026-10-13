@@ -45,12 +45,13 @@ Regras de dependência:
 | `src/landmass_emu/protocol/game.py` | Structs `GS_*` (marco 4). |
 | `src/landmass_emu/handlers/message/` | `__init__.py` (roteador `build_router`), `account.py` (100, 110, 120), `channel_list.py` (130). |
 | `src/landmass_emu/handlers/login.py` | Autenticação por token (`login_num`), usada pelo Message (100). O Channel usa a chave de sessão. |
-| `src/landmass_emu/handlers/channel/` | `__init__.py` (roteador `build_router`), `entry.py` (100, 120, 122, queda), `chat.py` (240). Salas, loja, hangar e partida nos marcos 3 a 5. |
+| `src/landmass_emu/handlers/channel/` | `__init__.py` (roteador `build_router`), `entry.py` (100, 120, 122, queda), `chat.py` (240), `options.py` (544). Salas, loja, hangar e partida nos marcos 3 a 5. |
 | `src/landmass_emu/domain/lobby.py` | Lobby em memória: membros por `client_guid`, `broadcast` com exclusão opcional. |
 | `src/landmass_emu/domain/` | `account.py` (conta, token), `channel.py` (canal), `lobby.py` (presença do lobby), `session_keys.py` (chaves de sessão em memória). Demais entidades nos marcos seguintes. |
 | `src/landmass_emu/ports/accounts.py` | Protocol `AccountRepository` e exceção `AccountConflict`. |
+| `src/landmass_emu/ports/options.py` | Protocol `OptionsRepository` (`get` e `save` das opções do jogador, `account_options`). |
 | `src/landmass_emu/ports/session_keys.py` | Protocol `SessionKeyRegistry` (`issue` e `resolve` de chaves de sessão). |
-| `src/landmass_emu/db/` | `models.py` (`accounts`), `accounts.py` (repositório SQLAlchemy), `engine.py` (migrações no start), `migrations/` (Alembic). |
+| `src/landmass_emu/db/` | `models.py` (`accounts`, `account_options`), `accounts.py` (repositório SQLAlchemy), `options.py` (repositório de opções), `engine.py` (migrações no start), `migrations/` (Alembic). |
 | `src/landmass_emu/sniffer.py` | Captura de tráfego do cliente (ferramenta de RE). |
 | `tests/fixtures/` | Capturas reais usadas como golden files. |
 

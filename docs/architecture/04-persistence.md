@@ -3,6 +3,7 @@
 ## Banco de contas
 
 - SQLAlchemy 2.x async + Alembic. URL em `LANDMASS_DATABASE_URL` (ver [05-configuration.md](05-configuration.md)).
+- `app.game_servers` abre um único engine e o compartilha entre Message e Channel.
 
 | Banco | URL de exemplo | Driver |
 |-------|----------------|--------|
@@ -48,10 +49,26 @@ Fonte: `D:\landmass\servidor\db\LM_account.sql`. Modelo: `db/models.py`. Migraç
 - Único em `token_hash`: é a chave de busca do login.
 - As demais colunas do original (estatísticas, opções, quickslot, morats) entram nos marcos que as usam.
 
+## Tabela `account_options` (F1)
+
+Fonte: [07-progression.md §4.6](07-progression.md). Modelo: `db/models.py` (`OptionsRow`). Migração: `db/migrations/versions/c654f8b37cd7_create_account_options_table.py`.
+
+| Coluna | Tipo | Nulo | Padrão | Uso |
+|--------|------|------|--------|-----|
+| `id` | `Integer` PK, autoincremento | não | — | Id da linha. |
+| `account_id` | `Integer`, único | não | — | FK `accounts.id`. Uma linha por conta. |
+| 37 colunas de opção | `Integer` | não | `0` | Uma por campo de `LmRegisterInfo`, com os nomes de 07 §4.6. A ordem é o layout do 111 e do 544 (`re/message_server.md` §4.1). |
+| `created_at`, `updated_at` | `DateTime(timezone=True)` | não | — | Criação e última gravação. |
+
+- Constraints: `account_options_account_id_foreign` (FK) e `account_options_account_id_unique`.
+- Upsert portável: leitura e depois insert ou update, sob `asyncio.Lock` do repositório. Sem `ON CONFLICT`, que é específico de fornecedor.
+- Conta sem linha: o repositório devolve zeros. A linha nasce no primeiro 544.
+
 ## Repositório
 
 - Contrato: `ports/accounts.py` (`AccountRepository`, Protocol). Handlers e CLI dependem só dele.
 - Implementação: `db/accounts.py` (`SqlAccountRepository`). Violação de unicidade vira `AccountConflict`.
+- Opções: `ports/options.py` (`OptionsRepository`) e `db/options.py` (`SqlOptionsRepository`). O Message lê no 111; o Channel grava no 544.
 
 ## Origem do schema
 

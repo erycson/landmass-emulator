@@ -21,7 +21,7 @@ Evidência: [`../../re/LandMass.exe/main_loop.c`](../../re/LandMass.exe/main_loo
 O `login_num` só entra no Message. O Channel recebe uma chave de sessão, emitida pelo Message:
 
 - O `110` (Register) emite a chave da conta logada. Ela vai no `111` @0x25, `char[33]` (32 hexadecimais minúsculos e NUL; [message-server.md](message-server.md)).
-- O cliente envia esses 33 bytes no `100` do Channel. O Channel resolve a chave em um registro de sessões em memória (`ports/session_keys.py`, implementado em `domain/session_keys.py`). Ele não acessa o banco.
+- O cliente envia esses 33 bytes no `100` do Channel. O Channel resolve a chave em um registro de sessões em memória (`ports/session_keys.py`, implementado em `domain/session_keys.py`). Para validar a chave, não acessa o banco; a única escrita do Channel é a das opções (544, `account_options`).
 - Um único registro, criado por `app.game_servers` e injetado nos dois servidores. Sem variável global.
 - Uma conta tem uma chave viva: um novo `110` invalida a anterior.
 - Expiração: chave que nunca foi usada no Channel expira 300 s após a emissão. Depois do primeiro uso bem-sucedido, a chave vale até ser reemitida; não há prazo ocioso. A expiração é checada no `resolve`, sem tarefa de fundo. Na emissão seguinte, o registro descarta chaves expiradas e a chave anterior da conta.
