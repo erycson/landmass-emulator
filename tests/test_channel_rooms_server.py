@@ -11,6 +11,7 @@ from test_channel_server import (
     _chave_payload,
     _connect,
     _entra_no_canal,
+    _saldos_do_login,
     _settings,
 )
 
@@ -54,6 +55,7 @@ async def _entra_com_outros(c: Client, chave: str, guid: int, *no_lobby: Client)
     await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
     await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
     await c.expect(CsOp.CHANNEL_INFO_OUT)
+    await _saldos_do_login(c)
     await c.send(CsOp.IN_CHANNEL)
     await c.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
     lista = await c.expect(CsOp.CHANNEL_ROOM_INFO_OUT)

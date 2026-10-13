@@ -9,6 +9,7 @@ from enum import IntEnum
 from typing import ClassVar
 
 from landmass_emu.protocol.message import cfield, cstr
+from landmass_emu.protocol.progression import PlayerRecord
 
 # Texto de chat: o cliente descarta `len > 0x78` (dispatch, opcode 241).
 MAX_CHAT_TEXT = 0x78
@@ -104,8 +105,9 @@ class CsInChannelServerIn:
 class CsInChannelServerOut:
     """IN_CHANNEL_SERVER_OUT (101): corpo de 176 bytes.
 
-    @0x00..0xa7: registro do próprio jogador (168 bytes), zeros exceto o id em @0x90 e @0xa0
-    (o cliente lê o id de @0x90 como `DAT_1005ada0` e usa @0xa0 como chave do nó).
+    @0x00..0xa7: registro do próprio jogador (168 bytes, `PlayerRecord`). Os campos de progressão
+    vêm do banco; os demais são zero, e o id fica em @0x90 e @0xa0 (o cliente lê o id de @0x90
+    como `DAT_1005ada0` e usa @0xa0 como chave do nó).
     @0xa8: `i32 result` (0 = ok). @0xac: `i32 location` (lido como `_DAT_1005ae08`; semântica
     não confirmada, o evento recebe `byte location`).
 
@@ -114,11 +116,12 @@ class CsInChannelServerOut:
     client_guid: int
     result: int
     location: int = 0
+    progress: PlayerRecord = PlayerRecord()
     opcode: ClassVar[int] = CsOp.IN_CHANNEL_SERVER_OUT
-    _FIXED = struct.Struct("<144xi12xi4xii")
+    _TAIL = struct.Struct("<ii")
 
     def pack(self) -> bytes:
-        return self._FIXED.pack(self.client_guid, self.client_guid, self.result, self.location)
+        return self.progress.pack(self.client_guid) + self._TAIL.pack(self.result, self.location)
 
 
 @dataclass(frozen=True, slots=True)

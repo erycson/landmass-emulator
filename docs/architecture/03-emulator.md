@@ -32,9 +32,9 @@ Regras de dependência:
 
 | Caminho | Responsabilidade |
 |---------|------------------|
-| `src/landmass_emu/__main__.py` | `Cli` (`serve`, `account`); `main` é o entry point. Comandos: `serve`, `sniff`, `account create`, `account token`. |
+| `src/landmass_emu/__main__.py` | `Cli` (`serve`, `account`); `main` é o entry point. Comandos: `serve`, `sniff`, `account create`, `account token`, `account grant`. |
 | `src/landmass_emu/app.py` | Composição: repositório, registro de chaves, roteador, servidores (`game_servers`, `message_server`, `channel_server`, `open_accounts`). |
-| `src/landmass_emu/admin.py` | `AccountAdmin`: operações de conta da CLI (criar, regenerar token, gravar `.bat`). |
+| `src/landmass_emu/admin.py` | `AccountAdmin`: operações de conta da CLI (criar, regenerar token, gravar `.bat`). `ProgressionAdmin`: concessão de exp, LD e Cash (`account grant`). |
 | `src/landmass_emu/settings.py` | Configuração (`pydantic-settings`), ver [05-configuration.md](05-configuration.md). |
 | `src/landmass_emu/net/framing.py` | Leitura/escrita de frames `u16 + body`. |
 | `src/landmass_emu/net/session.py` | Estado por conexão: peer, conta autenticada e `outbox` (corpos a enviar). |
@@ -42,15 +42,17 @@ Regras de dependência:
 | `src/landmass_emu/protocol/header.py` | Cabeçalho `(opcode << 5) \| net_code`. |
 | `src/landmass_emu/protocol/message.py` | Structs `MS_*` e `LM_*` do Message Server (requisições e respostas). |
 | `src/landmass_emu/protocol/channel.py` | Structs `CS_*` do Channel Server (marcos 2 e 3): entrada, lobby, chat, heartbeat, salas e listas. |
+| `src/landmass_emu/protocol/progression.py` | Structs de progressão do Channel (F2, F3): tutorial (600/601), saldos (900/902) e `PlayerRecord`, o registro de progressão do 101. |
 | `src/landmass_emu/protocol/game.py` | Structs `GS_*` (marco 4). |
 | `src/landmass_emu/handlers/message/` | `__init__.py` (`MessageHandlers`: monta o `router`), `account.py` (`AccountHandlers`: 100, 110, 120 e a autenticação por token de 100), `channel_list.py` (`ChannelListHandlers`: 130). |
-| `src/landmass_emu/handlers/channel/` | `__init__.py` (`ChannelHandlers`: monta os handlers e a tabela opcode → método), `entry.py` (`EntryHandlers`: 100, 120, 122, queda), `chat.py` (`ChatHandlers`: 240), `rooms.py` (`RoomHandlers`: 301, 311, 321, 401, 420, 700), `lists.py` (`ListHandlers`: 545, 546), `records.py` (`ChannelRecords`: registros de sala e de jogador), `options.py` (`OptionHandlers`: 544). Loja, hangar e partida nos marcos 4 e 5. |
+| `src/landmass_emu/handlers/channel/` | `__init__.py` (`ChannelHandlers`: monta os handlers e a tabela opcode → método), `entry.py` (`EntryHandlers`: 100, 120, 122, queda), `chat.py` (`ChatHandlers`: 240), `rooms.py` (`RoomHandlers`: 301, 311, 321, 401, 420, 700), `lists.py` (`ListHandlers`: 545, 546), `records.py` (`ChannelRecords`: registros de sala e de jogador), `options.py` (`OptionHandlers`: 544), `progression.py` (`ProgressionHandlers`: 600; registro e saldos do login, exp do 121). Loja, hangar e partida nos marcos 4 e 5. |
 | `src/landmass_emu/domain/lobby.py` | Lobby em memória: membros por `client_guid`, `broadcast` com exclusão opcional. |
-| `src/landmass_emu/domain/` | `account.py` (conta, token), `channel.py` (canal), `lobby.py` (presença do lobby), `rooms.py` (salas em memória: `Rooms`, `Room`), `session_keys.py` (chaves de sessão em memória). Demais entidades nos marcos seguintes. |
+| `src/landmass_emu/domain/` | `account.py` (conta, token), `channel.py` (canal), `lobby.py` (presença do lobby), `rooms.py` (salas em memória: `Rooms`, `Room`), `session_keys.py` (chaves de sessão em memória), `progression.py` (saldos, tutorial e patente: `RankTable`, `ProgressionService`). Demais entidades nos marcos seguintes. |
 | `src/landmass_emu/ports/accounts.py` | Protocol `AccountRepository` e exceção `AccountConflict`. |
 | `src/landmass_emu/ports/options.py` | Protocol `OptionsRepository` (`get` e `save` das opções do jogador, `account_options`). |
+| `src/landmass_emu/ports/progression.py` | Protocol `ProgressionRepository` (`get`, `mark_tutorial` e `grant` da progressão em `accounts`). |
 | `src/landmass_emu/ports/session_keys.py` | Protocol `SessionKeyRegistry` (`issue` e `resolve` de chaves de sessão). |
-| `src/landmass_emu/db/` | `models.py` (`accounts`, `account_options`), `accounts.py` (repositório SQLAlchemy), `options.py` (repositório de opções), `engine.py` (`Migrator`: migrações no start), `migrations/` (Alembic). |
+| `src/landmass_emu/db/` | `models.py` (`accounts`, `account_options`), `accounts.py` (repositório SQLAlchemy), `options.py` (repositório de opções), `progression.py` (progressão da conta), `catalog.py` (`WdbCatalog`: leitura somente leitura do `landmass.wdb`), `engine.py` (`Migrator`: migrações no start), `migrations/` (Alembic). |
 | `src/landmass_emu/sniffer.py` | `Sniffer`: captura de tráfego do cliente (ferramenta de RE). `hexdump` é utilitário sem estado. |
 | `tests/fixtures/` | Capturas reais usadas como golden files. |
 

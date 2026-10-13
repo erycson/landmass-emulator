@@ -5,8 +5,12 @@ import logging
 from pathlib import Path
 
 from landmass_emu import sniffer
-from landmass_emu.admin import AccountAdmin
-from landmass_emu.app import game_servers, open_accounts
+from landmass_emu.admin import AccountAdmin, ProgressionAdmin
+from landmass_emu.app import game_servers, open_accounts, open_database
+from landmass_emu.db.accounts import SqlAccountRepository
+from landmass_emu.db.catalog import WdbCatalog
+from landmass_emu.db.progression import SqlProgressionRepository
+from landmass_emu.domain.progression import Grant, ProgressionService
 from landmass_emu.ports.accounts import AccountConflict
 from landmass_emu.settings import Settings
 
@@ -21,13 +25,28 @@ class Cli:
         async with game_servers(self._settings) as (message, channel):
             await asyncio.gather(message.serve_forever(), channel.serve_forever())
 
-    async def account(self, args: argparse.Namespace) -> Path:
+    async def account(self, args: argparse.Namespace) -> str:
+        """Ações de conta; devolve o texto a imprimir."""
+        if args.action == "grant":
+            return await self.grant(args)
         client_dir: Path = args.client_dir or self._settings.client_dir
         async with open_accounts(self._settings) as accounts:
             admin = AccountAdmin(accounts, self._settings)
             if args.action == "create":
-                return await admin.create(args.user, args.nickname, client_dir)
-            return await admin.rotate_token(args.user, client_dir)
+                return str(await admin.create(args.user, args.nickname, client_dir))
+            return str(await admin.rotate_token(args.user, client_dir))
+
+    async def grant(self, args: argparse.Namespace) -> str:
+        # Valida antes de abrir o banco: valor negativo ou grant zerado não grava nada.
+        grant = Grant(exp=args.exp, ld=args.ld, cash=args.cash)
+        async with open_database(self._settings) as db:
+            admin = ProgressionAdmin(
+                SqlAccountRepository(db),
+                SqlProgressionRepository(db),
+                ProgressionService(),
+                WdbCatalog(self._settings.client_dir / "landmass.wdb"),
+            )
+            return await admin.grant(args.user, grant)
 
 
 def main() -> None:
@@ -46,6 +65,11 @@ def main() -> None:
     token = actions.add_parser("token", help="regenera o token (invalida o anterior)")
     token.add_argument("--user", required=True)
     token.add_argument("--client-dir", type=Path)
+    grant = actions.add_parser("grant", help="soma exp, LD e Cash à conta (sem aviso ao servidor)")
+    grant.add_argument("--user", required=True)
+    grant.add_argument("--exp", type=int, default=0)
+    grant.add_argument("--ld", type=int, default=0)
+    grant.add_argument("--cash", type=int, default=0)
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
@@ -59,10 +83,10 @@ def main() -> None:
             asyncio.run(cli.serve())
         else:
             try:
-                bat = asyncio.run(cli.account(args))
+                saida = asyncio.run(cli.account(args))
             except (ValueError, AccountConflict) as e:
                 raise SystemExit(f"erro: {e}") from None
-            print(bat)
+            print(saida)
 
 
 if __name__ == "__main__":

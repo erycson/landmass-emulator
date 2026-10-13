@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.engine import Migrator
 from landmass_emu.db.options import SqlOptionsRepository
+from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.domain.channel import Channel
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.rooms import Rooms
@@ -19,6 +20,7 @@ from landmass_emu.handlers.message import MessageHandlers
 from landmass_emu.net.server import Service
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.options import OptionsRepository
+from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.protocol.channel import CsHeartbeat
 from landmass_emu.protocol.header import CHANNEL_NET_CODE, MESSAGE_NET_CODE
@@ -87,12 +89,15 @@ async def message_server(
 
 @asynccontextmanager
 async def channel_server(
-    settings: Settings, sessions: SessionKeyRegistry, options: OptionsRepository
+    settings: Settings,
+    sessions: SessionKeyRegistry,
+    options: OptionsRepository,
+    progression: ProgressionRepository,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
     game = GameEndpoint(settings.game_host, settings.game_port)
-    handlers = ChannelHandlers(sessions, lobby, rooms, options, game)
+    handlers = ChannelHandlers(sessions, lobby, rooms, options, progression, game)
     server = await Service(
         net_code=CHANNEL_NET_CODE,
         router=handlers.router,
@@ -113,8 +118,9 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
     async with open_database(settings) as db:
         accounts = SqlAccountRepository(db)
         options = SqlOptionsRepository(db)
+        progression = SqlProgressionRepository(db)
         async with (
             message_server(settings, sessions, accounts, options) as message,
-            channel_server(settings, sessions, options) as channel,
+            channel_server(settings, sessions, options, progression) as channel,
         ):
             yield message, channel

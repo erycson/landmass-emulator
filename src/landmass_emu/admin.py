@@ -1,9 +1,14 @@
-"""Operações de conta da CLI: cria conta, regenera token e grava o `.bat` de login do jogador."""
+"""Operações da CLI sobre contas: cria conta, regenera token (grava o `.bat` de login) e
+concede progressão (exp, LD, Cash).
+"""
 
 from pathlib import Path
 
+from landmass_emu.db.catalog import WdbCatalog
 from landmass_emu.domain.account import check_nickname, check_username, hash_token, new_token
+from landmass_emu.domain.progression import Grant, ProgressionService, RankTable
 from landmass_emu.ports.accounts import AccountRepository
+from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.settings import Settings
 
 
@@ -49,3 +54,39 @@ class AccountAdmin:
         )
         path.write_text(text, encoding="ascii", newline="\r\n")
         return path
+
+
+class ProgressionAdmin:
+    """Concessão de exp, LD e Cash pela CLI. Só grava no banco: um servidor rodando não é
+    avisado (D27). O cliente vê os valores ao relogar, quando o 101 é montado de novo."""
+
+    def __init__(
+        self,
+        accounts: AccountRepository,
+        progression: ProgressionRepository,
+        rules: ProgressionService,
+        catalog: WdbCatalog,
+    ) -> None:
+        self._accounts = accounts
+        self._progression = progression
+        self._rules = rules
+        self._catalog = catalog
+
+    async def grant(self, username: str, grant: Grant) -> str:
+        account = await self._accounts.find_by_username(username)
+        if account is None:
+            raise ValueError(f"conta {username!r} não existe")
+        # Confere os limites antes de gravar: a soma passar de i32 quebraria o 101 do login.
+        totals = self._rules.check_grant(await self._progression.get(account.id), grant)
+        await self._progression.grant(account.id, grant)
+        return (
+            f"{username}: exp {totals.total_exp}, LD {totals.ld}, Cash {totals.cash}. "
+            f"{self._rank_line(totals.total_exp)}"
+        )
+
+    def _rank_line(self, total_exp: int) -> str:
+        try:
+            level = RankTable(self._catalog.level_list()).level_for(total_exp)
+        except ValueError as e:
+            return f"patente indisponível: {e}"
+        return f"patente {level.name} (nível {level.level})"

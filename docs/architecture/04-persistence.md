@@ -47,6 +47,7 @@ Fonte: `D:\landmass\servidor\db\LM_account.sql`. Modelo: `db/models.py`. Migraç
 - `username` não é FK para `users`: é o próprio login da conta.
 - Único em `nickname`: regra de nickname do jogo (`CheckNickname`, 140, responde "nome disponível").
 - Único em `token_hash`: é a chave de busca do login.
+- Colunas de progressão (F2 e F3): `tutorial_clear`, `total_exp`, `ld` e `cash`, todas `Integer NOT NULL` com padrão `0`. Migrações `01ad613f288a` e `31c91374dcba`. Regras em [07-progression §4.3](07-progression.md).
 - As demais colunas do original (estatísticas, opções, quickslot, morats) entram nos marcos que as usam.
 
 ## Tabela `account_options` (F1)
@@ -69,6 +70,8 @@ Fonte: [07-progression.md §4.6](07-progression.md). Modelo: `db/models.py` (`Op
 - Contrato: `ports/accounts.py` (`AccountRepository`, Protocol). Handlers e CLI dependem só dele.
 - Implementação: `db/accounts.py` (`SqlAccountRepository`). Violação de unicidade vira `AccountConflict`.
 - Opções: `ports/options.py` (`OptionsRepository`) e `db/options.py` (`SqlOptionsRepository`). O Message lê no 111; o Channel grava no 544.
+- Progressão: `ports/progression.py` (`ProgressionRepository`) e `db/progression.py` (`SqlProgressionRepository`). O tutorial é um `UPDATE` com OR no banco (`bitwise_or`), sem leitura antes da escrita. O grant soma no próprio `UPDATE`.
+- Leitura do `landmass.wdb`: `db/catalog.py` (`WdbCatalog`), somente leitura, `mode=ro`, textos em cp1252.
 
 ## Origem do schema
 

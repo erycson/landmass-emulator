@@ -7,6 +7,7 @@ from landmass_emu.handlers.channel import ChannelHandlers
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.handlers.channel.rooms import GameEndpoint
 from landmass_emu.protocol.channel import CsOp
+from landmass_emu.protocol.progression import CsProgressionOp
 
 
 class _Recebedor:
@@ -22,7 +23,7 @@ class _Recebedor:
 def test_tabela_do_roteador_cobre_entrada_chat_salas_e_listas() -> None:
     # As opções não são usadas na montagem; o teste só confere as chaves do roteador.
     handlers = ChannelHandlers(
-        MemorySessionKeyRegistry(), Lobby(), Rooms(), None, GameEndpoint("127.0.0.1", 7777)
+        MemorySessionKeyRegistry(), Lobby(), Rooms(), None, None, GameEndpoint("127.0.0.1", 7777)
     )
     esperados = {
         CsOp.HEARTBEAT,
@@ -39,6 +40,7 @@ def test_tabela_do_roteador_cobre_entrada_chat_salas_e_listas() -> None:
         CsOp.EXPEL_PLAYER,
         CsOp.REFRESH_PLAYER_LIST,
         CsOp.REFRESH_ROOM_LIST,
+        CsProgressionOp.TUTORIAL_CLEAR,
     }
     assert esperados <= set(handlers.router)
 

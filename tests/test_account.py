@@ -89,7 +89,18 @@ async def test_schema_segue_convencao_laravel(tmp_path: Path) -> None:
         insp = inspect(engine)
         assert "accounts" in insp.get_table_names()
         colunas = [c["name"] for c in insp.get_columns("accounts")]
-        assert colunas == ["id", "username", "nickname", "token_hash", "created_at", "updated_at"]
+        assert colunas == [
+            "id",
+            "username",
+            "nickname",
+            "token_hash",
+            "created_at",
+            "updated_at",
+            "tutorial_clear",
+            "total_exp",
+            "ld",
+            "cash",
+        ]
         unicos = sorted(u["name"] for u in insp.get_unique_constraints("accounts"))
         assert unicos == [
             "accounts_nickname_unique",

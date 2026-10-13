@@ -5,6 +5,7 @@ from collections.abc import Sequence
 
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.rooms import Rooms
+from landmass_emu.handlers.channel.progression import ProgressionHandlers
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.handlers.channel.rooms import RoomHandlers
 from landmass_emu.net.server import Reply, reply_body
@@ -40,12 +41,14 @@ class EntryHandlers:
         rooms: Rooms,
         records: ChannelRecords,
         room_handlers: RoomHandlers,
+        progression: ProgressionHandlers,
     ) -> None:
         self._sessions = sessions
         self._lobby = lobby
         self._rooms = rooms
         self._records = records
         self._room_handlers = room_handlers
+        self._progression = progression
 
     async def in_channel_server(self, session: Session, payload: bytes) -> Sequence[Reply]:
         req = CsInChannelServerIn.unpack(payload)
@@ -56,7 +59,12 @@ class EntryHandlers:
             return [CsInChannelServerOut(client_guid=0, result=RESULT_INVALID_LOGIN)]
         session.account = account
         log.info("[%s] canal: login de %s", session.peer, account.username)
-        return [CsInChannelServerOut(client_guid=account.id, result=RESULT_OK), CsChannelInfoOut()]
+        record, pushes = await self._progression.login_state(account.id)
+        return [
+            CsInChannelServerOut(client_guid=account.id, result=RESULT_OK, progress=record),
+            CsChannelInfoOut(),
+            *pushes,
+        ]
 
     async def in_channel(self, session: Session, payload: bytes) -> Sequence[Reply]:
         # shortcut: payload (u32 num, ou vazio) ignorado porque o servidor tem um canal só; revisar
@@ -65,9 +73,12 @@ class EntryHandlers:
         if account is None:
             log.warning("[%s] InChannel antes do login; ignorado", session.peer)
             return []
+        # shortcut: a 151 da lista sai com total_exp zero (ChannelRecords só tem o nick); a
+        # exp do banco vai no 121 e no 101. Revisar com a 151 do cliente real.
+        exp = await self._progression.total_exp(account.id)
         # Entra antes de montar a lista: a 151 traz o próprio jogador (ver ChannelRecords).
         self._lobby.join(account.id, session, account.nickname)
-        me = CsChannelPlayer(client_guid=account.id, nick=account.nickname)
+        me = CsChannelPlayer(client_guid=account.id, nick=account.nickname, total_exp=exp)
         players = self._records.lobby_players()
         self._lobby.broadcast(reply_body(CsInChannelOut(me), CHANNEL_NET_CODE), exclude=session)
         log.info("[%s] entrou no lobby (%d jogadores)", session.peer, len(players))

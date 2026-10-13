@@ -2,7 +2,7 @@
 
 Implementação: `protocol/channel.py` (codec), `domain/lobby.py` (presença), `domain/rooms.py` (salas em memória), `handlers/channel/` (comportamento; salas em `rooms.py`), `ports/options.py` (opções, gravadas pelo 544), `net/server.py` (transporte). Evidências e layouts completos: [`../../re/channel_server.md`](../../re/channel_server.md) e [`../../re/rooms.md`](../../re/rooms.md).
 
-Este documento cobre o que o emulador implementa: marco 2 (entrada, lobby, chat), F1 (opções, 544) e marco 3 (salas: criar, entrar, sair, slots, pronto, início, expulsar). Os demais opcodes da tabela completa seguem como não tratados: logados com hexdump e ignorados, sem derrubar a conexão.
+Este documento cobre o que o emulador implementa: marco 2 (entrada, lobby, chat), F1 (opções, 544), marco 3 (salas: criar, entrar, sair, slots, pronto, início, expulsar) e F2 e F3 (tutorial, saldos e exp). Os demais opcodes da tabela completa seguem como não tratados: logados com hexdump e ignorados, sem derrubar a conexão.
 
 ## Grupos de opcodes
 
@@ -24,10 +24,11 @@ Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151
 | Pedido (C→S) | Resposta (S→C) | Efeito |
 |--------------|----------------|--------|
 | `2` heartbeat | nenhuma | Conta como tráfego. O servidor não responde. |
-| `100` InChannelServer, `char session_key[33]` | `101` (176 bytes, `result` @0xa8) e `111` (`count` 1) | Resolve a chave de sessão emitida no `111` do Message. Chave recusada (zerada, desconhecida, expirada ou de conta reemitida): `101` com `result` -160 e sem entrada no lobby. |
+| `100` InChannelServer, `char session_key[33]` | `101` (176 bytes, `result` @0xa8, progressão do próprio jogador), `111` (`count` 1) e os saldos `900` e `902` (F3) | Resolve a chave de sessão emitida no `111` do Message. Chave recusada (zerada, desconhecida, expirada ou de conta reemitida): `101` com `result` -160 e sem entrada no lobby. |
 | `120` InChannel, corpo ignorado | `151` (todos os jogadores do lobby, o próprio incluído, com nick), `141` (salas do canal), `121` (próprio registro) | Entra no lobby. Os demais jogadores recebem `121` com o registro do recém-chegado. |
 | `122` OutChannel | `123` (próprio id) | Sai da sala, se estiver em uma (322, e 332 ou 342), e do lobby. Os demais jogadores recebem `123`. |
 | `240` SendMsg, `u8 msg_type`, `u8 len`, texto | `241` a todos do lobby, remetente incluído; se o remetente está em sala, só aos membros da sala | Chat. Sem login ou fora do lobby: ignorado. |
+| `600` TutorialClear, `u8 passo` (0 a 2) | `601` (máscara e LD) | Liga o bit do passo em `accounts.tutorial_clear` com um `UPDATE` (pedidos concorrentes não perdem bit). Passo fora da faixa: `ValueError` logado, nada gravado, conexão mantida. Sem login: ignorado. |
 | `301` CreateRoom, 74 bytes | `302` ao lobby (registro da sala), `312` ao lobby (criador no slot 0), `314` e `317` ao criador | Cria a sala em memória; o criador é o dono e fica pronto. Nome curto: envelope `54` com `302` e código 211000202. Outro erro: código 211000201. |
 | `311` InRoom, 20 bytes | `312` ao lobby; `314` e `317` ao entrante | Entra no primeiro slot livre. Recusa: `312` com código negativo só ao entrante, com 1001 (sala não existe), 1202 (cheia), 1701 (senha) ou 200 (partida já iniciada). Estar em sala já: sem resposta. |
 | `321` OutRoom, vazio | `322` ao lobby; `332` se trocou o dono; `342` se a sala esvaziou | Sai da sala. |
@@ -54,10 +55,10 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 2 | C↔S | `HEARTBEAT` | vazio | implementado |
 | 54 | S→C | `ERROR` (envelope) | 8 bytes: opcode real e código | implementado |
 | 100 | C→S | `IN_CHANNEL_SERVER` | `char session_key[33]` | implementado |
-| 101 | S→C | `IN_CHANNEL_SERVER_OUT` | 176 bytes | implementado |
+| 101 | S→C | `IN_CHANNEL_SERVER_OUT` | 176 bytes | implementado (progressão de `@0x28` a `@0x4C`, F2 e F3; ver Layouts) |
 | 111 | S→C | `CHANNEL_INFO_OUT` | `u8 count` = 1 | implementado (shortcut) |
 | 120 | C→S | `IN_CHANNEL` | `u32 num` ou vazio | implementado (`num` ignorado) |
-| 121 | S→C | `IN_CHANNEL_OUT` | entrada de jogador, 40 bytes | implementado |
+| 121 | S→C | `IN_CHANNEL_OUT` | entrada de jogador, 40 bytes | implementado (`total_exp` = exp do banco, F3: o 121 sobrescreve o nó do próprio jogador) |
 | 122 | C→S | `OUT_CHANNEL` | vazio | implementado |
 | 123 | S→C | `OUT_CHANNEL_OUT` | 8 bytes | implementado |
 | 141 | S→C | `CHANNEL_ROOM_INFO_OUT` | `u16 count` + registros de sala de 68 bytes | implementado |
@@ -68,6 +69,10 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 548 | S→C | `REFRESH_PLAYER_LIST_OUT` | `u8 count` + entradas de 20 bytes | implementado (resposta só a quem está no lobby) |
 | 240 | C→S | `SEND_MESSAGE` | `u8 msg_type`, `u8 len`, texto | implementado |
 | 241 | S→C | `SEND_MESSAGE_OUT` | 8 bytes + texto | implementado |
+| 600 | C→S | `TUTORIAL_CLEAR` | `u8 passo` (0 a 2) | implementado (F2): liga o bit `1 << passo`; passo fora da faixa é logado e nada é gravado |
+| 601 | S→C | `TUTORIAL_CLEAR_OUT` | `i32` máscara @0, `i32` LD @4 | implementado (F2); o LD vai no @4 porque o cliente o grava em `iPoint` |
+| 900 | S→C (push) | `CHARGE_CASH_OUT` | `i32` Cash | implementado (F3): enviado depois do 111 no login |
+| 902 | S→C (push) | `CHARGE_POINT_OUT` | `i32` LD | implementado (F3): enviado depois do 111 no login; bloco misto no dispatcher (shortcut) |
 | 301 | C→S | `CREATE_ROOM` | 74 bytes | implementado (shortcut) |
 | 302 | S→C | `CREATE_ROOM_OUT` | registro de sala, 612 bytes | implementado (shortcut) |
 | 311 | C→S | `IN_ROOM` | 20 bytes | implementado (shortcut) |
@@ -130,7 +135,13 @@ Offsets no corpo, depois do cabeçalho `u16`. Campo sem nome no RE recebe o nome
 
 | Offset | Tipo | Campo | Valor |
 |-------:|------|-------|-------|
-| 0x00..0x8F | `byte[144]` | registro do próprio jogador (não decodificado) | zeros |
+| 0x00..0x27 | `byte[40]` | registro do próprio jogador (não decodificado) | zeros |
+| 0x28 | `i32` | `iTutorialClear` (máscara, nó+0x38) | `accounts.tutorial_clear` (F2) |
+| 0x2C | `i32` | `iTotalExp` (nó+0x3c; patente é derivada no cliente) | `accounts.total_exp` (F3) |
+| 0x30..0x47 | `byte[24]` | não decodificado | zeros |
+| 0x48 | `i32` | `iCash` (nó+0x58) | `accounts.cash` (F3) |
+| 0x4C | `i32` | `iPoint`, LD (nó+0x5c) | `accounts.ld` (F3) |
+| 0x50..0x8F | `byte[64]` | não decodificado | zeros |
 | 0x90 | `i32` | id do jogador; lido como `DAT_1005ada0` | `account.id` |
 | 0x94..0x9F | `byte[12]` | não decodificado | zeros |
 | 0xA0 | `i32` | id do jogador (chave do nó, eco de 0x90) | `account.id` |
@@ -442,7 +453,7 @@ Só quem está no lobby entra na resposta; sem nenhum, não há resposta. O clie
 
 Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cliente real, remova a inferência ou corrija o layout.
 
-1. **Nick e progressão.** O nick vem em `R+0x08` de 151, 121 e 317 (`re/layouts_f0.md` §1.2), copiado de `account.nickname`. `total_exp`, clã, marca e nest vão zerados até o marco 5.
+1. **Nick e progressão.** O nick vem em `R+0x08` de 151, 121 e 317 (`re/layouts_f0.md` §1.2), copiado de `account.nickname`. `total_exp` do 121 de quem entra e do 101 vem do banco (F3); na 151 e no 317 sai zero (`ChannelRecords` só tem o nick). Clã, marca e nest vão zerados até o marco 5.
 2. **111 com `count` 1.** `FUN_1001c170` não lê o corpo da entrada (`re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` L978–992). Nenhum dado do canal é enviado. Se o cliente exigir nome de canal, o layout precisa ser decodificado.
 3. **`num` do `120`.** O servidor original tem `channel_count 1`; o emulador ignora o `num`. Se o cliente escolher canais por índice, a lista de 111 precisa de mais de uma entrada.
 4. **`result` recusado.** -160 é o código de senha inválida do Message. O canal original pode usar outro código.
@@ -465,6 +476,8 @@ Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cli
 21. **Pronto e seletor (402, 317).** O bit de pronto é `u8 @4` do 402 e `u8 @0x29` do 317. O seletor `@0x2A` do 317 vai zero (inferido).
 22. **Limite de entrada.** Valores fora da faixa na criação são limitados e logados, não recusados. Sem paginação de salas: o limite de 955 por 141 vale até o marco 4.
 23. **Troca de dono (332).** Passa para o primeiro membro na ordem de entrada. Regra escolhida, não observada no cliente.
+24. **Progressão no login (F2 e F3).** O 101 leva tutorial, exp, Cash e LD em `@0x28`, `@0x2C`, `@0x48` e `@0x4C` (`PlayerRecord`), e os pushes 900 e 902 saem depois do 111. Inferido dos layouts `LM_PLAYER_INFO` (`re/layouts_f0.md` §1.1 e §7.6); não confirmado no cliente real. O 902 vai no bloco misto do dispatcher (shortcut).
+25. **Exp nos demais registros.** Só o 101 e o 121 de quem entra levam a exp do banco. A 151 da lista, a 548 (resposta ao 546) e o 317 da sala saem com `total_exp` zero, e a 549 não é tratada. A 151 traz o próprio jogador, mas o 121 chega depois e corrige a exp dele. Se o cliente grava a 548 e o 317 no nó do jogador como faz com o 121, a exp própria pode voltar a zero após um 546 ou uma entrada em sala. Não verificado no cliente real. Correção natural, fora deste marco: guardar `total_exp` no membro do lobby ao entrar e preenchê-lo na 151, na 317 e na 548.
 
 ## Checklist no cliente real
 

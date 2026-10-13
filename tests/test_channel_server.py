@@ -7,8 +7,10 @@ from pathlib import Path
 
 import pytest
 
-from landmass_emu.app import game_servers, open_accounts
+from landmass_emu.app import game_servers, open_accounts, open_database
+from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.domain.account import hash_token
+from landmass_emu.domain.progression import Grant
 from landmass_emu.net.framing import encode_frame, read_frame
 from landmass_emu.net.server import Service
 from landmass_emu.protocol.channel import CsHeartbeat, CsOp
@@ -19,6 +21,7 @@ from landmass_emu.protocol.header import (
     unpack_header,
 )
 from landmass_emu.protocol.message import MsLoginIn, MsOp, cstr
+from landmass_emu.protocol.progression import CsProgressionOp
 from landmass_emu.settings import Settings
 
 TOKEN_ANA = "0123456789abcdef0123456789abcdef"
@@ -99,14 +102,21 @@ async def _connect(server: asyncio.Server, net_code: int) -> AsyncIterator[Clien
             await writer.wait_closed()
 
 
+async def _saldos_do_login(c: Client) -> None:
+    """Depois do 111, o login envia os saldos: 900 (Cash) e 902 (LD). Conta nova: zeros."""
+    assert await c.expect(CsProgressionOp.CHARGE_CASH_OUT) == bytes(4)
+    assert await c.expect(CsProgressionOp.CHARGE_POINT_OUT) == bytes(4)
+
+
 async def _entra_no_canal(c: Client, chave: str, guid: int) -> None:
-    """100 → 101/111, depois 120 → 151/141/121. Confere o id nos offsets do cliente."""
+    """100 → 101/111/900/902, depois 120 → 151/141/121. Confere o id nos offsets do cliente."""
     await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
     body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
     assert struct.unpack_from("<i", body, 0x90) == (guid,)
     assert struct.unpack_from("<i", body, 0xA0) == (guid,)
     assert struct.unpack_from("<i", body, 0xA8) == (0,)
     assert await c.expect(CsOp.CHANNEL_INFO_OUT) == b"\x01\x00"
+    await _saldos_do_login(c)
     await c.send(CsOp.IN_CHANNEL)
     await c.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
     await c.expect(CsOp.CHANNEL_ROOM_INFO_OUT)
@@ -134,6 +144,7 @@ async def test_dois_clientes_se_veem_no_lobby(tmp_path: Path) -> None:
             await b.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave_bia))
             await b.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             await b.expect(CsOp.CHANNEL_INFO_OUT)
+            await _saldos_do_login(b)
             await b.send(CsOp.IN_CHANNEL)
             lista = await b.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
             assert lista[0:2] == b"\x02\x00"  # A e B: a 151 inclui quem está pedindo
@@ -196,6 +207,7 @@ async def test_pedidos_fora_de_ordem_e_opcodes_desconhecidos_nao_derrubam(tmp_pa
             await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
             await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             await c.expect(CsOp.CHANNEL_INFO_OUT)
+            await _saldos_do_login(c)
 
 
 async def test_chave_zerada_ou_inventada_e_recusada(tmp_path: Path) -> None:
@@ -251,11 +263,13 @@ async def test_opcoes_do_canal_voltam_no_111_do_proximo_login(tmp_path: Path) ->
             await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
             await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             await c.expect(CsOp.CHANNEL_INFO_OUT)
+            await _saldos_do_login(c)
             await c.send(CsOp.SAVE_OPTION, OPCOES)  # sem resposta
             # O 100 seguinte só é respondido depois de o canal processar o 544.
             await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
             await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             await c.expect(CsOp.CHANNEL_INFO_OUT)
+            await _saldos_do_login(c)
 
         corpo = await _register_body(msg, TOKEN_ANA)
         assert corpo[0x00:0x25] == OPCOES
@@ -277,10 +291,12 @@ async def test_save_option_sem_login_ou_curto_e_ignorado(tmp_path: Path) -> None
             await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
             await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             await c.expect(CsOp.CHANNEL_INFO_OUT)
+            await _saldos_do_login(c)
             await c.send(CsOp.SAVE_OPTION, OPCOES[:36])  # 36 bytes: logado e ignorado
             await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))  # a conexão continua viva
             await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             await c.expect(CsOp.CHANNEL_INFO_OUT)
+            await _saldos_do_login(c)
 
         corpo = await _register_body(msg, TOKEN_ANA)
         assert corpo[0x00:0x25] == bytes(0x25)
@@ -306,6 +322,7 @@ async def test_lobby_lista_todos_com_nick_e_546_responde_so_a_quem_esta_no_lobby
             await a.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave_ana))
             await a.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             await a.expect(CsOp.CHANNEL_INFO_OUT)
+            await _saldos_do_login(a)
             await a.send(CsOp.IN_CHANNEL)
             lista = await a.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
             assert lista[0:2] == b"\x01\x00"
@@ -318,6 +335,7 @@ async def test_lobby_lista_todos_com_nick_e_546_responde_so_a_quem_esta_no_lobby
             await b.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave_bia))
             await b.expect(CsOp.IN_CHANNEL_SERVER_OUT)
             await b.expect(CsOp.CHANNEL_INFO_OUT)
+            await _saldos_do_login(b)
             await b.send(CsOp.IN_CHANNEL)
             lista = await b.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
             assert lista[0:2] == b"\x02\x00"
@@ -357,3 +375,56 @@ async def test_servidor_envia_heartbeat_periodico() -> None:
             assert await c.expect(CsOp.HEARTBEAT) == b""
         finally:
             writer.close()
+
+
+async def test_tutorial_responde_601_e_passo_sobrevive_ao_reinicio(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+
+    async with game_servers(settings) as (msg, ch):
+        chave = await _chave_de_sessao(msg, TOKEN_ANA)
+        async with _connect(ch, CHANNEL_NET_CODE) as c:
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
+            await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            await c.expect(CsOp.CHANNEL_INFO_OUT)
+            await _saldos_do_login(c)
+            await c.send(CsProgressionOp.TUTORIAL_CLEAR, b"\x00")
+            assert await c.expect(CsProgressionOp.TUTORIAL_CLEAR_OUT) == struct.pack("<ii", 1, 0)
+            await c.send(CsProgressionOp.TUTORIAL_CLEAR, b"\x02")
+            assert await c.expect(CsProgressionOp.TUTORIAL_CLEAR_OUT) == struct.pack("<ii", 5, 0)
+            await c.send(CsProgressionOp.TUTORIAL_CLEAR, b"\x03")  # passo 3 não existe
+            await c.assert_silencio()
+
+    async with game_servers(settings) as (msg, ch):
+        chave = await _chave_de_sessao(msg, TOKEN_ANA)
+        async with _connect(ch, CHANNEL_NET_CODE) as c:
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
+            body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            assert struct.unpack_from("<i", body, 0x28) == (5,)  # iTutorialClear no 101
+
+
+async def test_grant_aparece_no_login_nos_pushes_e_no_lobby(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        ana = await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+    async with open_database(settings) as db:
+        await SqlProgressionRepository(db).grant(ana.id, Grant(exp=2800, ld=1000, cash=500))
+
+    async with game_servers(settings) as (msg, ch):
+        chave = await _chave_de_sessao(msg, TOKEN_ANA)
+        async with _connect(ch, CHANNEL_NET_CODE) as c:
+            await c.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave))
+            body = await c.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            assert struct.unpack_from("<i", body, 0x2C) == (2800,)  # iTotalExp
+            assert struct.unpack_from("<i", body, 0x48) == (500,)  # iCash
+            assert struct.unpack_from("<i", body, 0x4C) == (1000,)  # iPoint
+            await c.expect(CsOp.CHANNEL_INFO_OUT)
+            assert await c.expect(CsProgressionOp.CHARGE_CASH_OUT) == struct.pack("<i", 500)
+            assert await c.expect(CsProgressionOp.CHARGE_POINT_OUT) == struct.pack("<i", 1000)
+            await c.send(CsOp.IN_CHANNEL)
+            await c.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
+            await c.expect(CsOp.CHANNEL_ROOM_INFO_OUT)
+            body = await c.expect(CsOp.IN_CHANNEL_OUT)
+            # O 121 sobrescreve o nó do próprio jogador: a exp não pode voltar a zero.
+            assert struct.unpack_from("<i", body, 4) == (2800,)

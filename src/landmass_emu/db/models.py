@@ -1,5 +1,5 @@
-"""Modelo SQLAlchemy: `accounts` (marco 1) e `account_options` (F1). Nomes seguem a convenção
-Laravel (D11). Colunas de `account_options` na ordem de `LmRegisterInfo`."""
+"""Modelo SQLAlchemy: `accounts` (marco 1, progressão em F2 e F3) e `account_options` (F1). Nomes
+seguem a convenção Laravel (D11). Colunas de `account_options` na ordem de `LmRegisterInfo`."""
 
 from datetime import datetime
 
@@ -25,6 +25,10 @@ class AccountRow(Base):
     token_hash: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    tutorial_clear: Mapped[int] = mapped_column(Integer, server_default="0")
+    total_exp: Mapped[int] = mapped_column(Integer, server_default="0")
+    ld: Mapped[int] = mapped_column(Integer, server_default="0")
+    cash: Mapped[int] = mapped_column(Integer, server_default="0")
 
 
 class OptionsRow(Base):

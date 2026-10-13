@@ -423,7 +423,7 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 
 ## 6. Mapeamento opcode → caso de uso → tabelas
 
-Estado atual: os opcodes desta seção não são tratados hoje. Tratados (ver [channel-server.md](../protocol/channel-server.md) e [message-server.md](../protocol/message-server.md)): Channel 2, 100, 101, 111, 120–123, 141, 151 (lobby), 240, 241; Message 2, 100, 101, 110, 111, 120, 121, 130, 131.
+Estado atual: os opcodes desta seção não são tratados hoje. Tratados (ver [channel-server.md](../protocol/channel-server.md) e [message-server.md](../protocol/message-server.md)): Channel 2, 100, 101, 111, 120–123, 141, 151 (lobby), 240, 241, 544 (F1), 600, 601, 900, 902 (F2 e F3); Message 2, 100, 101, 110, 111, 120, 121, 130, 131.
 
 Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou alguns campos; **falta** = só o nome.
 
@@ -453,18 +453,18 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 588 | C→S | Sair do hangar | — | sem chamador na UI | — |
 | 590 | S→C (push) | Troca de morat principal | `accounts` | falta | falta |
 | 591 | S→C (push) | Prêmio de gacha | `account_items`, `accounts` | falta (array `LM_GATCHA_PRIZE`) | falta |
-| 600 | C→S | Marcar passo do tutorial | `accounts` | parcial: `u8 @0` | falta |
-| 601 | S→C | Resposta do tutorial | `accounts` | inferido: `Tutorial`, `Point`, `Result` | falta |
+| 600 | C→S | Marcar passo do tutorial | `accounts` | `u8 @0` (passo 0 a 2) | implementado (F2) |
+| 601 | S→C | Resposta do tutorial | `accounts` | `i32 @0` máscara, `i32 @4` LD | implementado (F2) |
 | 610 | C→S | Listar presentes | `gifts` | parcial: `u32 @0` (página) | falta |
 | 611 | S→C | Lista de presentes | `gifts` | falta (bloco 1483–1522) | falta |
 | 612 | C→S | Resgatar presente (sem UI) | `gifts` | parcial: `u32 @0` | falta |
 | 615 | C→S | Enviar presente | `gifts`, `accounts` | parcial: 24 bytes (6 `u32`); nick e mensagem sem separação | falta |
 | 616 | S→C | Resultado do presente | — | inferido: `i32` | falta |
 | 512 | S→C | Resultado da partida | `accounts` | parcial: `i32 @0`, `@4`, `@8`, `i16 @0xc`, `i32 @0x10` | falta |
-| 151 / 317 / 549 | S→C | Registro do jogador (exp e saldo) | `accounts` | parcial: campo de `iTotalExp` não localizado (dúvida 20) | parcial (lobby) |
-| 900 | S→C (push) | Saldo de Cash | `accounts` | parcial: `i32 @0` | falta |
+| 151 / 317 / 549 | S→C | Registro do jogador (exp e saldo) | `accounts` | `i32 @4` = `iTotalExp` (layouts_f0 §1.2) | parcial (lobby; exp e saldo do próprio jogador vão no 101 e no 121) |
+| 900 | S→C (push) | Saldo de Cash | `accounts` | `i32 @0` | implementado (F3, no login) |
 | 901 | S→C (push) | Premium | `accounts` | falta | falta |
-| 902 | S→C (push) | Saldo de LD (bloco misto) | `accounts` | falta | falta |
+| 902 | S→C (push) | Saldo de LD (bloco misto) | `accounts` | `i32 @0` | implementado (F3, no login) |
 | GS_* (1002, 1010, 1011, 1020) | GS ↔ Channel | Entrada e saída de jogadores da partida | — | documentado; **resultado da partida não tem opcode** (dúvida 17) | parcial (marco 4) |
 
 ### 6.2 Message (porta 7313)
@@ -509,8 +509,8 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 |-------|---------|-----------|------------------------------------|
 | F0 | Decodificar layouts pendentes: 102, 103 (completo), 151/317/549 (exp e saldos), 171, 512, 551, 552, 601, 611, 616, 900–902. Cada um vira fixture em `tests/fixtures/` com teste de ida e volta. | — | Cada layout confere com captura real; `re/` atualizado. |
 | F1 (implementada) | `account_options`. 544 grava 37 bytes; 110 → 111 devolve os valores. | — | Mudar sensibilidade do mouse em Opções, sair do jogo, logar: valor mantido. |
-| F2 | `accounts.tutorial_clear`. 600 marca o bit; 601 responde. | F0 (601) | Concluir passo 1; reiniciar o servidor; passo aparece concluído e não é reenviado. |
-| F3 | `total_exp`, `ld`, `cash`; patente derivada; push 900/902; CLI `account grant --exp --ld --cash`. | F0 (151/317/900/902) | `grant --exp 2800 --ld 1000`: cliente mostra LD 1000, patente "Praça" e progresso. `grant --cash 500`: Cash 500 na loja. |
+| F2 (implementada) | `accounts.tutorial_clear`. 600 marca o bit; 601 responde. | F0 (601) | Concluir passo 1; reiniciar o servidor; passo aparece concluído e não é reenviado. |
+| F3 (implementada) | `total_exp`, `ld`, `cash`; patente derivada; push 900/902; CLI `account grant --exp --ld --cash`. | F0 (151/317/900/902) | `grant --exp 2800 --ld 1000`: cliente mostra LD 1000, patente "Praça" e progresso. `grant --cash 500`: Cash 500 na loja. |
 | F4 | `account_items`; 102; CLI `account item add --catalog <id> --days <n>`. | F0 (102) | Item da CLI aparece no hangar com nome e validade; some após `DELETE` e reconexão. |
 | F5 | `account_morats`; 103; 105/104; CLI `account morat add --catalog <id> --gate <n>`. | F0 (103) | Morat aparece no gate indicado; classe regular persiste após reconexão. |
 | F6 | Equipar e desequipar (560, 570, 573); montagem de parte e de item de sistema. | F4, F5 | Equipar arma no gate; reconectar; continua montada. Buff vai para `system_slot`. |
@@ -548,12 +548,12 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 12. **Códigos de erro** de compra, uso, extensão e presente: o mapa de `msg_error` não foi identificado para essas ações.
 13. **Arredondamento** de exp e LD (float para inteiro): proposta, truncar. Confirmar.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
-15. **Resposta do tutorial:** código (601 inferido) e significado de `Point`.
+15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
 16. **Opcodes não medidos:** remover amigo, adicionar e remover bloqueio, lista de clã, membros, chat de clã, corpo de 152. Também `NotifyFriendLog` não tem opcode.
 17. **Resultado da partida:** opcode do GS_* que entrega o resultado ao canal [bloqueia F9]. Limite de amigos e de bloqueados.
 18. **Clã:** criação e gestão só pela CLI? Confirmar.
 19. **Índice de inventário:** `account_items` e `account_morats` compartilham `inventory_index` ou têm namespaces separados?
-20. **Campo de exp e saldo no registro do jogador:** qual pacote (151, 317 ou 549) entrega `iTotalExp`, `iPoint` e `iCash` ao cliente [bloqueia F3].
+20. **Campo de exp e saldo no registro do jogador:** qual pacote (151, 317 ou 549) entrega `iTotalExp`, `iPoint` e `iCash` ao cliente [bloqueia F3]. **Resolvida em F3 (inferido, confirmar no cliente real):** o 101 entrega `iTutorialClear`, `iTotalExp`, `iCash` e `iPoint` (`@0x28`, `@0x2c`, `@0x48`, `@0x4c`), pelo layout de `LM_PLAYER_INFO`. O 121 de quem entra entrega `iTotalExp` em `@4`. 151, 317 e 549 também trazem `iTotalExp` (`R+0x04`): quem implementar salas precisa preenchê-lo, senão zera o nó do próprio jogador.
 21. **Penalidades:** entram neste escopo? O cliente não tem tela de penalidade (features §12).
 22. **Ranking por nest** (`oddeye`, `shadow`, `leon` do legado): não migrado no primeiro corte. Confirmar.
 23. **Pacotes `gift_okcashback1..3`:** quem os concede e quando?

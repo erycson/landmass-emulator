@@ -28,6 +28,7 @@ uv run landmass-emu account token --user fulano
 | `serve` | Aplica as migrações e sobe o Message Server em `LANDMASS_BIND_HOST:LANDMASS_MESSAGE_PORT` (padrão `0.0.0.0:7313`). |
 | `account create --user U --nickname N` | Cria a conta com um token novo, grava `jogar_U.bat` na pasta do cliente e imprime o caminho do `.bat`. |
 | `account token --user U` | Gera novo token, regrava `jogar_U.bat` e invalida o token anterior. |
+| `account grant --user U [--exp N] [--ld N] [--cash N]` | Soma exp, LD e Cash à conta. Grava no banco e imprime os totais e a patente. Um servidor em execução não é avisado: o cliente vê os valores ao relogar. |
 
 - `--client-dir` sobrescreve `LANDMASS_CLIENT_DIR` (padrão `../cliente/system`).
 - `--user`: 1 a 12 caracteres minúsculos, dígitos ou `_` (vira nome de arquivo `.bat`; sem maiúsculas para evitar colisão no Windows). `--nickname`: 1 a 16 bytes em cp1252.
