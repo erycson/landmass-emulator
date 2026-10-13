@@ -13,3 +13,4 @@ Formato: uma linha por decisão. Ao substituir uma decisão, marque a antiga com
 | D7 | Dados estáticos lidos de `landmass.wdb` do cliente, não copiados. | O cliente é a fonte da verdade (R1). | aceita |
 | D8 | Tokens com `sha256` + `compare_digest`; senhas com `argon2id`. | Substitui XP Crypt; custo adequado a cada tipo de segredo. | aceita |
 | D9 | Handlers devolvem `Sequence[Reply]`; `net/server.py` envia. | Handler testável sem socket; a assinatura `ctx.session.send` do plano inicial foi descartada. | aceita |
+| D10 | Contas são criadas só pela CLI (`account create`); o servidor nunca cria conta no login. Token desconhecido → 101 com `result=-160`. | Pedido do usuário; controle de quem joga. | aceita |
