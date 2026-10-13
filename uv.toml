@@ -1,0 +1,2 @@
+# Mantém o cache do uv dentro de D:\landmass.
+cache-dir = "../.uv-cache"
