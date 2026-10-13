@@ -46,7 +46,7 @@ Regras de dependência:
 | `src/landmass_emu/handlers/channel/` | Lobby, salas, loja, hangar, game server (marcos 2 a 4). |
 | `src/landmass_emu/domain/` | `account.py` (conta, token), `channel.py` (canal). Demais entidades nos marcos seguintes. |
 | `src/landmass_emu/ports/accounts.py` | Protocol `AccountRepository` e exceção `AccountConflict`. |
-| `src/landmass_emu/db/` | `models.py` (`tbl_account`), `accounts.py` (repositório SQLAlchemy), `engine.py` (migrações no start), `migrations/` (Alembic). |
+| `src/landmass_emu/db/` | `models.py` (`accounts`), `accounts.py` (repositório SQLAlchemy), `engine.py` (migrações no start), `migrations/` (Alembic). |
 | `src/landmass_emu/sniffer.py` | Captura de tráfego do cliente (ferramenta de RE). |
 | `tests/fixtures/` | Capturas reais usadas como golden files. |
 

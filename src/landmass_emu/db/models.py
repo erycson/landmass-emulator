@@ -1,4 +1,4 @@
-"""Modelo SQLAlchemy. Só `tbl_account` (marco 1); nomes de tabela e coluna originais (D6)."""
+"""Modelo SQLAlchemy. Só `accounts` (marco 1); nomes seguem a convenção Laravel (D11)."""
 
 from datetime import datetime
 
@@ -11,15 +11,16 @@ class Base(DeclarativeBase):
 
 
 class AccountRow(Base):
-    __tablename__ = "tbl_account"
+    __tablename__ = "accounts"
     __table_args__ = (
-        UniqueConstraint("userid", name="uq_tbl_account_userid"),
-        UniqueConstraint("nick", name="uq_tbl_account_nick"),
-        UniqueConstraint("token_hash", name="uq_tbl_account_token_hash"),
+        UniqueConstraint("username", name="accounts_username_unique"),
+        UniqueConstraint("nickname", name="accounts_nickname_unique"),
+        UniqueConstraint("token_hash", name="accounts_token_hash_unique"),
     )
 
-    account_code: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    userid: Mapped[str] = mapped_column(String(12))
-    nick: Mapped[str] = mapped_column(String(16))
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(12))
+    nickname: Mapped[str] = mapped_column(String(16))
     token_hash: Mapped[str] = mapped_column(String(64))
-    create_date: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

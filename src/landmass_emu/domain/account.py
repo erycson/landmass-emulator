@@ -6,14 +6,14 @@ import re
 import secrets
 from dataclasses import dataclass
 
-USER_ID_PATTERN = re.compile(r"[a-z0-9_]{1,12}")
+USERNAME_PATTERN = re.compile(r"[a-z0-9_]{1,12}")
 NICKNAME_MAX_BYTES = 16
 
 
 @dataclass(frozen=True, slots=True)
 class Account:
     id: int
-    user_id: str
+    username: str
     nickname: str
     token_hash: str
 
@@ -31,8 +31,8 @@ def verify_token(token: str, token_hash: str) -> bool:
     return hmac.compare_digest(hash_token(token), token_hash)
 
 
-def check_user_id(user_id: str) -> None:
-    if USER_ID_PATTERN.fullmatch(user_id) is None:
+def check_username(username: str) -> None:
+    if USERNAME_PATTERN.fullmatch(username) is None:
         raise ValueError("usuário: de 1 a 12 caracteres minúsculos, dígitos ou _")
 
 

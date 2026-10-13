@@ -27,7 +27,7 @@ async def login(accounts: AccountRepository, session: Session, payload: bytes) -
         log.info("[%s] login recusado", session.peer)
         return [MsLoginOut(MsResult.INVALID_PASSWORD)]
     session.account = account
-    log.info("[%s] login de %s", session.peer, account.user_id)
+    log.info("[%s] login de %s", session.peer, account.username)
     return [MsLoginOut(MsResult.OK)]
 
 

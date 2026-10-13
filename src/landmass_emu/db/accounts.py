@@ -13,9 +13,9 @@ from landmass_emu.ports.accounts import AccountConflict
 
 def _to_domain(row: AccountRow) -> Account:
     return Account(
-        id=row.account_code,
-        user_id=row.userid,
-        nickname=row.nick,
+        id=row.id,
+        username=row.username,
+        nickname=row.nickname,
         token_hash=row.token_hash,
     )
 
@@ -24,9 +24,9 @@ class SqlAccountRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
 
-    async def find_by_user_id(self, user_id: str) -> Account | None:
+    async def find_by_username(self, username: str) -> Account | None:
         async with self._sessions() as session:
-            row = await session.scalar(select(AccountRow).where(AccountRow.userid == user_id))
+            row = await session.scalar(select(AccountRow).where(AccountRow.username == username))
         return None if row is None else _to_domain(row)
 
     async def find_by_token_hash(self, token_hash: str) -> Account | None:
@@ -36,12 +36,14 @@ class SqlAccountRepository:
             )
         return None if row is None else _to_domain(row)
 
-    async def create(self, user_id: str, nickname: str, token_hash: str) -> Account:
+    async def create(self, username: str, nickname: str, token_hash: str) -> Account:
+        now = datetime.now(UTC)
         row = AccountRow(
-            userid=user_id,
-            nick=nickname,
+            username=username,
+            nickname=nickname,
             token_hash=token_hash,
-            create_date=datetime.now(UTC),
+            created_at=now,
+            updated_at=now,
         )
         try:
             async with self._sessions.begin() as session:
@@ -49,12 +51,12 @@ class SqlAccountRepository:
                 await session.flush()
                 return _to_domain(row)
         except IntegrityError as e:
-            raise AccountConflict(f"usuário {user_id!r} ou nickname {nickname!r} já existe") from e
+            raise AccountConflict(f"usuário {username!r} ou nickname {nickname!r} já existe") from e
 
     async def set_token_hash(self, account_id: int, token_hash: str) -> None:
         async with self._sessions.begin() as session:
             await session.execute(
                 update(AccountRow)
-                .where(AccountRow.account_code == account_id)
-                .values(token_hash=token_hash)
+                .where(AccountRow.id == account_id)
+                .values(token_hash=token_hash, updated_at=datetime.now(UTC))
             )
