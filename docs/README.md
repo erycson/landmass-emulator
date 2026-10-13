@@ -44,6 +44,7 @@ flowchart LR
 | Arquivo | Conteúdo |
 |---------|----------|
 | [running-client.md](operations/running-client.md) | Como iniciar o cliente contra o emulador, parâmetros obrigatórios, modo janela. |
+| [game-server.md](operations/game-server.md) | Cópia do servidor de partida (`servidor-partida`), patches, `servidor.bat`, porta UDP 7777 e sinais no log. |
 | [testing.md](operations/testing.md) | Níveis de teste, fixtures de captura e gates de qualidade. |
 | [reverse-engineering.md](operations/reverse-engineering.md) | Ferramentas (REA, Ghidra), fontes de verdade e como registrar achados. |
 

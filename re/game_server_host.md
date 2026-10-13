@@ -1,6 +1,6 @@
 # Hospedagem da partida do LandMass (UE2, build 3369)
 
-**Status: bloqueado.** Nenhuma instância de `LandMass.exe` (servidor ou cliente) chegou ao motor desde 16:22 de 2026-10-13. Nenhum servidor de partida foi confirmado. A recomendação da seção 7 é provisória.
+**Status (atualizado em 2026-10-13): cópia `servidor-partida` preparada com patches P1 e P-A, não testada; ver seção 9.** Estado anterior: bloqueado. Nenhuma instância de `LandMass.exe` (servidor ou cliente) chegou ao motor desde 16:22 de 2026-10-13. Nenhum servidor de partida foi confirmado. A recomendação da seção 7 é provisória.
 
 ## 1. Resumo
 
@@ -62,7 +62,9 @@ Tempos de saída medidos em N, `version_only`, `version+login` e flag inválida:
 
 Teste decisivo pendente (X): a linha exata do `jogar_teste.bat` em `cliente\system`, fora do sandbox, com 10 s de vida e `LandMass.log` com novo horário. Se o exe ficar vivo, a causa é o sandbox e não o exe, e os testes A e 2 processos podem seguir. Se sair em ~20 ms de novo, a conclusão desta seção se mantém.
 
-Única execução bem-sucedida conhecida: cliente via bat às 16:21 (`Game class is 'LM_EntryGame'`, `Bringing Level Entry.myLevel up for play`). `jogar_teste.bat` foi modificado às 16:56:34, depois dessa execução. O conteúdo atual tem a forma `login_server=...?version=...?login_num=...` e 111 caracteres.
+Servidor validado (2026-10-13): `ONS-Treino?listen -server -log login_server=127.0.0.1:7313?version=*?login_num=*` abre UDP 7777, `Game class is 'LM_DeathMatch'`. Os testes A, V2, V6 e D falharam porque havia tokens depois de `login_num=` ou faltava `login_server=`.
+
+Execução de cliente anterior: cliente via bat às 16:21 (`Game class is 'LM_EntryGame'`, `Bringing Level Entry.myLevel up for play`). `jogar_teste.bat` foi modificado às 16:56:34, depois dessa execução. O conteúdo atual tem a forma `login_server=...?version=...?login_num=...` e 111 caracteres.
 
 Logs sanitizados (versão e token trocados por `***`) em `scratchpad\run_*.log` e `scratchpad\E2_cliente2_LandMass.log`.
 
@@ -115,3 +117,48 @@ Status em 2026-10-13 (REA usado, nenhum binário alterado; detalhes em `re/cmdli
 - Se X ficar vivo: rodar A (servidor `-server`, UDP 7777 com o PID do servidor) e depois o cliente em `cliente2` com `127.0.0.1:7777 -log login_server=...?version=...?login_num=...`. Registrar `Login`, `Join` e `PostLogin` do servidor e o resultado de `LoginPlayer`, se houver rejeição.
 - Se X sair de novo em ~20 ms: pedir ao REA os itens 1 a 3 para localizar a saída de startup.
 - Não contornar o HShield. Pedir ao usuário confirmação direta se a ação for necessária.
+
+## 9. Preparação da cópia `servidor-partida` (2026-10-13)
+
+Evidência: REA sobre `LM_Engine.dll` (SHA-256 `4a08e7ce...`) e `Engine.dll` (SHA-256 `fc1369fa...`), mais os pseudocódigos em `re/LM_Engine.dll/`. Nenhum binário de `cliente` foi alterado. Operação de execução e testes: [`../docs/operations/game-server.md`](../docs/operations/game-server.md).
+
+### 9.1 Patches aplicados (só na cópia, com `.orig`)
+
+- P1 `system\Core.dll` offset `0x3F9C6` (260550): `74 0E` → `90 90`.
+- P-A `system\LandMass.exe` offset `0x209E4` (133604): `57` → `58` (UTF-16 `WLog` → `XLog`).
+- Conferido: `cmp -l` mostra só esses bytes; o `.orig` é idêntico ao de `cliente`.
+- Correção: `re/cmdline.md` dava `0x20A64` para P-A. O literal está em `0x209E4`; `0x20A64` (133732) tem outros bytes.
+
+### 9.2 Patch de `LoginPlayer` (b): não aplicado, sem efeito no caminho atual
+
+- `LoginPlayer` (`0x1000B680`) tem um único chamador direto: `UServerLevel::NotifyReceivedText` (`0x10014E60`), REA `procedure_callers`. O call site é `0x1001517F`, cdecl (`add esp,0x10` logo depois), então um retorno `xor eax,eax; ret` (`31 C0 C3`) seria seguro.
+- `UServerLevel` (ctor `0x100019C0`) não tem chamador direto. A referência é um dado em `0x1003CB28`, e a instância nasce do pacote do mapa pelo sistema de classes do UE2 (inferido).
+- `ONS-Treino.map` não contém a string `ServerLevel` (nem ASCII nem UTF-16). Portanto o nível da partida não é `UServerLevel` e `LoginPlayer` não roda.
+- Decisão: sem patch em `LM_Engine.dll`. Um patch ali não mudaria o comportamento. Se um mapa passar a exportar `ServerLevel`, o patch mínimo é `31 C0 C3` no offset de arquivo `0xB680` (o prólogo atual é `55 8B EC`).
+
+### 9.3 Protocolo GS_* (opção a), para registro
+
+Fonte: `re/channel_server.md`, seção 4, e `LM_Engine.dll/all/1000bcd0_FUN_1000bcd0.c`. Não implementado.
+
+- Direção Channel → partida: `1010` `GS_IN_PLAYER`, `1020` `GS_OUT_PLAYER`, `1002` controle. Resposta da partida: `1011`. Opcode = `hdr >> 5`; o net_code aceito é 14 (`ChannelNetCode()`).
+- `1010`, corpo (a partir do corpo, não do frame): `0x00..0x83` dados do jogador (copiados para `this+slot*0x90+0x604`); `0x84` flag (eco); `0x85` slot; `0x88` room guid; `0x8C` chave (guardada em `+0x4BC+slot*4`); `0x90..0xA0` nome de 17 bytes. Aceita se o room guid bate com `ServerRoom+0`, ou com `+0x600` quando `+0x5E4 == 6`. Senão responde `0xFFFFF060`.
+- `1011`, corpo de 16 bytes: resultado i32 `@0` (0 ou −4000), room guid `@4`, chave `@8`, flag `@12`, slot `@13`.
+- `1020`: room guid `@0`, chave `@4`. Remove o jogador do slot cuja chave bate. Sem resposta.
+- `1002`: `i32 @0 == 0` pede saída (`GIsRequestingExit`).
+- Registro no Channel: não identificado. `InitServer` (`0x1000C6D0`) só guarda `ch_ip`, `ch_port`, `ch_code` e `ch_pw`, não conecta. A conexão é o singleton `FUN_1000BA90` (`CnetworkClient` em `0x10057040`), cujo Tick (vtable `+0x10`) só é chamado por `ChannelServerTick` (`0x1000BB70`). `ChannelServerTick` e `InitServer` são exports sem chamador interno, e nenhum binário do pacote os importa.
+- Origem do room guid: `CServerRoom::Init` (`0x100163D0`) não foi lido nesta etapa. É o provável lugar de `+0x0` e `+0x10`.
+- Para o emulador falar esse protocolo, seria preciso: quem chama `ChannelServerTick` no host (não achado) e a origem do room guid. Só vale no caminho `UServerEngine`, que hoje não é usado.
+
+### 9.4 Chamador de `ULevel::Listen` (pendente)
+
+- `ULevel::Listen` (Engine `0x10441300`) não tem chamador direto (REA `procedure_callers`). É chamado por vtable.
+- `UServerLevel::Listen` (LM_Engine `0x10014A30`) carrega a classe do driver pelo nome, cria o driver (`FUN_10013E70`) e chama `InitListen` (vt `+0x88`). Só vale para `UServerLevel`, que não está no caminho (9.2).
+- Engine: a string FName `Listen` (`0x10662D04`) tem referências em `0x10423EAC`, `0x10423EC0`, `0x1042613E`, `0x10427844`, `0x10427875` e `0x1042D2BE`. As de `0x10427844` e `0x10427875` estão em `UGameEngine::Browse` (ramo `AbortToEntry`, `RemoveOption`). Não há `HasOption("listen")` em `Browse`, `Init` ou `LoadMap`.
+- Varredura de `call [reg+0xC4]` em `Engine.dll`: 11 sítios. Três foram examinados: `ULevel::ReconcileActors` (`0x10440D20`), `FUN_10437820` e `FUN_10436030`. Nenhum é evidentemente `Listen`. Os outros 8 não foram examinados.
+- Conclusão: a cadeia `?listen` → `ULevel::Listen` → UDP 7777 **não está comprovada**. Só o teste no ambiente real decide (`docs/operations/game-server.md`, seção "O que conferir no log").
+
+### 9.5 Caminho do servidor e recomendação
+
+- Caminho do teste: `GameEngine` padrão (`Engine.GameEngine`), nível `ULevel` (inferido: o objeto é o do pacote do mapa), net driver `IpDrv` em UDP 7777. Sem `UServerLevel`, `InitServer` ou Channel.
+- Consequência: no caminho de teste, o LOGIN é validado pela lógica UnrealScript (`XGame`), e não pela sala `CServerRoom`.
+- Pendências, em ordem: (1) chamador de `ULevel::Listen`; (2) saídas precoces sem causa (ver seção 1); (3) origem do room guid e chamador de `ChannelServerTick`, só se o protocolo (a) for necessário.

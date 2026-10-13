@@ -85,7 +85,7 @@ Explica a medição do coordenador (2ª instância sai em <3 s sem `LandMass.log
 ### Patch P-A (mínimo: 1 byte)
 
 - Arquivo: `D:\landmass\cliente\system\LandMass.exe`
-- Offset de arquivo: `133604` (`0x20A64`), literal UTF-16 `"WLog"` (verificado: `57 00 4C 00 6F 00 67 00 00 00`).
+- Offset de arquivo: `133604` (`0x209E4`) (corrigido em 2026-10-13: o valor `0x20A64` anterior estava errado; ver `re/game_server_host.md`, seção 9), literal UTF-16 `"WLog"` (verificado: `57 00 4C 00 6F 00 67 00 00 00`).
 - Bytes antigos: `57` (`W`)
 - Bytes novos: `58` (`X`)
 - Efeito: `FindWindowExW(..., "XLog", ...)` não acha a janela da 1ª instância. O repasse não acontece e a 2ª instância segue para `appInit`, gravando o próprio `LandMass.log`.
