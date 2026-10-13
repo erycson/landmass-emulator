@@ -11,10 +11,9 @@ ROOM_WAITING = 1
 ROOM_PLAYING = 2
 MAX_SLOTS = 70
 NAME_MIN_BYTES = 3
-# shortcut: 31 bytes de nome (char[32] com NUL) e 15 de senha (char[16]); tamanhos inferidos do
-# layout de 301/311 (protocol/channel.py). Revisar com o hexdump do primeiro 301 real.
-NAME_MAX_BYTES = 31
-PASSWORD_MAX_BYTES = 15
+# 301 traz char[51] e char[13] (re/layouts_f0.md §7.1).
+NAME_MAX_BYTES = 50
+PASSWORD_MAX_BYTES = 12
 
 
 class RoomReason(Enum):
@@ -28,7 +27,7 @@ class RoomReason(Enum):
     NOT_READY = "ninguém pronto para iniciar"
     SLOT_TAKEN = "slot ocupado"
     NO_SUCH_PLAYER = "jogador não está na sala"
-    BAD_NAME = "nome fora de 3..31 bytes"
+    BAD_NAME = "nome fora de 3..50 bytes"
     BAD_PASSWORD = "senha longa demais"
 
 

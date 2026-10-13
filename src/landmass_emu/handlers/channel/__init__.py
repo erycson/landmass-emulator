@@ -1,14 +1,13 @@
 """Channel Server: monta os handlers por assunto e a tabela explícita opcode → método."""
 
 from collections.abc import Sequence
-from functools import partial
 
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.rooms import Rooms
-from landmass_emu.handlers.channel import options
 from landmass_emu.handlers.channel.chat import ChatHandlers
 from landmass_emu.handlers.channel.entry import EntryHandlers
 from landmass_emu.handlers.channel.lists import ListHandlers
+from landmass_emu.handlers.channel.options import OptionHandlers
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.handlers.channel.rooms import GameEndpoint, RoomHandlers
 from landmass_emu.net.server import Reply, Router
@@ -34,6 +33,7 @@ class ChannelHandlers:
         self._entry = EntryHandlers(sessions, lobby, rooms, records, room_handlers)
         self._chat = ChatHandlers(lobby, rooms)
         self._lists = ListHandlers(lobby, rooms, records)
+        self._options = OptionHandlers(player_options)
         self._rooms = room_handlers
         self.router: Router = {
             CsOp.HEARTBEAT: self.heartbeat,
@@ -41,7 +41,7 @@ class ChannelHandlers:
             CsOp.IN_CHANNEL: self._entry.in_channel,
             CsOp.OUT_CHANNEL: self._entry.out_channel,
             CsOp.SEND_MESSAGE: self._chat.send_message,
-            CsOp.SAVE_OPTION: partial(options.save_option, player_options),
+            CsOp.SAVE_OPTION: self._options.save_option,
             CsOp.CREATE_ROOM: self._rooms.create_room,
             CsOp.IN_ROOM: self._rooms.in_room,
             CsOp.OUT_ROOM: self._rooms.out_room,

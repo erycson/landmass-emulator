@@ -59,13 +59,17 @@ def _sala(**kw: object) -> CsRoom:
 
 
 def test_criar_sala_entrada_de_301_offsets() -> None:
-    payload = struct.pack("<32s16s6iH", b"Sala Azul", b"abc", 1, 2, 3, 4, 5, 6, 7)
+    # Hexdump do cliente real: nome padrão da UI, sem senha, lixo de pilha após os NULs.
+    payload = bytes.fromhex(
+        "00005669766572206f75206d6f727265722e2e2e20497374"
+        "6f20e920612071756573 74e36f2e0003c9981a0048ce151c".replace(" ", "")
+        + "a8931a000900357c60941a00781a0310"
+        + "6094200002180a105000"
+    )
     assert len(payload) == 74
     req = CsCreateRoomIn.unpack(payload)
-    assert req == CsCreateRoomIn("Sala Azul", "abc", 1, 2, 3, 4, 5, 6, 7)
-    # max_player é o quarto dword (@60), limit_score o u16 final (@72).
-    assert struct.unpack_from("<i", payload, 60) == (4,)
-    assert struct.unpack_from("<H", payload, 72) == (7,)
+    name = "Viver ou morrer... Isto é a questão."
+    assert req == CsCreateRoomIn(name, "", 0x20, 0, 0, 24, 2, 10, 80)
 
 
 def test_criar_sala_rejeita_payload_curto() -> None:

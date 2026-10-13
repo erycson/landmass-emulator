@@ -26,8 +26,10 @@ ERRO_NOME_CURTO = 211000202
 
 
 def _payload_criar(nome: str, senha: str = "") -> bytes:
-    """CREATE_ROOM (301): `char name[32]`, `char password[16]`, seis i32 e u16 (74 bytes)."""
-    return struct.pack("<32s16s6iH", cfield(nome, 32), cfield(senha, 16), 0, 1, 1, 4, 1, 10, 10)
+    """CREATE_ROOM (301), layout de `CsCreateRoomIn`."""
+    return struct.pack(
+        "<H51s13sBBBBBxH", 1, cfield(nome, 51), cfield(senha, 13), 0, 1, 1, 4, 10, 10
+    )
 
 
 def _payload_entrar(sala: int, senha: str = "") -> bytes:

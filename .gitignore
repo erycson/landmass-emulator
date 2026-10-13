@@ -11,3 +11,4 @@ wheels/
 captures/
 data/
 gui_tmp.png
+.claude/

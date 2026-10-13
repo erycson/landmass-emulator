@@ -277,11 +277,9 @@ ROOM_JOIN_ERROR_SIZE = 0x12
 
 @dataclass(frozen=True, slots=True)
 class CsCreateRoomIn:
-    """CREATE_ROOM (301), 74 bytes: `char name[32]` @0, `char password[16]` @32, seis `i32` @48
-    (scale, game_mode, map_num, max_player, team_count, limit_time) e `u16 limit_score` @72.
-
-    shortcut: ordem dos 9 parâmetros de `CreateRoom` (rooms.md §1) distribuída nos 18 dwords e no
-    u16. Os tamanhos de nome e senha são inferidos. Confirmar com o hexdump do primeiro 301 real."""
+    """CREATE_ROOM (301), 74 bytes: `u16 map_num` @0, `char name[51]` @2, `char password[13]`
+    @0x35, `u8` scale @0x42, game_mode @0x43, team_count @0x44, max_player @0x45, limit_time @0x46
+    e `u16 limit_score` @0x48 (re/layouts_f0.md §7.1; confere com o hexdump do cliente real)."""
 
     name: str
     password: str
@@ -292,13 +290,13 @@ class CsCreateRoomIn:
     team_count: int
     limit_time: int
     limit_score: int
-    _FIXED = struct.Struct("<32s16s6iH")
+    _FIXED = struct.Struct("<H51s13sBBBBBxH")
 
     @classmethod
     def unpack(cls, payload: bytes) -> CsCreateRoomIn:
         if len(payload) < cls._FIXED.size:
             raise ValueError(f"CS_CREATE_ROOM_IN curto: {len(payload)} bytes")
-        raw_name, raw_pw, scale, mode, map_num, max_player, team, limit_time, limit = (
+        map_num, raw_name, raw_pw, scale, mode, team, max_player, limit_time, limit = (
             cls._FIXED.unpack_from(payload)
         )
         return cls(

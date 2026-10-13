@@ -1,10 +1,10 @@
-"""Roteador do Message Server: tabela explícita opcode → handler, sem descoberta automática."""
+"""Roteador do Message Server: tabela explícita opcode → método, sem descoberta automática."""
 
 from collections.abc import Sequence
-from functools import partial
 
 from landmass_emu.domain.channel import Channel
-from landmass_emu.handlers.message import account, channel_list
+from landmass_emu.handlers.message.account import AccountHandlers
+from landmass_emu.handlers.message.channel_list import ChannelListHandlers
 from landmass_emu.net.server import Reply, Router
 from landmass_emu.net.session import Session
 from landmass_emu.ports.accounts import AccountRepository
@@ -13,20 +13,25 @@ from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.protocol.message import MsOp
 
 
-async def _heartbeat(session: Session, payload: bytes) -> Sequence[Reply]:
-    return []
+class MessageHandlers:
+    """Dependências entram no `__init__`; `router` é a tabela opcode → método."""
 
+    def __init__(
+        self,
+        accounts: AccountRepository,
+        channels: Sequence[Channel],
+        sessions: SessionKeyRegistry,
+        options: OptionsRepository,
+    ) -> None:
+        self._account = AccountHandlers(accounts, sessions, options)
+        self._channel_list = ChannelListHandlers(channels)
+        self.router: Router = {
+            MsOp.HEARTBEAT: self.heartbeat,
+            MsOp.LOGIN: self._account.login,
+            MsOp.REGISTER: self._account.register,
+            MsOp.IN_MESSAGE_SERVER: self._account.in_message_server,
+            MsOp.GET_CHANNEL_SERVER_INFO: self._channel_list.get_channel_server_info,
+        }
 
-def build_router(
-    accounts: AccountRepository,
-    channels: Sequence[Channel],
-    sessions: SessionKeyRegistry,
-    options: OptionsRepository,
-) -> Router:
-    return {
-        MsOp.HEARTBEAT: _heartbeat,
-        MsOp.LOGIN: partial(account.login, accounts),
-        MsOp.REGISTER: partial(account.register, sessions, options),
-        MsOp.IN_MESSAGE_SERVER: account.in_message_server,
-        MsOp.GET_CHANNEL_SERVER_INFO: partial(channel_list.get_channel_server_info, channels),
-    }
+    async def heartbeat(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        return []

@@ -11,12 +11,14 @@ from landmass_emu.protocol.message import LmRegisterInfo
 log = logging.getLogger(__name__)
 
 
-async def save_option(
-    options: OptionsRepository, session: Session, payload: bytes
-) -> Sequence[Reply]:
-    if session.account is None:
-        log.warning("[%s] SaveOption antes do login; ignorado", session.peer)
+class OptionHandlers:
+    def __init__(self, options: OptionsRepository) -> None:
+        self._options = options
+
+    async def save_option(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        if session.account is None:
+            log.warning("[%s] SaveOption antes do login; ignorado", session.peer)
+            return []
+        # Payload curto levanta struct.error; o roteador loga e ignora, sem gravar.
+        await self._options.save(session.account.id, LmRegisterInfo.unpack(payload))
         return []
-    # Payload curto levanta struct.error; o roteador loga e ignora, sem gravar.
-    await options.save(session.account.id, LmRegisterInfo.unpack(payload))
-    return []
