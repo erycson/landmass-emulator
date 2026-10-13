@@ -136,8 +136,9 @@ async def test_dois_clientes_se_veem_no_lobby(tmp_path: Path) -> None:
             await b.expect(CsOp.CHANNEL_INFO_OUT)
             await b.send(CsOp.IN_CHANNEL)
             lista = await b.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
-            assert lista[0:2] == b"\x01\x00"
+            assert lista[0:2] == b"\x02\x00"  # A e B: a 151 inclui quem está pedindo
             assert struct.unpack_from("<i", lista, 2) == (ana.id,)
+            assert struct.unpack_from("<i", lista, 42) == (bia.id,)
             await b.expect(CsOp.CHANNEL_ROOM_INFO_OUT)
             assert struct.unpack_from("<i", await b.expect(CsOp.IN_CHANNEL_OUT), 0) == (bia.id,)
             assert struct.unpack_from("<i", await a.expect(CsOp.IN_CHANNEL_OUT), 0) == (bia.id,)
@@ -283,6 +284,60 @@ async def test_save_option_sem_login_ou_curto_e_ignorado(tmp_path: Path) -> None
 
         corpo = await _register_body(msg, TOKEN_ANA)
         assert corpo[0x00:0x25] == bytes(0x25)
+
+
+async def test_lobby_lista_todos_com_nick_e_546_responde_so_a_quem_esta_no_lobby(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        ana = await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+        bia = await accounts.create("bia", "Bia", hash_token(TOKEN_BIA))
+
+    async with game_servers(settings) as (msg, ch):
+        chave_ana = await _chave_de_sessao(msg, TOKEN_ANA)
+        chave_bia = await _chave_de_sessao(msg, TOKEN_BIA)
+
+        async with (
+            _connect(ch, CHANNEL_NET_CODE) as a,
+            _connect(ch, CHANNEL_NET_CODE) as b,
+        ):
+            # A sozinho: a 151 traz o próprio jogador, com o nick em @8 da entrada.
+            await a.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave_ana))
+            await a.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            await a.expect(CsOp.CHANNEL_INFO_OUT)
+            await a.send(CsOp.IN_CHANNEL)
+            lista = await a.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
+            assert lista[0:2] == b"\x01\x00"
+            assert struct.unpack_from("<i", lista, 2) == (ana.id,)
+            assert cstr(lista[10:26]) == "Ana"
+            await a.expect(CsOp.CHANNEL_ROOM_INFO_OUT)
+            await a.expect(CsOp.IN_CHANNEL_OUT)
+
+            # B: a 151 traz A e B com o seu nick; A recebe a entrada de B com o nick.
+            await b.send(CsOp.IN_CHANNEL_SERVER, _chave_payload(chave_bia))
+            await b.expect(CsOp.IN_CHANNEL_SERVER_OUT)
+            await b.expect(CsOp.CHANNEL_INFO_OUT)
+            await b.send(CsOp.IN_CHANNEL)
+            lista = await b.expect(CsOp.CHANNEL_PLAYER_INFO_OUT)
+            assert lista[0:2] == b"\x02\x00"
+            assert cstr(lista[10:26]) == "Ana"
+            assert struct.unpack_from("<i", lista, 42) == (bia.id,)
+            assert cstr(lista[50:66]) == "Bia"
+            await b.expect(CsOp.CHANNEL_ROOM_INFO_OUT)
+            await b.expect(CsOp.IN_CHANNEL_OUT)
+            entrada = await a.expect(CsOp.IN_CHANNEL_OUT)
+            assert cstr(entrada[8:24]) == "Bia"
+
+            # 546: B pede A e um guid que não está no lobby; a 548 traz só A, e a A nada.
+            pedido = bytearray(64)
+            pedido[4] = 2
+            struct.pack_into("<ii", pedido, 8, ana.id, 999_999)
+            await b.send(CsOp.REFRESH_PLAYER_LIST, bytes(pedido))
+            resposta = await b.expect(CsOp.REFRESH_PLAYER_LIST_OUT)
+            assert resposta[0] == 1
+            assert struct.unpack_from("<i", resposta, 4) == (ana.id,)
+            await a.assert_silencio()
 
 
 async def test_servidor_envia_heartbeat_periodico() -> None:

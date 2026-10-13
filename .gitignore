@@ -10,3 +10,4 @@ wheels/
 .venv
 captures/
 data/
+gui_tmp.png

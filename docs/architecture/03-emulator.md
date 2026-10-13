@@ -41,13 +41,13 @@ Regras de dependência:
 | `src/landmass_emu/net/server.py` | `start_service` por serviço: loop de leitura, timeout, roteamento, task de escrita, heartbeat opcional e `on_close`. |
 | `src/landmass_emu/protocol/header.py` | Cabeçalho `(opcode << 5) \| net_code`. |
 | `src/landmass_emu/protocol/message.py` | Structs `MS_*` e `LM_*` do Message Server (requisições e respostas). |
-| `src/landmass_emu/protocol/channel.py` | Structs `CS_*` do Channel Server (marco 2): entrada, lobby, chat, heartbeat. |
+| `src/landmass_emu/protocol/channel.py` | Structs `CS_*` do Channel Server (marcos 2 e 3): entrada, lobby, chat, heartbeat, salas e listas. |
 | `src/landmass_emu/protocol/game.py` | Structs `GS_*` (marco 4). |
 | `src/landmass_emu/handlers/message/` | `__init__.py` (roteador `build_router`), `account.py` (100, 110, 120), `channel_list.py` (130). |
 | `src/landmass_emu/handlers/login.py` | Autenticação por token (`login_num`), usada pelo Message (100). O Channel usa a chave de sessão. |
-| `src/landmass_emu/handlers/channel/` | `__init__.py` (roteador `build_router`), `entry.py` (100, 120, 122, queda), `chat.py` (240), `options.py` (544). Salas, loja, hangar e partida nos marcos 3 a 5. |
+| `src/landmass_emu/handlers/channel/` | `__init__.py` (`ChannelHandlers`: monta os handlers e a tabela opcode → método), `entry.py` (`EntryHandlers`: 100, 120, 122, queda), `chat.py` (`ChatHandlers`: 240), `rooms.py` (`RoomHandlers`: 301, 311, 321, 401, 420, 700), `lists.py` (`ListHandlers`: 545, 546), `records.py` (`ChannelRecords`: registros de sala e de jogador), `options.py` (544). Loja, hangar e partida nos marcos 4 e 5. |
 | `src/landmass_emu/domain/lobby.py` | Lobby em memória: membros por `client_guid`, `broadcast` com exclusão opcional. |
-| `src/landmass_emu/domain/` | `account.py` (conta, token), `channel.py` (canal), `lobby.py` (presença do lobby), `session_keys.py` (chaves de sessão em memória). Demais entidades nos marcos seguintes. |
+| `src/landmass_emu/domain/` | `account.py` (conta, token), `channel.py` (canal), `lobby.py` (presença do lobby), `rooms.py` (salas em memória: `Rooms`, `Room`), `session_keys.py` (chaves de sessão em memória). Demais entidades nos marcos seguintes. |
 | `src/landmass_emu/ports/accounts.py` | Protocol `AccountRepository` e exceção `AccountConflict`. |
 | `src/landmass_emu/ports/options.py` | Protocol `OptionsRepository` (`get` e `save` das opções do jogador, `account_options`). |
 | `src/landmass_emu/ports/session_keys.py` | Protocol `SessionKeyRegistry` (`issue` e `resolve` de chaves de sessão). |
@@ -75,7 +75,7 @@ Regras de dependência:
 - Difusão para outras conexões (lobby): o handler chama `Lobby.broadcast(body)`, que enfileira na `outbox` de cada destinatário. Os corpos são montados com `reply_body`.
 - Dependências (repositórios, lista de canais) entram por `functools.partial` na montagem do roteador (`handlers/message/__init__.py`).
 - Lista vazia = sem resposta: opcode sem handler, pedido antes do login, heartbeat. Nada disso derruba a conexão.
-- Um módulo por grupo de opcodes; roteador em tabela explícita (`build_router`), sem descoberta automática.
+- Um módulo por grupo de opcodes, com uma classe por assunto e as dependências injetadas no `__init__`. Handlers e serviços são classes; funções soltas ficam só em constantes e utilitários sem estado. Roteador em tabela explícita (`ChannelHandlers.router`), sem descoberta automática.
 
 ## Ciclo de uma requisição
 

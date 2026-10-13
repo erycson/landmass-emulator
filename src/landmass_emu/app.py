@@ -11,9 +11,10 @@ from landmass_emu.db.engine import migrate
 from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.domain.channel import Channel
 from landmass_emu.domain.lobby import Lobby
+from landmass_emu.domain.rooms import Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
-from landmass_emu.handlers.channel import build_router as build_channel_router
-from landmass_emu.handlers.channel import disconnect_handler
+from landmass_emu.handlers.channel import ChannelHandlers
+from landmass_emu.handlers.channel.rooms import GameEndpoint
 from landmass_emu.handlers.message import build_router
 from landmass_emu.net.server import start_service
 from landmass_emu.ports.accounts import AccountRepository
@@ -90,13 +91,16 @@ async def channel_server(
     settings: Settings, sessions: SessionKeyRegistry, options: OptionsRepository
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
+    rooms = Rooms()
+    game = GameEndpoint(settings.game_host, settings.game_port)
+    handlers = ChannelHandlers(sessions, lobby, rooms, options, game)
     server = await start_service(
         settings.bind_host,
         settings.channel_port,
         net_code=CHANNEL_NET_CODE,
-        router=build_channel_router(sessions, lobby, options),
+        router=handlers.router,
         recv_timeout=settings.recv_timeout,
-        on_close=disconnect_handler(lobby),
+        on_close=handlers.disconnect,
         heartbeat=CsHeartbeat(),
         heartbeat_every=CHANNEL_HEARTBEAT_SECONDS,
     )

@@ -15,6 +15,9 @@ from landmass_emu.protocol.channel import (
     CsInChannelServerOut,
     CsOp,
     CsOutChannelOut,
+    CsPlayerProperty,
+    CsRefreshPlayerListIn,
+    CsRefreshPlayerListOut,
     CsSendMessageIn,
     CsSendMessageOut,
 )
@@ -55,28 +58,60 @@ def test_in_channel_server_out_resultado_negativo_e_location() -> None:
 
 
 def test_channel_player_tamanho_e_offsets() -> None:
+    # Layout de re/layouts_f0.md §1.2 (registro de 151 e 121).
     raw = CsChannelPlayer(
         client_guid=0x01020304,
-        at04=0x11,
-        at08=0x12,
-        at0c=0x13,
-        at10=0x14,
-        at14=0x15,
-        at18=0x21,
-        at19=0x22,
-        at1a=0x23,
-        at1c=0x31,
-        at20=0x32,
-        at24=0x41,
+        nick="Ana",
+        total_exp=0x11223344,
+        unk18=0x21,
+        vehicle_licence=0x22,
+        access=0x23,
+        clan=0x31,
+        clan_mark=0x32,
+        nest=0x41,
     ).pack()
     assert len(raw) == 40
-    assert raw[0:4] == b"\x04\x03\x02\x01"
-    assert raw[4] == 0x11 and raw[8] == 0x12 and raw[12] == 0x13
-    assert raw[16] == 0x14 and raw[20] == 0x15
-    assert raw[24] == 0x21 and raw[25] == 0x22 and raw[26] == 0x23
-    assert raw[27] == 0 and raw[37:40] == b"\0\0\0"
-    assert raw[28] == 0x31 and raw[32] == 0x32
-    assert raw[36] == 0x41
+    assert struct.unpack_from("<i", raw, 0x00) == (0x01020304,)
+    assert struct.unpack_from("<i", raw, 0x04) == (0x11223344,)
+    assert raw[0x08:0x18] == b"Ana" + bytes(13)  # char[16] NUL-padded
+    assert raw[0x18] == 0x21 and raw[0x19] == 0x22 and raw[0x1A] == 0x23
+    assert raw[0x1B] == 0
+    assert struct.unpack_from("<i", raw, 0x1C) == (0x31,)
+    assert struct.unpack_from("<i", raw, 0x20) == (0x32,)
+    assert raw[0x24] == 0x41
+    assert raw[0x25:0x28] == bytes(3)
+
+
+def test_channel_player_nick_trunca_em_15_mais_nul() -> None:
+    raw = CsChannelPlayer(client_guid=1, nick="A" * 20).pack()
+    assert raw[0x08:0x18] == b"A" * 15 + b"\0"
+
+
+def test_pedido_546_le_guids_e_limita_a_14() -> None:
+    corpo = bytearray(64)
+    struct.pack_into("<i", corpo, 0, 0)  # canal, ignorado
+    corpo[4] = 2
+    struct.pack_into("<ii", corpo, 8, 7, 8)
+    assert CsRefreshPlayerListIn.unpack(bytes(corpo)).client_guids == (7, 8)
+    corpo[4] = 20
+    for i in range(14):
+        struct.pack_into("<i", corpo, 8 + 4 * i, i + 1)
+    assert CsRefreshPlayerListIn.unpack(bytes(corpo)).client_guids == tuple(range(1, 15))
+    with pytest.raises(ValueError):
+        CsRefreshPlayerListIn.unpack(bytes(7))
+
+
+def test_resposta_548_cabecalho_e_entradas_de_20_bytes() -> None:
+    raw = CsRefreshPlayerListOut(
+        (CsPlayerProperty(7, total_exp=5, clan=6, clan_mark=7, nest=8), CsPlayerProperty(9))
+    ).pack()
+    assert len(raw) == 4 + 2 * 20
+    assert raw[0] == 2 and raw[1:4] == bytes(3)
+    assert struct.unpack_from("<iiii", raw, 4) == (7, 5, 6, 7)
+    assert raw[4 + 16] == 8 and raw[4 + 17 : 4 + 20] == bytes(3)
+    assert struct.unpack_from("<i", raw, 24) == (9,)
+    assert CsRefreshPlayerListOut(()).pack() == bytes(4)
+    assert CsRefreshPlayerListOut.opcode == CsOp.REFRESH_PLAYER_LIST_OUT == 548
 
 
 def test_in_channel_out_e_o_proprio_registro() -> None:
@@ -86,7 +121,7 @@ def test_in_channel_out_e_o_proprio_registro() -> None:
 
 
 def test_lista_de_jogadores_contagem_e_stride_de_40() -> None:
-    a = CsChannelPlayer(client_guid=1, at24=5)
+    a = CsChannelPlayer(client_guid=1, nest=5)
     b = CsChannelPlayer(client_guid=2)
     raw = CsChannelPlayerInfoOut((a, b)).pack()
     assert raw[0:2] == b"\x02\x00"

@@ -4,6 +4,9 @@ import logging
 from collections.abc import Sequence
 
 from landmass_emu.domain.lobby import Lobby
+from landmass_emu.domain.rooms import Rooms
+from landmass_emu.handlers.channel.records import ChannelRecords
+from landmass_emu.handlers.channel.rooms import RoomHandlers
 from landmass_emu.net.server import Reply, reply_body
 from landmass_emu.net.session import Session
 from landmass_emu.ports.session_keys import SessionKeyRegistry
@@ -29,50 +32,65 @@ RESULT_OK = 0
 RESULT_INVALID_LOGIN = -160
 
 
-async def in_channel_server(
-    sessions: SessionKeyRegistry, session: Session, payload: bytes
-) -> Sequence[Reply]:
-    req = CsInChannelServerIn.unpack(payload)
-    session.account = None
-    account = sessions.resolve(req.session_key)
-    if account is None:
-        log.info("[%s] canal: login recusado\n%s", session.peer, hexdump(payload))
-        return [CsInChannelServerOut(client_guid=0, result=RESULT_INVALID_LOGIN)]
-    session.account = account
-    log.info("[%s] canal: login de %s", session.peer, account.username)
-    return [CsInChannelServerOut(client_guid=account.id, result=RESULT_OK), CsChannelInfoOut()]
+class EntryHandlers:
+    def __init__(
+        self,
+        sessions: SessionKeyRegistry,
+        lobby: Lobby,
+        rooms: Rooms,
+        records: ChannelRecords,
+        room_handlers: RoomHandlers,
+    ) -> None:
+        self._sessions = sessions
+        self._lobby = lobby
+        self._rooms = rooms
+        self._records = records
+        self._room_handlers = room_handlers
 
+    async def in_channel_server(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        req = CsInChannelServerIn.unpack(payload)
+        session.account = None
+        account = self._sessions.resolve(req.session_key)
+        if account is None:
+            log.info("[%s] canal: login recusado\n%s", session.peer, hexdump(payload))
+            return [CsInChannelServerOut(client_guid=0, result=RESULT_INVALID_LOGIN)]
+        session.account = account
+        log.info("[%s] canal: login de %s", session.peer, account.username)
+        return [CsInChannelServerOut(client_guid=account.id, result=RESULT_OK), CsChannelInfoOut()]
 
-async def in_channel(lobby: Lobby, session: Session, payload: bytes) -> Sequence[Reply]:
-    # shortcut: payload (u32 num, ou vazio) ignorado porque o servidor tem um canal só; revisar se
-    # o cliente real escolher canal por índice (a lista de 111 teria de ter mais entradas).
-    if session.account is None:
-        log.warning("[%s] InChannel antes do login; ignorado", session.peer)
-        return []
-    guid = session.account.id
-    # Snapshot antes do join: quem entrou depois de este cliente enviar 100 chega via broadcast.
-    others = tuple(CsChannelPlayer(client_guid=g) for g in lobby.guids() if g != guid)
-    me = CsChannelPlayer(client_guid=guid)
-    lobby.join(guid, session)
-    lobby.broadcast(reply_body(CsInChannelOut(me), CHANNEL_NET_CODE), exclude=session)
-    log.info("[%s] entrou no lobby (%d jogadores)", session.peer, len(others) + 1)
-    return [
-        CsChannelPlayerInfoOut(others[:MAX_LOBBY_ENTRIES]),
-        CsChannelRoomInfoOut(),
-        CsInChannelOut(me),
-    ]
+    async def in_channel(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        # shortcut: payload (u32 num, ou vazio) ignorado porque o servidor tem um canal só; revisar
+        # se o cliente real escolher canal por índice (a lista de 111 teria de ter mais entradas).
+        account = session.account
+        if account is None:
+            log.warning("[%s] InChannel antes do login; ignorado", session.peer)
+            return []
+        # Entra antes de montar a lista: a 151 traz o próprio jogador (ver ChannelRecords).
+        self._lobby.join(account.id, session, account.nickname)
+        me = CsChannelPlayer(client_guid=account.id, nick=account.nickname)
+        players = self._records.lobby_players()
+        self._lobby.broadcast(reply_body(CsInChannelOut(me), CHANNEL_NET_CODE), exclude=session)
+        log.info("[%s] entrou no lobby (%d jogadores)", session.peer, len(players))
+        return [
+            CsChannelPlayerInfoOut(players[:MAX_LOBBY_ENTRIES]),
+            CsChannelRoomInfoOut(tuple(self._records.room(r) for r in self._rooms.all())),
+            CsInChannelOut(me),
+        ]
 
+    async def out_channel(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        guid = self._lobby.guid_of(session)
+        if guid is None:
+            return []
+        self._room_handlers.leave(guid)
+        self._lobby.leave(session)
+        self._lobby.broadcast(reply_body(CsOutChannelOut(guid), CHANNEL_NET_CODE))
+        return [CsOutChannelOut(guid)]
 
-async def out_channel(lobby: Lobby, session: Session, payload: bytes) -> Sequence[Reply]:
-    guid = lobby.leave(session)
-    if guid is None:
-        return []
-    lobby.broadcast(reply_body(CsOutChannelOut(guid), CHANNEL_NET_CODE))
-    return [CsOutChannelOut(guid)]
-
-
-def disconnect(lobby: Lobby, session: Session) -> None:
-    guid = lobby.leave(session)
-    if guid is not None:
+    def disconnect(self, session: Session) -> None:
+        guid = self._lobby.guid_of(session)
+        if guid is None:
+            return
+        self._room_handlers.leave(guid)
+        self._lobby.leave(session)
         log.info("[%s] saiu do lobby por queda da conexão", session.peer)
-        lobby.broadcast(reply_body(CsOutChannelOut(guid), CHANNEL_NET_CODE))
+        self._lobby.broadcast(reply_body(CsOutChannelOut(guid), CHANNEL_NET_CODE))

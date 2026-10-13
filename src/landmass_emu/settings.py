@@ -28,3 +28,7 @@ class Settings(BaseSettings):
     channels: Annotated[list[ChannelConfig], Field(min_length=1, max_length=255)] = Field(
         default_factory=lambda: [ChannelConfig()]
     )
+    # Servidor de partida anunciado no 403 (NotifyStartGame). O processo de partida ainda não
+    # existe (marco 4); o endereço só precisa estar correto no pedido.
+    game_host: Annotated[str, Field(min_length=1, max_length=15)] = "127.0.0.1"
+    game_port: Annotated[int, Field(ge=1, le=65535)] = 7777

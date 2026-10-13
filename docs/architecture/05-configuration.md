@@ -15,6 +15,8 @@ Carregue com `pydantic-settings` (`settings.py`), prefixo `LANDMASS_`, de variá
 | `LANDMASS_CHANNELS` | `[{"name": "Canal 1", "max_clients": 100}]` | Lista JSON de canais. `address` (máx. 15) e `port` são opcionais; ausentes usam `LANDMASS_PUBLIC_HOST` e `LANDMASS_CHANNEL_PORT`. `name` tem no máximo 35 caracteres. Entre 1 e 255 canais. | 1 |
 | `LANDMASS_SERVER_NAME` | `Norian` | Nome do servidor exibido no cliente. | 2 |
 | `LANDMASS_CLIENT_WDB` | `../cliente/system/landmass.wdb` | Dados estáticos do cliente. | 2 |
+| `LANDMASS_GAME_HOST` | `127.0.0.1` | Endereço do servidor de partida anunciado no 403 (`NotifyStartGame`). Máximo 15 caracteres (campo `char[16]` NUL-terminado). Mínimo 1. | 3, 4 |
+| `LANDMASS_GAME_PORT` | `7777` | Porta do servidor de partida anunciada no 403. Entre 1 e 65535. | 3, 4 |
 | `LANDMASS_GAME_SERVER_PASSWORD` | `4567` | Senha que o Game Server Host apresenta ao Channel (`ch_pw`). | 4 |
 
 Regras:
