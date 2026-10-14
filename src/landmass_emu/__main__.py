@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import contextlib
-import logging
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -25,6 +24,8 @@ from landmass_emu.domain.clan import ClanRules
 from landmass_emu.domain.inventory import InventoryService
 from landmass_emu.domain.progression import Grant, ProgressionService
 from landmass_emu.domain.starter_kit import StarterKit
+from landmass_emu.health import HealthProbe
+from landmass_emu.logging_setup import LogSetup
 from landmass_emu.ports.accounts import AccountConflict
 from landmass_emu.ports.clans import ClanConflict
 from landmass_emu.ports.inventory import InventoryConflict
@@ -33,6 +34,7 @@ from landmass_emu.shutdown import Shutdown, install_signals, watch_control
 
 MAX_SHUTDOWN_AFTER = 86400  # 24 h: maior prazo que o comando aceita
 MAX_SHUTDOWN_MESSAGE = 80  # bytes em cp1252; com o texto padrão, cabe no limite do cliente
+HEALTH_TIMEOUT = 3.0  # segundos por porta; o HEALTHCHECK do Docker tem o próprio limite
 
 
 class Cli:
@@ -67,6 +69,15 @@ class Cli:
             f"desligamento pedido: saída em {args.segundos} s ({self._settings.control_file}); "
             "o servidor lê o pedido em até 1 s"
         )
+
+    async def health(self) -> str:
+        """`health`: conecta nas duas portas de escuta. Se alguma recusar, é erro (saída 1)."""
+        portas = (self._settings.message_port, self._settings.channel_port)
+        sonda = HealthProbe(self._settings.bind_host, portas, timeout=HEALTH_TIMEOUT)
+        falhas = await sonda.failures()
+        if falhas:
+            raise ValueError("serviço fora do ar: " + "; ".join(falhas))
+        return "saudável: Message e Channel aceitam conexão"
 
     async def account(self, args: argparse.Namespace) -> str:
         """Ações de conta; devolve o texto a imprimir."""
@@ -201,6 +212,7 @@ def _parser() -> argparse.ArgumentParser:
         help="segundos até a saída (0 a 86400)",
     )
     desliga.add_argument("--message", default="", help="aviso aos jogadores (até 80 bytes)")
+    sub.add_parser("health", help="conecta nas portas de escuta; sai com 1 se alguma recusar")
     account = sub.add_parser("account", help="contas e tokens de login")
     actions = account.add_subparsers(dest="action", required=True)
     create = actions.add_parser("create", help="cria conta, gera token e grava o .bat")
@@ -287,7 +299,7 @@ def main() -> None:
     except ValueError as e:  # ValidationError do pydantic também é ValueError
         raise SystemExit(f"configuração inválida: {e}") from None
 
-    logging.basicConfig(level=settings.log_level, format="%(asctime)s %(message)s")
+    LogSetup(settings.log_level, settings.log_json).apply()
     cli = Cli(settings)
     with contextlib.suppress(KeyboardInterrupt):
         if args.cmd == "sniff":
@@ -303,6 +315,8 @@ def main() -> None:
                     saida = asyncio.run(cli.shop(args))
                 elif args.cmd == "shutdown":
                     saida = cli.agenda_desligamento(args)
+                elif args.cmd == "health":
+                    saida = asyncio.run(cli.health())
                 else:
                     saida = asyncio.run(cli.account(args))
             except (ValueError, AccountConflict, InventoryConflict, ClanConflict) as e:
