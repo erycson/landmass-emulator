@@ -77,7 +77,7 @@ Implementação: `handlers/message/clan.py` e `ranking.py`; layouts em `protocol
 - 177 (SendClanMessage): `u16 len` @0, texto a partir de @2. `len` acima de 0x78 ou payload menor que `2 + len` é malformado e é ignorado sem entregar (o cliente copia sem limite). Só quem tem clã envia; sem clã, ignora. 178 vai aos membros online do clã, inclusive a quem enviou, como o chat geral (D58). Layout igual ao de 161.
 - 194 (RefreshClanList) usa `MS_RELATION_IDS_IN`, como 190, e responde 195 só com os ids do próprio clã (sem vazar exp de outro clã). 195: cabeçalho de 12 bytes com `i32` clã @0, `i32` marca @4, `u8` @8 = 0 e `u8` contagem @9; registros de 0x0C a partir de @0x0C: `i32` conta @0, `i32` exp @4, `u8` estado @8.
 - 170 (GetRankingInfo) responde 171 com o top 100 por `total_exp` decrescente, com empate pelo id da conta. Entrada de 0x20: `i32` índice @0 (slot 0 a 99, sequencial), `u16` posição @4 (empate na menor posição: 1, 1, 3), nick `char[17]` @6, `i32` exp @0x18, `u16` clã @0x1C. Com menos de 100 linhas, a última entrada é zerada: o laço do cliente não confere o tamanho e para em posição 0 (D56).
-- Ranking por nest (oddeye, shadow, leon) não cabe no protocolo: 170 não tem corpo e 171 não tem campo de nest. Fica fora (dúvida 22).
+- Ranking por nest (oddeye, shadow, leon) não cabe no protocolo: 170 não tem corpo e 171 não tem campo de nest. Fica fora (D108, dúvida 22).
 - 173 e 176 não são emitidos (D55).
 - Limites conhecidos: 171 usa `u16` para o clã, então um clã acima de 65535 sai como 0; 175 usa `i16` para a conta.
 
@@ -102,7 +102,7 @@ No fluxo por token, `id` e `pw` vêm vazios e são ignorados (senha fica para o 
 |-------:|------|-------|-------|
 | 0x00 | `u8` | `forced_login` | `0` |
 | 0x01..0x03 | `byte[3]` | padding | `0` |
-| 0x04 | `i32` | `result` | `0` sucesso; `-160` senha inválida |
+| 0x04 | `i32` | `result` | `0` sucesso; `-160` senha inválida ou conta bloqueada (D106) |
 
 **`MS_REGISTER_OUT` (111), 0x4C bytes**
 

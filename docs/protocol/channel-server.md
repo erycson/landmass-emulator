@@ -37,7 +37,7 @@ Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151
 | `420` ChangeRoomSlot (mudar grupo), `u8 grupo` | `421` aos membros da sala, com o slot escolhido | Vai ao primeiro slot livre do grupo (D66). Sem vaga ou grupo inválido: sem resposta. |
 | `586` InHangar, vazio | `587` só a quem pediu, com a própria chave | Abre o hangar no cliente. Quem não está em sala: sem resposta (D78). |
 | `464` GetChannelPlayerInfo, vazio | `151` a quem pediu | Lista de jogadores do lobby. Quem não está no lobby ou está numa sala: sem resposta (D67). |
-| `542` PlayerDetail, `char nick[17]` | `543` a quem pediu | Ficha com nick e exp do lobby; o resto sai zero (D67). Nick fora do canal: envelope 54 com 543. |
+| `542` PlayerDetail, `char nick[17]` | `543` a quem pediu | Ficha com nick, posição, exp, nest e clã do banco; estatísticas saem zero até haver resultado (D107). Nick fora do canal: envelope 54 com 543. |
 | `411` ChangeRoomProperty, 10 bytes, do dono | `412` ao lobby | Muda só os campos marcados em `flags`, com os limites da criação. Sala jogando, dono com pronto, quem não é dono ou configuração inválida: sem resposta (D77). |
 | `451` RoomExpel, 18 bytes, do dono | `322` ao lobby | Expulsa pelo nick. Sem resposta a quem pediu; quem não é dono é ignorado. Sem caminho de UI confirmado (item 20). |
 | `461` RoomInvite, nick de 17 bytes, do dono | `462` ao dono (`i32`); `463` ao convidado | Convite pendente até o 471. Resultado: 0 enviado; -2460 nick fora do canal; -2411 já em sala; -2406 sala cheia; -2412 partida iniciada. Quem não é dono: envelope `54` com 462 e -4061 (o cliente não mostra nada). |
@@ -109,8 +109,8 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 471 | C→S | `ROOM_INVITE_ANSWER` | `i32 room_id`, `u8 accept` | implementado |
 | 500 | C→S | `EXIT_PLAY` | sem corpo | implementado (shortcut: fim da partida quando todos saem, D48; o cliente real não confirmou) |
 | 501 | S→C | `EXIT_PLAY_OUT` | `i32 result` | implementado (shortcut: `result` 0 não confirmado no cliente) |
-| 542 | C→S | `PLAYER_DETAIL_IN` | `char nick[17]` | implementado (D67): responde 543 |
-| 543 | S→C | `PLAYER_DETAIL_OUT` | 77 bytes | implementado (shortcut: nick e exp; o resto zero) |
+| 542 | C→S | `PLAYER_DETAIL_IN` | `char nick[17]` | implementado (D107): responde 543 |
+| 543 | S→C | `PLAYER_DETAIL_OUT` | 77 bytes | implementado (D107): valores do banco; shortcut: tamanho do nick e do clã inferido |
 | 549 | S→C | `ROOM_ENTRY_OUT` | entrada de jogador, 48 bytes | implementado (shortcut: divisão com 312) |
 | 586 | C→S | `ENTER_HANGAR` | vazio | implementado (D78): só quem está em sala |
 | 587 | S→C | `ENTER_HANGAR_OUT` | `i32 client_guid` @0 | implementado (D78): só ao pedinte |
@@ -471,7 +471,7 @@ Campo sem bit fica de fora e não muda no cliente. MODE exige `game_mode` e `tea
 
 **471 ROOM_INVITE_ANSWER (C→S), mínimo 5 bytes**: `i32 room_id` @0, `u8 accept` @4 (1 aceita); @5 em diante não é lido. O aceite só entra com convite pendente para a sala.
 
-**543 PLAYER_DETAIL_OUT (S→C), 77 bytes**: resposta a 542 com nick e exp do lobby; o resto sai zero (D67). `char nick[20]` @0; oito `i32` a partir de @0x14 (rank, jogos, vitórias, derrotas, abates, mortes, headshots, exp). Rótulos da ficha (`LM_PlayerInfoPage`, XInterface 32801–32805): "Partida" = jogos @0x18 (`%t`), vitórias @0x1C (`%w`), derrotas @0x20 (`%l`) (`re/rooms.md` §13); `u8 nest` @0x34; `i32 clan_mark` @0x38; `char clan[17]` @0x3C.
+**543 PLAYER_DETAIL_OUT (S→C), 77 bytes**: resposta a 542 com os valores do banco (D107): posição (1 + contas com exp maior), jogos, vitórias e derrotas (só partidas com resultado, D105), abates, mortes, headshots, exp, nest e clã. `char nick[20]` @0; oito `i32` a partir de @0x14 (rank, jogos, vitórias, derrotas, abates, mortes, headshots, exp); `u8 nest` @0x34; `i32 clan_mark` @0x38; `char clan[17]` @0x3C. Rótulos da ficha (`LM_PlayerInfoPage`, XInterface 32801–32805): "Partida" = jogos @0x18 (`%t`), vitórias @0x1C (`%w`), derrotas @0x20 (`%l`) (`re/rooms.md` §13); `u8 nest` @0x34; `i32 clan_mark` @0x38; `char clan[17]` @0x3C.
 
 **549 ROOM_ENTRY_OUT (S→C), 48 bytes**: a entrada de jogador de 317 (tabela acima) de quem entrou. Vai só a quem já está na sala.
 
@@ -556,7 +556,7 @@ Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cli
 26. **Divisão de 549 e 312 (D40).** Quem já está na sala recebe 549 (nó e slot de quem chegou); quem está no canal fora da sala e o entrante recebem 312. O RE mostra que os dois somam 1 no contador de jogadores (`disp@608-691` e `disp@2908-2912`), mas não quem os envia em cada caso: é decisão deste servidor (`RoomHandlers._joined`). Revisar com captura de dois clientes na sala. Não é a causa de o dono ver os botões desabilitados: na criação, o 312 vai ao próprio criador, que o recebe (D65, revisão de D40).
 27. **Convite (461 a 471; D42).** O convite fica pendente até o 471 e não expira. O aceite entra sem senha, só com convite pendente para a sala; recusa ou convite inexistente não entra. Os 17 bytes do nick em 461 e 463 são inferidos. Revisar na primeira captura de convite.
 28. **Configuração (411; D43).** Campos sem bit em `flags` não mudam; o RE manda max, tempo e pontos sempre, e o emulador só os aplica com o bit ligado (`CsChangeRoomPropertyIn`). `max_player` não cai abaixo de quem já está sentado. Revisar na primeira troca de configuração capturada.
-29. **Detalhe do jogador (542 e 543; D67).** O codec segue `LM_PLAYER_DETAIL_INFO` (`re/protocol_full.md` §3.2). O 542 responde com o 543 só com nick e exp, vindos do lobby; clã, nest e estatísticas saem zero (shortcut). Nick fora do canal manda envelope 54 com -2460, código de `re/layouts_f0.md` §7.3; a mensagem na tela não é conhecida. Revisar com a tela de detalhe.
+29. **Detalhe do jogador (542 e 543; D67, D107).** O codec segue `LM_PLAYER_DETAIL_INFO` (`re/protocol_full.md` §3.2). O 542 responde com o 543 montado no banco (D107): posição, exp, nest e clã reais; jogos, vitórias, derrotas, abates, mortes e headshots saem zero até haver resultado e métricas gravadas (dúvida 17). Nick fora do canal manda envelope 54 com -2460, código de `re/layouts_f0.md` §7.3; a mensagem na tela não é conhecida. Revisar com a tela de detalhe.
 30. **Inventário e morat regular (F4/F5).** 102 e 103 saem no login depois de 900 e 902; 103 só para morat com gate. Peças em -1 e skins em 0 (inferido, D31). Offsets de 102 e 103 além do que o RE dá (GUID, `apply_flag` em `@0x2D`, skins) são inferidos ([re/layouts_f0.md](../../re/layouts_f0.md) §8). Conta sem morat: a sala trava no cliente, e habilitar gate sem morat não corrige (dúvida 24 em [07-progression](../architecture/07-progression.md)). Nada disso foi confirmado no cliente real.
 31. **Loja (F8; D50, D51).** 550 debita `accounts.ld` ou `cash` e cria a unidade na mesma transação. Sucesso manda 551 (ou 552), 102 (ou 103), 900 e 902, e o item aparece sem relogar. Recusa manda o mesmo opcode com o código de `NotifyItemBuy` (-4056 LD, -4055 Cash, -1 sem gate) ou 8000 (sem mensagem). Os códigos de saldo são inferidos iguais aos `CERR_BUY_*`, não vistos em runtime. Morat comprado no meio da sessão pode não ficar habilitado no gate: `bEnable` só é ligado pelo 101, então vale relogar. Catálogo abre na primeira compra (D50). O 102 depois do 551 não duplica: é upsert pela chave no mesmo mapa (`FUN_1001d6b0`, dispatcher L699–700 e L890–891), e `@0x35` = 0 não zera `apply_value`. O 552 e o 103 seguem o mesmo padrão (`FUN_100237d0`, `FUN_1001d7f0`, L727–728 e L916). `FUN_10007830`, chamado de novo pelo 103, é busca e não insere. Revisar no cliente real.
 32. **Estado da sala (D65).** 0 é espera (RS_WAITING) e 1 é jogando (RS_PLAYING), conforme os UConst de `Core.u`. A versão anterior mandava 1 para espera e 2 para jogando; com `ready_game` do dono, `RefreshPlayers` (`XInterface` L34719) desabilitava os botões. `ROOM_WAITING` em `domain/rooms.py` é a única fonte do valor. Confirmar com dois clientes.
@@ -585,7 +585,7 @@ Conferir nesta ordem; cada falha aponta o item de lacunas indicado.
 16. **Contagem com 549.** Com dois clientes já na sala, o contador de jogadores sobe uma vez para o entrante (item 26).
 17. **Botões do dono (D65).** O dono vê Iniciar, configuração e Sair habilitados. O entrante não vê Iniciar habilitado (item 32); essa metade é previsão pelo mesmo valor de estado, não rastreada no `XInterface`. Sair do dono manda 321 e a sala passa ao outro (item 9).
 18. **Mudar grupo (420).** Com `team_count` 2 e o entrante sem pronto, a troca de grupo manda 421 com o slot novo para os dois clientes (item 33).
-19. **Ficha do jogador (542).** Clique no nick de quem está no lobby abre a ficha com nick e exp, sem "Buscando...". Nick fora do canal fecha a espera com a mensagem da UI (item 29).
+19. **Ficha do jogador (542).** Clique no nick de quem está no lobby abre a ficha com os valores do banco (D107), sem "Buscando...". Nick fora do canal fecha a espera com a mensagem da UI (item 29).
 20. **Amizade pelo nick (181).** Tester2 adiciona Tester pelo menu e o amigo aparece na lista. Se não aparecer, conferir o log `recusado` com `''` no servidor de mensagens (item 34).
 
 ## Responsabilidades do serviço

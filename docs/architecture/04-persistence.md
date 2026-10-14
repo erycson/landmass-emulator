@@ -43,12 +43,13 @@ Fonte: `D:\landmass\servidor\db\LM_account.sql`. Modelo: `db/models.py`. Migraç
 | `token_hash` | `String(64)`, único | — (novo) | `sha256` hex do token (ver [../protocol/authentication.md](../protocol/authentication.md)). |
 | `created_at` | `DateTime(timezone=True)` | `create_date smalldatetime` | Criação. |
 | `updated_at` | `DateTime(timezone=True)` | — (novo) | Última alteração; muda na rotação do token. |
+| `banned_until` | `DateTime(timezone=True)`, nulo | — (novo) | Fim do bloqueio administrativo (D106; migração `9e4c2b7a1d05`). Nulo ou no passado: login liberado. |
 
 - `username` não é FK para `users`: é o próprio login da conta.
 - Único em `nickname`: regra de nickname do jogo (`CheckNickname`, 140, responde "nome disponível").
 - Único em `token_hash`: é a chave de busca do login.
 - Colunas de progressão (F2 e F3): `tutorial_clear`, `total_exp`, `ld` e `cash`, todas `Integer NOT NULL` com padrão `0`. Migrações `01ad613f288a` e `31c91374dcba`. Regras em [07-progression §4.3](07-progression.md). Colunas de morat regular (F5): `regular_nest_id` e `regular_morat_class`, migração `ff38814bc227`. Tabelas `account_items` (migração `0d72e556d5d3`, com as colunas de montagem `account_morat_id`, `slot_name` e `system_slot`) e `account_morats` (migração `2100454de3ec`), com regras em [07-progression §4.4 e §4.5](07-progression.md).
-- As demais colunas do original (estatísticas) entram nos marcos que as usam. O quickslot é a tabela `account_quick_slots` (D73, seção abaixo).
+- As estatísticas do original não são colunas de `accounts`: a ficha as calcula de `match_players` (D107). O quickslot é a tabela `account_quick_slots` (D73, seção abaixo).
 
 ## Tabela `account_options` (F1)
 
@@ -151,7 +152,8 @@ Fonte: [07-progression.md §4.8](07-progression.md). Modelos: `db/models.py` (`C
 - Modelos: `db/models.py` (`MatchRow`, `MatchPlayerRow`). Migração: `db/migrations/versions/887ad86230f6_create_matches_and_match_players_tables.py`.
 - Constraints: `match_players_match_id_foreign` (FK) e `match_players_match_id_account_id_unique` (um jogador por partida).
 - Gravação: uma vez, no fim da partida, com `end_reason` (D48, D52). Não há tabela de eventos nem registro durante a partida.
-- Hoje só a identidade e a sala são gravadas. Métricas de jogador ficam `NULL` até haver o parser do bloco `GameEnded` do log (`re/game_server_host.md`, seção 10.4).
+- Hoje só a identidade e a sala são gravadas. Métricas de jogador ficam `NULL` até haver o parser do bloco `GameEnded` do log (`re/game_server_host.md`, seção 10.4). A ficha (D107) lê essas colunas: enquanto o parser não existir, jogos, vitórias, derrotas, abates, mortes e headshots saem zero.
+- Contrato de resultado (D105): jogos, vitórias e derrotas contam só partidas com `won` não nulo em alguma linha. Quem não tem `won` nessa partida conta como jogo sem vitória nem derrota. No DM, `won` não existe: a regra só se aplica a OP e time.
 
 Tabela `matches` (uma linha por partida):
 

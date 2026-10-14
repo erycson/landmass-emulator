@@ -2,7 +2,7 @@
 
 Especificação do servidor para patente, experiência, moedas (LD e Cash), inventário, morats, loja, presente, gacha, tutorial, opções, amigos, bloqueios, clã e ranking.
 
-Fora de escopo: a partida em si ([06-game-server-host.md](06-game-server-host.md)), salas, chat e penalidades (ver §8).
+Fora de escopo: a partida em si ([06-game-server-host.md](06-game-server-host.md)), salas, chat e penalidades de sala (ver §8). O banimento de conta entra (D106).
 
 ## 1. Convenções e fontes
 
@@ -41,7 +41,7 @@ Cada linha registra a regra que sobrevive. O mecanismo do legado não é reprodu
 | `ssn_first`, `ssn_second`, `userpw`, `userid` (cópia de login) | Não gravar CPF/SSN; login é `username`, senha é token | Privacidade e [authentication.md](../protocol/authentication.md). |
 | `week_exp`, `month_exp`, `operator`, `engineer`, `promotion`, `oddeye_*`, `shadow_*`, `leon_*` | Não migrar no primeiro corte | Nenhum leitor no cliente. Por nest, ver dúvida 22. |
 | `total_secedecount` | Não armazenar | Abandono é calculado pelo cliente (R-ABN, §5.13). |
-| `tbl_penalty_list` | Fora deste documento | Ver dúvida 21. |
+| `tbl_penalty_list` | Não migrar | Penalidade de conta é `accounts.banned_until` (D106). Penalidade de sala segue em aberto (dúvida 21). |
 
 ## 4. Modelo de dados
 
@@ -82,6 +82,7 @@ erDiagram
     integer cash
     integer regular_nest_id
     integer regular_morat_class
+    datetime banned_until
     integer main_gate_index
     integer tutorial_clear
     integer total_gamecount
@@ -167,6 +168,7 @@ A tabela `accounts` existente ([04-persistence.md](04-persistence.md)) recebe as
 | `cash` | `Integer` | não | `tbl_account.cash`; `iCash` | Saldo de Cash (`CashUnit`). ≥ 0 pelo mesmo critério. |
 | `regular_nest_id` | `Integer` | sim | `tbl_account.nest`; `ucNest` | Nest regular: 1 Oddeye, 2 Shadow, 3 Leon. |
 | `regular_morat_class` | `Integer` | sim | (novo) | Classe regular: 1 a 4 (R-REG). |
+| `banned_until` | `DateTime(tz)` | sim | (novo) | Fim do bloqueio administrativo (D106). Nulo ou no passado: login liberado. |
 | `main_gate_index` | `Integer` | sim | (novo) | Gate da morat principal, 0 a 7 (R-MAIN). |
 | `tutorial_clear` | `Integer` | não | `tbl_account.tutorial_clear`; `iTutorialClear` | Máscara de bits do tutorial (R-TUT). |
 | `total_gamecount` | `Integer` | não | `total_gamecount` | Partidas jogadas. |
@@ -281,7 +283,7 @@ Decisão em [D18](../decisions/README.md). A lista é consulta sobre `accounts`:
 
 Justificativa: o legado mantinha `tbl_ranking` por job (`usp_renew_ranking`), uma cópia derivada que D12 não admite. O cliente só lê a lista; não há escrita a sincronizar.
 
-Implementado em F14: `domain/ranking.py` (posições) e `db/ranking.py` (consulta, com `outerjoin` em `clan_members` para o id do clã). Ranking por nest não cabe no protocolo: 170 não tem corpo e 171 não tem campo de nest (D56, dúvida 22).
+Implementado em F14: `domain/ranking.py` (posições) e `db/ranking.py` (consulta, com `outerjoin` em `clan_members` para o id do clã). Ranking por nest não cabe no protocolo: 170 não tem corpo e 171 não tem campo de nest (D56, D108, dúvida 22).
 
 ## 5. Regras de negócio
 
@@ -428,7 +430,10 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 | R-CLAN-03 | Chat de clã só para membros (`clan_code > 0`). | features §5.3 |
 | R-CLAN-04 | Chat de clã (177 → 178) vai a todos os membros online, inclusive a quem enviou. Quem não tem clã não envia (D58, inferido). | features §5.3 |
 | R-CLAN-05 | Uma conta, um clã; nome único de 1 a 16 caracteres (D60). O mestre não sai enquanto houver outros membros; o último a sair apaga o clã (D59, shortcut). | D59, D60 |
-| R-ABN | Abandono = `(total_gamecount − total_win − total_lose) × 100 / total_gamecount`. Calculado pelo cliente. Não há coluna. | features §12 (`OnDetailPlayerInfo`, 32813) |
+| R-ABN | Abandono = `(total_gamecount − total_win − total_lose) × 100 / total_gamecount`. Calculado pelo cliente a partir de jogos, vitórias e derrotas que a ficha recebe (D105, D107). Não há coluna. | features §12 (`OnDetailPlayerInfo`, 32813) |
+| R-PEN-01 | Banimento de conta: `account ban` grava `accounts.banned_until`; o login recusa com `-160` até o prazo vencer. `account unban` zera. Não há penalidade automática por abandono (o cliente não tem tela para isso). | D106, features §12 |
+| R-FIC-01 | Ficha (542/543): nick, posição, exp, nest e clã vêm do banco. Jogos, vitórias, derrotas, abates, mortes e headshots saem zero até haver resultado e métricas gravadas (D105, dúvida 17). | D107 |
+| R-RNK-01 | Ranking por nest fica fora: 170 não tem corpo e 171 não tem campo de nest. | D108, dúvida 22 |
 
 ## 6. Mapeamento opcode → caso de uso → tabelas
 
@@ -571,12 +576,12 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
 15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
 16. **Opcodes não medidos (parcial, F12 e F13):** os de amigo e bloqueio (181, 182, 186, 187) foram medidos nos wrappers e no dispatcher. Os pedidos de clã (171, 174, 177, 194) têm cabeçalho medido, mas os pares de resposta não foram observados em captura. Faltam o corpo de 152 e `NotifyFriendLog`, que não tem opcode.
-17. **Resultado da partida:** opcode do GS_* que entrega o resultado ao canal [bloqueia F9]. Limite de amigos e de bloqueados.
+17. **Resultado da partida:** opcode do GS_* que entrega o resultado ao canal [bloqueia F9]. Enquanto isso, nada grava `won` nem as métricas, e a ficha sai com zero nesses campos (D105, D107). Limite de amigos e de bloqueados.
 18. **Clã:** criação e gestão só pela CLI (`landmass-emu clan`, D55), porque o cliente não tem pedido para isso. Confirmar com o usuário.
 19. **Índice de inventário (resolvida em F4/F5, [D30](../decisions/README.md)):** `account_items` e `account_morats` têm namespaces separados. Morat usa o gate como índice; item começa em 1. Inferido do dump de `GetMoratsInfoByGate`: confirmar no cliente real.
 20. **Campo de exp e saldo no registro do jogador:** qual pacote (151, 317 ou 549) entrega `iTotalExp`, `iPoint` e `iCash` ao cliente [bloqueia F3]. **Resolvida em F3 (inferido, confirmar no cliente real):** o 101 entrega `iTutorialClear`, `iTotalExp`, `iCash` e `iPoint` (`@0x28`, `@0x2c`, `@0x48`, `@0x4c`), pelo layout de `LM_PLAYER_INFO`. O 121 de quem entra entrega `iTotalExp` em `@4`. 151, 317 e 549 também trazem `iTotalExp` (`R+0x04`): quem implementar salas precisa preenchê-lo, senão zera o nó do próprio jogador.
-21. **Penalidades:** entram neste escopo? O cliente não tem tela de penalidade (features §12).
-22. **Ranking por nest** (`oddeye`, `shadow`, `leon` do legado): o usuário pôs no escopo (ver Decisões), mas 170 não tem corpo e 171 não tem campo de nest (D56). Precisa de um pacote que traga o nest, ainda não medido. Até lá, não entra.
+21. **Penalidades (resolvida em parte, D106 e D108).** Banimento de conta entra, pela CLI. O cliente não tem tela de penalidade para abandono (features §12), então a deserção não gera efeito. Expulsão e banimento de sala ficam em aberto: pedem `rooms.py` e, na expulsão pela CLI, um push que não existe (D27).
+22. **Ranking por nest** (`oddeye`, `shadow`, `leon` do legado): o usuário pôs no escopo (ver Decisões), mas 170 não tem corpo e 171 não tem campo de nest (D56). Precisa de um pacote que traga o nest, ainda não medido. Até lá, não entra (D108).
 23. **Pacotes `gift_okcashback1..3`:** quem os concede e quando?
 24. **Conta sem morat trava a sala (observado ao vivo) [bloqueia a sala para contas sem morat].** O cliente trava em `LM_RoomPage` quando nenhum gate tem morat. Habilitar gate sem morat não resolve ([layouts_f0 §8](../../re/layouts_f0.md)). Conceder o kit no login quando a conta não tem morat muda o login e escreve no banco. Decisão do usuário: conceder no login, ou só pela CLI (`account kit apply`)?
 
@@ -603,3 +608,7 @@ Registradas em [decisions/README.md](../decisions/README.md):
 - **D74** Item de sistema vai para o `sEventSlot` livre (0 a 9). Não se desmonta por 570 (-4). Destruir libera o slot (559). Sem slot livre, recusa com -4 (inferido).
 - **D75** `ItemUsedByValue` (560 com `value` ≠ 0) é recusado com 561 e -4. O método existe; a troca de morat principal fica fora do F6 (dúvida 7).
 - **D76** Destruir morat zera as peças na mesma transação, sem depender de `ON DELETE SET NULL` (SQLite sem `PRAGMA foreign_keys`).
+- **D105** Jogos, vitórias e derrotas só de partidas com resultado (`won` não nulo); quem não terminou conta jogo sem vitória nem derrota (R-ABN).
+- **D106** Banimento de conta pela CLI: `accounts.banned_until`, login recusado com -160 até o prazo vencer (R-PEN-01).
+- **D107** Ficha 542/543 montada no banco, sem tabela; posição como a do 171 (R-FIC-01).
+- **D108** Ranking por nest e penalidades de sala fora desta entrega (R-RNK-01).
