@@ -5,6 +5,8 @@ from dataclasses import astuple, dataclass
 from enum import IntEnum
 from typing import ClassVar
 
+from landmass_emu.protocol.form_codec import FormCodec
+
 ENCODING = "cp1252"
 
 
@@ -58,6 +60,15 @@ class MsResult(IntEnum):
     INVALID_PASSWORD = -160
 
 
+class DbError(IntEnum):
+    """`DBERR_*` de `Core.u` (constantes do UnrealScript). Resultado do login por formulário."""
+
+    PASSWORD_ERROR = -501  # id inexistente ou senha errada
+    USERID_MISSING = -602
+    PASSWORD_MISSING = -603
+    ACCOUNT_IS_LOGIN = -607  # conta já logada; o cliente pede confirmação e reenvia com `forced`
+
+
 def cstr(raw: bytes) -> str:
     return raw.split(b"\0", 1)[0].decode(ENCODING, errors="replace")
 
@@ -69,30 +80,38 @@ def cfield(text: str, size: int) -> bytes:
 
 @dataclass(frozen=True, slots=True)
 class MsLoginIn:
-    """MS_LOGIN_IN: i32 id_len, i32 pw_len, char login_num[33] (+3 padding), id, pw."""
+    """MS_LOGIN_IN: i32 id_len, i32 pw_len, char login_num[33] @8, u8 @41, u8 forced @42, id, pw.
+
+    `user_id` e `password` são o texto já decodificado (`FormCodec`). No formulário, `login_num`
+    sai com lixo de pilha (`FUN_10025F40` não o escreve): só vale quando id e senha estão vazios.
+    O byte @41 vale 1 no login por GUID e 0 no formulário; o servidor não o usa.
+    """
 
     login_num: str
     user_id: str = ""
     password: str = ""
+    forced: bool = False
 
-    _FIXED = struct.Struct("<ii33s3x")
+    _FIXED = struct.Struct("<ii33s2Bx")
 
     @classmethod
     def unpack(cls, payload: bytes) -> MsLoginIn:
-        id_len, pw_len, guid = cls._FIXED.unpack_from(payload)
+        id_len, pw_len, guid, _flag, forced = cls._FIXED.unpack_from(payload)
         if id_len < 0 or pw_len < 0 or cls._FIXED.size + id_len + pw_len > len(payload):
             raise ValueError(f"MS_LOGIN_IN inconsistente: id_len={id_len} pw_len={pw_len}")
         off = cls._FIXED.size
         return cls(
             login_num=cstr(guid),
-            user_id=cstr(payload[off : off + id_len]),
-            password=cstr(payload[off + id_len : off + id_len + pw_len]),
+            user_id=cstr(FormCodec.decode(payload[off : off + id_len])),
+            password=cstr(FormCodec.decode(payload[off + id_len : off + id_len + pw_len])),
+            forced=bool(forced),
         )
 
     def pack(self) -> bytes:
-        uid = self.user_id.encode(ENCODING)
-        pw = self.password.encode(ENCODING)
-        return self._FIXED.pack(len(uid), len(pw), self.login_num.encode(ENCODING)) + uid + pw
+        uid = FormCodec.encode(self.user_id.encode(ENCODING))
+        pw = FormCodec.encode(self.password.encode(ENCODING))
+        head = self._FIXED.pack(len(uid), len(pw), self.login_num.encode(ENCODING), 0, self.forced)
+        return head + uid + pw
 
 
 @dataclass(frozen=True, slots=True)

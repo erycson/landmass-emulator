@@ -15,7 +15,7 @@ compatível com o cliente de 2009 em `D:\landmass\cliente`, para um grupo pequen
 
 - Escalabilidade horizontal, balanceamento, alta disponibilidade.
 - Anti-cheat (HShield) e qualquer bypass dele.
-- Patch remoto do cliente (FTP do Launcher).
+- Gerar pacotes de patch. O FTP de atualização (D241) só serve uma pasta pronta.
 
 ## Restrições
 

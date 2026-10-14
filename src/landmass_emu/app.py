@@ -66,6 +66,7 @@ from landmass_emu.protocol.channel import CsHeartbeat
 from landmass_emu.protocol.header import CHANNEL_NET_CODE, MESSAGE_NET_CODE
 from landmass_emu.settings import Settings
 from landmass_emu.shutdown import Shutdown
+from landmass_emu.update.ftp import FtpServer
 
 log = logging.getLogger(__name__)
 
@@ -247,6 +248,19 @@ async def warn_empty_shop(items: ShopItemRepository) -> None:
     """Sem linha em `shop_items`, nada está à venda (D191). Só avisa: o servidor sobe mesmo."""
     if await items.count() == 0:
         log.warning("loja vazia: nada à venda; rode 'landmass-emu shop sync' com o cliente")
+
+
+@asynccontextmanager
+async def update_server(settings: Settings) -> AsyncIterator[asyncio.Server | None]:
+    """FTP de atualização (D241), só com `update_port`. Sem a porta, não sobe e não cria pasta."""
+    if settings.update_port is None:
+        yield None
+        return
+    settings.update_dir.mkdir(parents=True, exist_ok=True)
+    ftp = FtpServer(settings.update_dir, settings.update_user, settings.update_password)
+    server = await ftp.start(settings.bind_host, settings.update_port)
+    async with _listening(server) as listening:
+        yield listening
 
 
 @asynccontextmanager

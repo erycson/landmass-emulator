@@ -14,11 +14,12 @@ from landmass_emu.db.clans import SqlClanRepository
 from landmass_emu.db.models import AccountRow
 from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.domain.account import Account, hash_token, is_banned, new_token, verify_token
+from landmass_emu.domain.passwords import PasswordHasher
 from landmass_emu.domain.presence import MessagePresence
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.handlers.message.account import AccountHandlers
 from landmass_emu.net.session import Session
-from landmass_emu.protocol.message import MsLoginIn, MsResult
+from landmass_emu.protocol.message import DbError, MsLoginIn, MsResult
 from landmass_emu.settings import Settings
 
 
@@ -116,6 +117,7 @@ async def test_schema_segue_convencao_laravel(tmp_path: Path) -> None:
             "combat_reset_at",
             "gate_count",
             "access_level",
+            "password_hash",
         ]
         unicos = sorted(u["name"] for u in insp.get_unique_constraints("accounts"))
         assert unicos == [
@@ -162,6 +164,109 @@ def test_cli_de_ban_e_unban_leem_os_argumentos() -> None:
 async def _resultado_login(handlers: AccountHandlers, token: str) -> int:
     [resposta] = await handlers.login(Session(peer="teste"), MsLoginIn(login_num=token).pack())
     return resposta.result
+
+
+def _login_form(user: str, senha: str, *, forced: bool = False, login_num: str = "") -> bytes:
+    """Payload do formulário: id e senha codificados; `login_num` com lixo de pilha (não vale)."""
+    return MsLoginIn(login_num=login_num, user_id=user, password=senha, forced=forced).pack()
+
+
+async def test_login_por_senha_aceita_e_recusa(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_database(settings) as db:
+        accounts = SqlAccountRepository(db)
+        admin = AccountAdmin(accounts, settings)
+        await admin.create("fulano", "Fulano", tmp_path, "Segredo1")
+        handlers = AccountHandlers(
+            accounts,
+            MemorySessionKeyRegistry(),
+            SqlOptionsRepository(db),
+            MessagePresence(),
+            SqlClanRepository(db),
+        )
+
+        sessao = Session(peer="teste")  # uma conexão: o login dela substitui o anterior, sem -607
+
+        async def resultado(payload: bytes) -> int:
+            [resposta] = await handlers.login(sessao, payload)
+            return resposta.result
+
+        assert await resultado(_login_form("fulano", "Segredo1", login_num="lixo")) == MsResult.OK
+        assert await resultado(_login_form("FULANO", "Segredo1")) == MsResult.OK
+        assert await resultado(_login_form("fulano", "errada")) == DbError.PASSWORD_ERROR
+        assert await resultado(_login_form("ninguem", "Segredo1")) == DbError.PASSWORD_ERROR
+        assert await resultado(_login_form("", "Segredo1")) == DbError.USERID_MISSING
+        assert await resultado(_login_form("fulano", "")) == DbError.PASSWORD_MISSING
+
+
+async def test_login_por_senha_pede_confirmacao_se_ja_logado(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_database(settings) as db:
+        accounts = SqlAccountRepository(db)
+        await AccountAdmin(accounts, settings).create("fulano", "Fulano", tmp_path, "Segredo1")
+        presence = MessagePresence()
+        handlers = AccountHandlers(
+            accounts,
+            MemorySessionKeyRegistry(),
+            SqlOptionsRepository(db),
+            presence,
+            SqlClanRepository(db),
+        )
+        primeira = Session(peer="a")
+        [ok] = await handlers.login(primeira, _login_form("fulano", "Segredo1"))
+        assert ok.result == MsResult.OK
+        segunda = Session(peer="b")
+        [recusa] = await handlers.login(segunda, _login_form("fulano", "Segredo1"))
+        assert recusa.result == DbError.ACCOUNT_IS_LOGIN
+        assert segunda.account is None
+        [forcado] = await handlers.login(segunda, _login_form("fulano", "Segredo1", forced=True))
+        assert forcado.result == MsResult.OK
+        conta = await accounts.find_by_username("fulano")
+        assert conta is not None and presence.recipient_of(conta.id) is segunda
+
+
+async def test_login_por_senha_sem_senha_cadastrada_recusa(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_database(settings) as db:
+        accounts = SqlAccountRepository(db)
+        await AccountAdmin(accounts, settings).create("fulano", "Fulano", tmp_path)
+        handlers = AccountHandlers(
+            accounts,
+            MemorySessionKeyRegistry(),
+            SqlOptionsRepository(db),
+            MessagePresence(),
+            SqlClanRepository(db),
+        )
+        [resposta] = await handlers.login(Session(peer="t"), _login_form("fulano", "qualquer"))
+        assert resposta.result == DbError.PASSWORD_ERROR
+
+
+async def test_cli_define_senha_e_create_com_senha(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        await AccountAdmin(accounts, settings).create("fulano", "Fulano", tmp_path)
+        assert "senha definida" in await AccountAdmin(accounts, settings).password(
+            "fulano", "Nova123"
+        )
+        conta = await accounts.find_by_username("fulano")
+        assert conta is not None and conta.password_hash is not None
+        assert PasswordHasher.verify("Nova123", conta.password_hash)
+        assert not PasswordHasher.verify("Segredo1", conta.password_hash)
+        await AccountAdmin(accounts, settings).create("beltrano", "Beltrano", tmp_path, "Outra12")
+        beltrano = await accounts.find_by_username("beltrano")
+        assert beltrano is not None and beltrano.password_hash is not None
+        assert PasswordHasher.verify("Outra12", beltrano.password_hash)
+        with pytest.raises(ValueError, match="senha"):
+            await AccountAdmin(accounts, settings).password("fulano", "")
+        with pytest.raises(ValueError, match="não existe"):
+            await AccountAdmin(accounts, settings).password("ninguem", "Nova123")
+
+
+def test_cli_de_senha_le_os_argumentos() -> None:
+    args = _parser().parse_args(["account", "password", "--user", "fulano", "--password", "x1"])
+    assert (args.action, args.user, args.password) == ("password", "fulano", "x1")
+    args = _parser().parse_args(["account", "create", "--user", "u", "--nickname", "n"])
+    assert args.password is None
 
 
 async def test_ban_recusa_o_login_ate_expirar_e_unban_libera(tmp_path: Path) -> None:

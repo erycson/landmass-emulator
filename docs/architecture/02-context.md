@@ -35,7 +35,7 @@ flowchart LR
 |-------|-----------|---------|-----------:|:-----------:|
 | 7313 | TCP | Message Server: login, canais, amigos, clã, ranking | 13 | sim |
 | 7314 | TCP | Channel Server: lobby, salas, loja, hangar, game servers | 14 | sim |
-| 7312 | TCP | Update Server | 12 | não — o Launcher de 2009 usa FTP e é ignorado |
+| 7312 | TCP (FTP) | Update Server (opcional) | 12 | sim, só com `LANDMASS_UPDATE_PORT` (D241): leitura de `LANDMASS_UPDATE_DIR` |
 | 7310 | TCP | ServerManager (interno entre servidores) | 10 | não |
 | configurável | UDP | Partida UE2 (Game Server Host) | — | via host |
 

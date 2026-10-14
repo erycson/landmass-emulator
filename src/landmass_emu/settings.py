@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     # Log do processo (D205): nível e formato JSON opcional. O serve loga no stdout.
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_json: bool = False
+    # Servidor FTP de atualização para o Launcher (D241). Sem `update_port`, não sobe. A pasta
+    # padrão é vazia; sem usuário, aceita qualquer login (só leitura).
+    update_port: Annotated[int | None, Field(ge=1, le=65535)] = None
+    update_dir: Path = Path("data/update")
+    update_user: Annotated[str, Field(max_length=32)] = ""
+    update_password: Annotated[str, Field(max_length=64)] = ""
 
     @field_validator("shutdown_notice_seconds")
     @classmethod
@@ -117,6 +123,8 @@ class Settings(BaseSettings):
             raise ValueError("LANDMASS_MATCH_PORT_MIN é maior que LANDMASS_MATCH_PORT_MAX")
         if self.match_server_dir is not None and not self.match_login_num:
             raise ValueError("LANDMASS_MATCH_LOGIN_NUM é obrigatório com LANDMASS_MATCH_SERVER_DIR")
+        if self.update_password and not self.update_user:
+            raise ValueError("LANDMASS_UPDATE_PASSWORD sem LANDMASS_UPDATE_USER")
         return self
 
     @classmethod

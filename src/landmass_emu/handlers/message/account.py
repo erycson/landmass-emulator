@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from landmass_emu.domain.account import Account, hash_token, is_banned, verify_token
+from landmass_emu.domain.passwords import PasswordHasher
 from landmass_emu.domain.presence import MessagePresence
 from landmass_emu.net.server import Reply
 from landmass_emu.net.session import Session
@@ -13,6 +14,7 @@ from landmass_emu.ports.clans import ClanRepository
 from landmass_emu.ports.options import OptionsRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.protocol.message import (
+    DbError,
     MsInMessageServerOut,
     MsLoginIn,
     MsLoginOut,
@@ -39,10 +41,11 @@ class AccountHandlers:
         self._clans = clans
 
     async def login(self, session: Session, payload: bytes) -> Sequence[Reply]:
-        # Só o fluxo por token: id/pw são ignorados até a senha ser implementada (D8, argon2id).
         req = MsLoginIn.unpack(payload)
         self._presence.unbind(session)  # re-login ou troca de conta na mesma conexão
         session.account = None
+        if req.user_id or req.password:
+            return await self._login_form(session, req)
         account = await self._authenticate(req.login_num)
         if account is None:
             log.info("[%s] login recusado", session.peer)
@@ -73,6 +76,33 @@ class AccountHandlers:
         clan = await self._clans.by_account(session.account.id)
         clan_code = 0 if clan is None else clan.id
         return [MsInMessageServerOut(MsResult.OK, session.account.nickname, clan_code)]
+
+    async def _login_form(self, session: Session, req: MsLoginIn) -> Sequence[Reply]:
+        """Login por id e senha do formulário (D240). Aqui `login_num` não vale: é lixo de pilha."""
+        if not req.user_id:
+            return [MsLoginOut(DbError.USERID_MISSING)]
+        if not req.password:
+            return [MsLoginOut(DbError.PASSWORD_MISSING)]
+        account = await self._accounts.find_by_username(req.user_id.strip().lower())
+        if (
+            account is None
+            or account.password_hash is None
+            or not PasswordHasher.verify(req.password, account.password_hash)
+        ):
+            log.info("[%s] login por senha recusado", session.peer)
+            return [MsLoginOut(DbError.PASSWORD_ERROR)]
+        if is_banned(account, datetime.now(UTC)):
+            return [MsLoginOut(MsResult.INVALID_PASSWORD)]  # mesma recusa do token (R-PEN-01)
+        # Conta logada em outra conexão: o cliente pergunta e reenvia com `forced`. Com `forced`, a
+        # presença passa a esta conexão; a antiga segue aberta, sem conta. shortcut: ela não recebe
+        # aviso nem é fechada (o protocolo não tem opcode para isso), e seu log segue até o fim.
+        if not req.forced and self._presence.is_online(account.id):
+            log.info("[%s] login recusado: conta já logada", session.peer)
+            return [MsLoginOut(DbError.ACCOUNT_IS_LOGIN)]
+        session.account = account
+        self._presence.bind(account.id, session)
+        log.info("[%s] login de %s por senha", session.peer, account.username)
+        return [MsLoginOut(MsResult.OK)]
 
     async def _authenticate(self, token: str) -> Account | None:
         """Login por token (`login_num`). O Channel usa a chave de sessão, não isto."""

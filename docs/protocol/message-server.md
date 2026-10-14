@@ -92,7 +92,7 @@ Implementação: `handlers/message/clan.py` e `ranking.py`; layouts em `protocol
 | 44 | `char[id_len]` | `id` |
 | 44+id_len | `char[pw_len]` | `pw` |
 
-No fluxo por token, `id` e `pw` vêm vazios e são ignorados (senha fica para o argon2id, D8).
+No fluxo por token, `id` e `pw` vêm vazios e são ignorados. No formulário (`login_num=DEVELOPERGUID`, D240), `id` e `pw` vêm codificados (`protocol/form_codec.py`) e a senha é conferida com scrypt.
 
 ## Respostas (offsets no corpo, depois do cabeçalho `u16`)
 
