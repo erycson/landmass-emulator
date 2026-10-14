@@ -124,7 +124,16 @@ function string Line(Controller C, Pawn P, int Vida)
         $ " pri=" $ string(C.PlayerReplicationInfo != None)
         $ " bd=" $ string(X != None && X.BoosterData != None)
         $ " gd=" $ string(X != None && X.GeneratorData != None)
-        $ " ag=" $ string(X.agility) $ " fgs=" $ string(X.fDefaultGroundSpeed);
+        $ " ag=" $ string(X.agility) $ " fgs=" $ string(X.fDefaultGroundSpeed)
+        $ " mt=" $ string(C.MoveTarget) $ " goal=" $ GoalOf(C);
+}
+
+// Objetivo de depuração do bot (o motor e LMEmuRoutes escrevem); vazio para humano.
+function string GoalOf(Controller C)
+{
+    if (Bot(C) == None)
+        return "";
+    return Bot(C).GoalString;
 }
 
 function string PhysName(Pawn P)

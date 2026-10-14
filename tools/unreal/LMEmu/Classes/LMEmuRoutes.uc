@@ -358,6 +358,7 @@ function int Slot(Bot B)
     Stall[i] = 0;
     HuntAt[i] = 0;
     Mark[i] = Level.Spawn(class'LMEmuMarker');
+    Mark[i].Dono = B;
     if (Came.Length < (i + 1) * Pos.Length)
         Came.Length = (i + 1) * Pos.Length;
     return i;
@@ -481,9 +482,8 @@ function bool Assign(Bot B)
         Melee(B, VSize(B.Enemy.Location - B.Pawn.Location) < MELEE_DIST);
         return false;
     }
-    // Inimigo fora de vista, mas em linha direta: a caça nativa do motor (Hunting) anda até ele sem rede.
-    if (B.Enemy != None && B.ActorReachable(B.Enemy))
-        return false;
+    // Inimigo fora de vista vai pela rota (PickGoal mira onde ele foi visto). A caça nativa precisa de rede
+    // de navegação: sem ela o motor caía em RestFormation e o bot ficava parado minutos (D248).
     Melee(B, false);
     i = Slot(B);
     cur = Nearest(B.Pawn.Location, d);

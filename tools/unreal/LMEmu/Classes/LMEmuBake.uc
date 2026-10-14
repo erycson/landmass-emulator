@@ -7,6 +7,7 @@ class LMEmuBake extends Info
 
 const WALK_NZ = 0.7;       // normal Z mínima de piso caminhável
 const HASH_SIZE = 65536;   // tabela de células; bem acima do teto de nós
+const STAIR_SAMPLES = 16;  // pontos de piso entre dois nós no teste de escada e rampa
 
 var config float Cell;     // lado da célula (uu)
 var config float StepH;    // degrau que o pawn anda sem pular
@@ -135,7 +136,9 @@ function Expand(int u)
             S.X = cx; S.Y = cy; S.Z = uf + FlyMax + 30.0;
             E.X = cx; E.Y = cy; E.Z = uf - MaxDrop - 10.0;
             NCols++;
-            for (k = 0; k < 24; k++)
+            // Dentro de sólido a coluna desce 8 uu por volta: o teto cobre a coluna toda (FlyMax + MaxDrop).
+            // Com 24 voltas, laje grossa acima do piso cortava a coluna antes do chão (D248).
+            for (k = 0; k < 200; k++)
             {
                 if (!Under(S, E, HL, HN))
                     break;
@@ -170,6 +173,15 @@ function TryEdge(int u, vector P, float uf, float cx, float cy, float fz)
     local float dz, dh;
     local int v;
 
+    // Cada PlayerStart espalha uma grade própria, e a célula pode já ter nó em outro ponto: testa até ele,
+    // senão a aresta vale para um ponto e o nó fica em outro, e a volta de 4% das arestas sumia (D248).
+    v = FindNode(cx, cy, fz + Hgt);
+    if (v >= 0)
+    {
+        cx = NPos[v].X;
+        cy = NPos[v].Y;
+        fz = NPos[v].Z - Hgt;
+    }
     dz = fz - uf;
     if (dz <= -StepH)
         F = "f";
@@ -179,6 +191,10 @@ function TryEdge(int u, vector P, float uf, float cx, float cy, float fz)
         F = "j";
     else
         F = "b";
+    // Subida maior que um degrau ainda é andar se for escada ou rampa (D248). Sem isso, a escada do
+    // ONS-Airport virava pulo ou booster, e o lado de baixo do mapa não tinha volta para o de cima.
+    if ((F == "j" || F == "b") && Stairs(P, uf, cx, cy, fz))
+        F = "w";
     D.X = cx - P.X;
     D.Y = cy - P.Y;
     dh = VSize(D);
@@ -215,6 +231,24 @@ function TryEdge(int u, vector P, float uf, float cx, float cy, float fz)
         return;
     Log("LMEmuBake link" @ string(u) @ string(v) @ F);
     Links++;
+}
+
+// Escada ou rampa de P (piso uf) até a célula (cx, cy) de piso fz: o piso, amostrado em STAIR_SAMPLES
+// pontos, nunca muda um degrau (StepH) ou mais de um ponto para o próximo.
+function bool Stairs(vector P, float uf, float cx, float cy, float fz)
+{
+    local int k;
+    local float a, h, prev;
+
+    prev = uf;
+    for (k = 1; k <= STAIR_SAMPLES; k++)
+    {
+        a = float(k) / float(STAIR_SAMPLES);
+        if (!FirstFloor(P.X + (cx - P.X) * a, P.Y + (cy - P.Y) * a, prev + StepH + 2.0, prev - StepH - 2.0, h))
+            return false;
+        prev = h;
+    }
+    return Abs(prev - fz) < StepH;
 }
 
 // Ponto que o pawn não pode ocupar: água, dano ou morte por Z. Volume que toca a esfera do pawn conta
@@ -294,6 +328,31 @@ function bool MidFloor(float X, float Y, float Lo2, float Hi2)
     return false;
 }
 
+// Nó já existente na célula de (X,Y,Z), ou -1.
+function int FindNode(float X, float Y, float Z)
+{
+    local int h;
+
+    h = Slot(CellOf(X, Cell), CellOf(Y, Cell), CellOf(Z, 16.0));
+    return Table[h] - 1;
+}
+
+// Posição da célula na tabela: a do nó dela ou a vazia onde ele entraria (sondagem linear).
+function int Slot(int ix, int iy, int iz)
+{
+    local int h, n;
+
+    h = (ix * 73856093 + iy * 19349663 + iz * 83492791) & (HASH_SIZE - 1);
+    while (Table[h] != 0)
+    {
+        n = Table[h] - 1;
+        if (NIX[n] == ix && NIY[n] == iy && NIZ[n] == iz)
+            return h;
+        h = (h + 1) & (HASH_SIZE - 1);
+    }
+    return h;
+}
+
 // Índice do nó da célula de (X,Y,Z), criando-o se é novo. -1 se o teto ou a caixa barram.
 function int NodeAt(float X, float Y, float Z)
 {
@@ -302,14 +361,9 @@ function int NodeAt(float X, float Y, float Z)
     ix = CellOf(X, Cell);
     iy = CellOf(Y, Cell);
     iz = CellOf(Z, 16.0);
-    h = (ix * 73856093 + iy * 19349663 + iz * 83492791) & (HASH_SIZE - 1);
-    while (Table[h] != 0)
-    {
-        n = Table[h] - 1;
-        if (NIX[n] == ix && NIY[n] == iy && NIZ[n] == iz)
-            return n;
-        h = (h + 1) & (HASH_SIZE - 1);
-    }
+    h = Slot(ix, iy, iz);
+    if (Table[h] != 0)
+        return Table[h] - 1;
     if (NPos.Length >= NodeCap)
     {
         bCap = true;

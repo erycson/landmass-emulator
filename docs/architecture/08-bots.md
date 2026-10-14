@@ -96,11 +96,12 @@ classe do morat (`class_allows`); o teste com o wdb real faz o mesmo com 30 seme
 partida, 16 bytes com o prefixo, sem caractere fora de ASCII. O prefixo `[BOT]` é recusado no cadastro
 (`account create`) e no pedido de contato, sem diferenciar caixa (`tests/test_account.py`).
 
-## Comportamento (D244 a D246)
+## Comportamento (D244 a D248)
 
 - Combate: o motor do UT2004 (TacticalMove, RangedAttack, Charging) com personalidade e notas de arma do LMEmu.
 - Caça e deslocamento: rota do mapa até onde está o inimigo, com penalidade nas arestas que travam e booster em trecho longo.
 - Time: todo bot é freelance; nenhum segue o humano.
+- Trava: o `LMEmuMarker` de cada bot chama o `WhatToDoNext` se o bot fica 4 s parado sem inimigo à vista (D248).
 - Medição: `LMEmu: ia` no log (flags, personalidade e notas), `LMEmuRec` com `bRecord=True`.
 
 ## Avisos que sobram (motor, não bot)
@@ -163,12 +164,15 @@ volta ao combate normal.
 
 **Validação do bake em ONS-Airport (headless, sem cliente):**
 
-- Bake: 2953 nós e 18420 arestas (`w` 16091, `f` 1151, `j` 511, `b` 667). Termina em 29,7 s de jogo (59 s de
+- Bake (D248): 3239 nós e 19874 arestas (`w` 17738, `f` 1332, `j` 128, `b` 676). Termina em 32,5 s de jogo (99 s de
   processo, contando carga e saída). Teto não atingido. Nenhuma célula barrada por água (o teste é
   conservador: volume que toca a esfera do pawn conta).
-- Conectividade: as bases time 0 e time 1 estão no mesmo componente. Time 0 para time 1 em 79 passos; de
-  time 1 para time 0 em 58.
-- Descartes do último bake: 814 pisos sob teto, 13630 na passagem, 24 no meio do caminho de `w`.
+- Conectividade: as bases se alcançam sem aresta `b` nos dois sentidos (63 e 59 passos). Sobram 32 nós alcançáveis
+  sem volta, em fossos a z -9646. Das arestas `w` planas, 812 de 17164 não têm volta.
+- Descartes do último bake: 1371 pisos sob teto, 15510 na passagem, 23 no meio do caminho de `w`.
+- Partida só com bots, TDM (320 s): no 10x10, cada bot fica parado no máximo 3% do tempo e passa 4% a 34% do
+  tempo na metade inimiga; no 2x2, de 15% a 26%. Os times se encontram no meio. Não houve avanço claro do time
+  que mata mais (mortes e frente por janela de 30 s não andam juntas).
 
 Não verificado nas rotas: pulo e booster em jogo (os limites são os do motor, não medidos com pawn), e as
 tolerâncias do bake (folga, degrau, raio) sem conferência contra o cliente.
