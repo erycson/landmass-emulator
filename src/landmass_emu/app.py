@@ -185,7 +185,7 @@ async def channel_server(
     shutdown: Shutdown,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
-    rooms = Rooms()
+    rooms = Rooms(solo=settings.match_bots > 0)
     match = match_host_from(settings)
     maps = WdbCatalog(settings.client_dir / "landmass.wdb")
     handlers = ChannelHandlers(

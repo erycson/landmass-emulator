@@ -516,6 +516,18 @@ def test_dominio_sair_transfere_dono_e_esvaziar_remove() -> None:
     assert rooms.leave(2) is None
 
 
+def test_dominio_inicio_solo_so_com_bots() -> None:
+    sozinho = Rooms()
+    _criar(sozinho, 1)
+    with pytest.raises(RoomError) as erro:
+        sozinho.start(1, 0)
+    assert erro.value.reason is RoomReason.NOT_READY
+    com_bots = Rooms(solo=True)
+    sala = _criar(com_bots, 1)
+    com_bots.start(1, 0)
+    assert sala.state == ROOM_PLAYING and sala.in_game == {1}
+
+
 def test_dominio_pronto_inicio_e_entrada_tardia() -> None:
     rooms = Rooms()
     sala = _criar(rooms, 1)

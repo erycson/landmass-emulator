@@ -15,6 +15,8 @@ Há três caminhos, todos com `LANDMASS_MATCH_SERVER_DIR`:
 | Comando do dono | `/bot add [0-9]` no chat. 0 a 7 vira o skill do motor; 8 e 9 viram 7; vazio vira 3. | Durante a partida, se a sala não está cheia. |
 | Vaga | Quando um humano entra com `NumPlayers + NumBots` no máximo, sai o bot mais recente (`/bot remove` faz o mesmo). | Entrada de humano. |
 
+Com `LANDMASS_MATCH_BOTS` maior que 0, o dono inicia a partida sozinho, sem outro jogador pronto (D224).
+
 `/bot remove` tira o bot mais recente. Só o dono (apelido cujo hex é `Owner=`) usa os comandos; a
 mensagem não aparece para os outros jogadores.
 

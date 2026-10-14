@@ -134,7 +134,9 @@ class Expelled:
 class Rooms:
     """Registro das salas e da sala em que cada jogador está (uma no máximo por jogador)."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, solo: bool = False) -> None:
+        # solo: o dono inicia sem outro jogador (partida contra bots, D224).
+        self._solo = solo
         self._rooms: dict[int, Room] = {}
         self._room_of: dict[int, int] = {}
         # convidado -> sala do convite pendente.
@@ -301,7 +303,7 @@ class Rooms:
         return room, member.ready
 
     def start(self, owner: int, morats: int) -> Room:
-        """O dono inicia quando há ao menos um outro jogador e todos os outros estão prontos."""
+        """O dono inicia com todos os outros prontos e ao menos um outro, salvo `solo`."""
         room = self.room_of(owner)
         if room is None:
             raise RoomError(RoomReason.NOT_IN_ROOM)
@@ -310,7 +312,7 @@ class Rooms:
         if room.state != ROOM_WAITING:
             raise RoomError(RoomReason.STARTED)
         others = [m for guid, m in room.players().items() if guid != owner]
-        if not others or not all(m.ready for m in others):
+        if (not others and not self._solo) or not all(m.ready for m in others):
             raise RoomError(RoomReason.NOT_READY)
         room.members[owner].morats = morats
         room.members[owner].ready = True  # o cliente exige pronto do dono para entrar (D77)
