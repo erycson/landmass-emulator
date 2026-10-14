@@ -181,6 +181,13 @@ function Sync(GameInfo G)
     LM_DeathMatch(G).MinPlayers = Min(G.NumPlayers + G.NumBots, G.MaxPlayers);
 }
 
+// Humano entrou: o mínimo só sobe. Baixar para o total apagaria o MinPlayers da URL antes de o motor
+// criar os bots iniciais (um humano sozinho ficava sem bot).
+function Grow(GameInfo G)
+{
+    LM_DeathMatch(G).MinPlayers = Max(LM_DeathMatch(G).MinPlayers, Min(G.NumPlayers + G.NumBots, G.MaxPlayers));
+}
+
 // /bot add (chat e teste de headless, D229): cria um bot se há vaga, com o skill pedido, e eleva o
 // mínimo. Falso se não criou.
 function bool Add(GameInfo G, int Skill)

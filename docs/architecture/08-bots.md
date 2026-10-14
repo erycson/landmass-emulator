@@ -108,8 +108,8 @@ partida, 16 bytes com o prefixo, sem caractere fora de ASCII. O prefixo `[BOT]` 
 
 ## Não verificado e limites
 
-- A partida sem humano termina em cerca de 40 s (`GameEnded`), mesmo com `TimeLimit=10` e `GoalScore=999`.
-  A causa não foi achada nos dumps. Por isso os testes de contagem cobrem 40 s, não a partida inteira.
+- A partida sem humano termina em cerca de 40 s pelo LastMan do LM (D243). Com bots, o `CheckLastMan` do LMEmu só encerra
+  sem humano. Por isso os testes headless de contagem cobrem 40 s, não a partida inteira.
 - Um `bot3-tdm2.log` (TDM com dois adds) parou depois do fim da partida e foi morto pelo harness. A repetição
   (`bot3-tdm3.log`) fechou normalmente. Não foi reproduzido.
 - Bots criados pelo roster do motor, sem linha, saem da partida sozinhos (`bot saiu  reclamado False`, em

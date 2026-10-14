@@ -62,12 +62,28 @@ event PlayerController Login(string Portal, string Options, out string Error)
     return Super.Login(Portal, Options, Error);
 }
 
-// Humano entrou: o mínimo passa a contar com ele (D229). A vaga tirada no Login já saiu do total.
+// Humano entrou: o mínimo passa a contar com ele, sem baixar (D229). A vaga tirada no Login já saiu do total.
 event PostLogin(PlayerController NewPlayer)
 {
     Super.PostLogin(NewPlayer);
     if (Botset != None)
-        Botset.Sync(self);
+        Botset.Grow(self);
+}
+
+// O LastMan do LM conta só humanos: um humano sozinho (ou um time só de bots) encerrava a partida em
+// segundos, com o motivo trocado para TimeLimit (ControlEndReason). Com bots, só encerra sem humano.
+function CheckLastMan()
+{
+    if (Botset == None)
+    {
+        Super.CheckLastMan();
+        return;
+    }
+    if (NumPlayers == 0)
+    {
+        Log("LMEmu: fim sem humano");
+        EndGame(None, "LastMan");
+    }
 }
 
 // Bot criado pelo nome do registro de jogador da linha (aparencia valida); depois reclama o bot novo.
