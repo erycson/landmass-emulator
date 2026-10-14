@@ -31,6 +31,7 @@ uv run landmass-emu account token --user fulano
 | `account grant --user U [--exp N] [--ld N] [--cash N]` | Soma exp, LD e Cash à conta. Grava no banco e imprime os totais e a patente. Um servidor em execução não é avisado: o cliente vê os valores ao relogar. |
 | `account ban --user U --days N` | Bloqueia o login da conta por N dias (mínimo 1). O login recusa com `-160` até o prazo vencer, sem ação extra. Quem já está logado não cai. |
 | `account unban --user U` | Remove o bloqueio agora. |
+| `account access <usuario> <nivel>` | Grava o nível de acesso GM (`ucAccess`): 0 jogador, 9 GM (`/NOTIFY`, `/ALLNOTIFY`, `/EXPEL`), 10 administrador. Vale no próximo login; o token não muda. Nível 10 some da lista de jogadores de quem tem menos de 10. Nível de 0 a 255. |
 
 - `--client-dir` sobrescreve `LANDMASS_CLIENT_DIR` (padrão `../cliente/system`).
 - `--user`: 1 a 12 caracteres minúsculos, dígitos ou `_` (vira nome de arquivo `.bat`; sem maiúsculas para evitar colisão no Windows). `--nickname`: 1 a 16 bytes em cp1252.

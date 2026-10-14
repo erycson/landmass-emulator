@@ -18,6 +18,7 @@ class Account:
     nickname: str
     token_hash: str
     banned_until: datetime | None = None
+    access_level: int = 0  # `ucAccess` do cliente; 9 ou mais tem comandos de GM (domain/access.py)
 
 
 def is_banned(account: Account, now: datetime) -> bool:

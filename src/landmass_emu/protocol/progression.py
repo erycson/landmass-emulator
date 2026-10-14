@@ -27,7 +27,8 @@ class PlayerRecord:
     @0x28 iTutorialClear (nó+0x38), @0x2c iTotalExp (nó+0x3c), @0x48 iCash (nó+0x58),
     @0x4c iPoint (nó+0x5c). @0x50..0x59 é o `sEventSlot[10]` (índice do item de sistema, 0xFF
     vazio). @0x90 e @0xa0 são o id do jogador (chave da lista e do nó).
-    Os demais campos ficam zero, exceto nest (@0x20, ucNest) e os sGate (@0x5a + 4·g: siIdx = g e
+    Os demais campos ficam zero, exceto access (@0x11, ucAccess; D193), nest (@0x20, ucNest) e
+    os sGate (@0x5a + 4·g: siIdx = g e
     bEnable = 1, para cada gate habilitado, R-GATE-01), que vêm do inventário (F5).
 
     shortcut: nick, clã e estatísticas do 101 seguem zero; o cliente recebe esses campos por outros
@@ -41,6 +42,7 @@ class PlayerRecord:
     nest: int = 0
     enabled_gates: tuple[int, ...] = ()  # gates com bEnable (domain/inventory: enabled_gates)
     system_slots: tuple[int | None, ...] = ()  # índice do item por slot de sistema; None = vazio
+    access: int = 0  # ucAccess @0x11 (nó+0x21, valor+0x11 em re/layouts_f0.md §1.1; D193)
     SIZE: ClassVar[int] = 0xA8
 
     def pack(self, client_guid: int) -> bytes:
@@ -54,6 +56,7 @@ class PlayerRecord:
             (0xA0, client_guid),
         ):
             struct.pack_into("<i", buf, offset, value)
+        buf[0x11] = self.access
         buf[0x20] = self.nest
         buf[0x50:0x5A] = b"\xff" * 10
         for slot, index in enumerate(self.system_slots):

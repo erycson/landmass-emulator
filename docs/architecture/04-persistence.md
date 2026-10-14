@@ -44,6 +44,7 @@ Fonte: `D:\landmass\servidor\db\LM_account.sql`. Modelo: `db/models.py`. Migraç
 | `created_at` | `DateTime(timezone=True)` | `create_date smalldatetime` | Criação. |
 | `updated_at` | `DateTime(timezone=True)` | — (novo) | Última alteração; muda na rotação do token. |
 | `banned_until` | `DateTime(timezone=True)`, nulo | — (novo) | Fim do bloqueio administrativo (D106; migração `9e4c2b7a1d05`). Nulo ou no passado: login liberado. |
+| `access_level` | `Integer` NOT NULL, padrão 0 | — (novo) | Nível de acesso GM (`ucAccess` do cliente; D193; migração `7a2d9c4e1b35`). 9 ou mais: comandos de GM no canal; 10 ou mais: some da lista de jogadores de quem tem menos de 10. Gravado pela CLI (`account access`). |
 
 - `username` não é FK para `users`: é o próprio login da conta.
 - Único em `nickname`: regra de nickname do jogo (`CheckNickname`, 140, responde "nome disponível").

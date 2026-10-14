@@ -115,6 +115,7 @@ async def test_schema_segue_convencao_laravel(tmp_path: Path) -> None:
             "record_reset_at",
             "combat_reset_at",
             "gate_count",
+            "access_level",
         ]
         unicos = sorted(u["name"] for u in insp.get_unique_constraints("accounts"))
         assert unicos == [

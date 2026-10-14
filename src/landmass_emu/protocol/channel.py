@@ -93,6 +93,8 @@ class CsOp(IntEnum):
     SAVE_OPTION = 544
     SEND_MESSAGE = 240
     SEND_MESSAGE_OUT = 241
+    SEND_COMMAND = 250  # /NOTIFY e /ALLNOTIFY do console GM (D193)
+    SEND_COMMAND_OUT = 251
     READY_GAME_ERROR = 404
     ERROR = 54  # envelope S→C: u16 opcode real @0, i32 código @4 (NotifyErrorMessage)
 
@@ -294,6 +296,45 @@ class CsSendMessageOut:
         return self._HEAD.pack(self.sender, self.msg_type, len(self.text)) + self.text
 
 
+@dataclass(frozen=True, slots=True)
+class CsSendCommandIn:
+    """SEND_COMMAND (250): `u8 todos` @0 (1 = `/ALLNOTIFY`, 0 = `/NOTIFY`), `u8 len` @1, texto[len]
+    @2. Evidência: `FUN_100173b0` grava 'Y' como 1 e corta o texto em 0x78; `FUN_10001790` copia
+    os 2 bytes de cabeçalho e `len` bytes de texto (`re/layouts_f0.md` §7.6, `protocol_full.md`)."""
+
+    all_server: bool
+    text: bytes
+    _HEAD = struct.Struct("<BB")
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> CsSendCommandIn:
+        if len(payload) < cls._HEAD.size:
+            raise ValueError(f"CS_SEND_COMMAND_IN curto: {len(payload)} bytes")
+        flag, length = cls._HEAD.unpack_from(payload)
+        if length > MAX_CHAT_TEXT or len(payload) < cls._HEAD.size + length:
+            raise ValueError(f"CS_SEND_COMMAND_IN inconsistente: len={length}")
+        return cls(flag != 0, payload[2 : 2 + length])
+
+
+@dataclass(frozen=True, slots=True)
+class CsSendCommandOut:
+    """SEND_COMMAND_OUT (251): `u8 len` @0, texto[len] @1 e NUL logo depois.
+
+    Evidência: o case 0xfb de `re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (L1281-1311) lê
+    `*param_2` como tamanho e copia esse número de bytes de `param_2 + 1`; o `NotifySendCommand`
+    recebe o ponteiro do texto, lido como C string. O `re/protocol_full.md` chama @0 de "comando",
+    mas o código o usa como tamanho. O cliente não usa o byte de flag do pedido.
+    """
+
+    text: bytes
+    opcode: ClassVar[int] = CsOp.SEND_COMMAND_OUT
+
+    def pack(self) -> bytes:
+        if len(self.text) > MAX_CHAT_TEXT:
+            raise ValueError(f"aviso longo demais: {len(self.text)} bytes")
+        return bytes((len(self.text),)) + self.text + b"\x00"
+
+
 # ---- Salas (marco 3). Layouts e evidências: re/rooms.md §1-§8 e re/channel_server.md §2-§3. -----
 # Os offsets do registro (`CsRoom`) são do corpo do 302 e relativos ao valor do nó (nó + 0x10),
 # que é o que `FUN_1001d640` devolve. O 314, o 412 e o erro do 312 usam o mesmo mapa.
@@ -390,11 +431,12 @@ class CsChangeRoomSlotIn:
 class CsExpelPlayerIn:
     """EXPEL_PLAYER (700), 18 bytes: `u8 kind` @0 e `char nick[17]` @1 (wrapper `0x10017bb0`).
 
-    `kind`: 0x10 WEB, 0x21 CHANNEL, 0x22 LOBBY. É o `/EXPEL` do console (`XInterface` L21290), não
-    a expulsão do dono da sala (essa é o 451). O servidor não executa: o emulador não tem papel de
-    administrador, e expulsar a pedido de qualquer jogador deixaria tirar qualquer um do canal.
+    `kind`: 0x10 WEB, 0x21 CHANNEL, 0x22 LOBBY (`FUN_10017bb0`). É o `/EXPEL` do console
+    (`XInterface` L21281), não a expulsão do dono da sala (essa é o 451). Quem pede precisa de
+    `ucAccess` 9 ou mais (`domain/access.py`); o servidor confere.
 
-    shortcut: revisar com papel de administrador (`ucAccess`); até lá o 700 é ignorado."""
+    Evidência do cliente: `ExpelPlayer` grava `_DAT_1005aa54 = -1` antes do pedido, e o 701 grava o
+    resultado nessa mesma variável. Por isso o 701 é resposta a quem pediu (D193)."""
 
     kind: int
     nickname: str
@@ -668,11 +710,15 @@ class CsRoomPlayer:
     morats: int
     nick: str = ""
     total_exp: int = 0
+    access: int = 0
     _TAIL = struct.Struct("<BBBBi")
 
     def pack(self) -> bytes:
         head = CsChannelPlayer(
-            client_guid=self.client_guid, nick=self.nick, total_exp=self.total_exp
+            client_guid=self.client_guid,
+            nick=self.nick,
+            total_exp=self.total_exp,
+            access=self.access,
         ).pack()
         return head + self._TAIL.pack(self.slot, int(self.ready), 0, 0, self.morats)
 

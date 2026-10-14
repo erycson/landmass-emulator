@@ -49,6 +49,8 @@ class AccountRow(Base):
     record_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     combat_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     gate_count: Mapped[int] = mapped_column(Integer, server_default="4")
+    # Nível de acesso GM (D193): 0 jogador; 9 ou mais tem comandos de GM. Gravado pela CLI.
+    access_level: Mapped[int] = mapped_column(Integer, server_default="0")
 
 
 class AccountMoratRow(Base):

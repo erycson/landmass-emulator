@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Sequence
+from dataclasses import replace
 
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.rooms import Rooms
@@ -60,6 +61,8 @@ class EntryHandlers:
         session.account = account
         log.info("[%s] canal: login de %s", session.peer, account.username)
         record, pushes = await self._progression.login_state(account.id)
+        # ucAccess vai no @0x11 do 101 (valor+0x11): o cliente copia o registro para o próprio nó.
+        record = replace(record, access=account.access_level)
         return [
             CsInChannelServerOut(client_guid=account.id, result=RESULT_OK, progress=record),
             CsChannelInfoOut(),
@@ -76,8 +79,13 @@ class EntryHandlers:
         # A exp do banco fica no lobby (151, 317, 548 e 549 a leem) e vai no 121 e no 101.
         exp = await self._progression.total_exp(account.id)
         # Entra antes de montar a lista: a 151 traz o próprio jogador (ver ChannelRecords).
-        self._lobby.join(account.id, session, account.nickname, exp)
-        me = CsChannelPlayer(client_guid=account.id, nick=account.nickname, total_exp=exp)
+        self._lobby.join(account.id, session, account.nickname, exp, account.access_level)
+        me = CsChannelPlayer(
+            client_guid=account.id,
+            nick=account.nickname,
+            total_exp=exp,
+            access=account.access_level,
+        )
         players = self._records.lobby_players()
         self._lobby.broadcast(reply_body(CsInChannelOut(me), CHANNEL_NET_CODE), exclude=session)
         log.info("[%s] entrou no lobby (%d jogadores)", session.peer, len(players))

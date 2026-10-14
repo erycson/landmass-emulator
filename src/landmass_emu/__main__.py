@@ -12,6 +12,7 @@ from landmass_emu.admin_clan import ClanAdmin
 from landmass_emu.admin_inventory import InventoryAdmin, StarterKitAdmin
 from landmass_emu.admin_shop import ShopAdmin
 from landmass_emu.app import game_servers, open_accounts, open_database
+from landmass_emu.audit import EconomyAudit
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
 from landmass_emu.db.clans import SqlClanRepository
@@ -58,6 +59,11 @@ class Cli:
         if args.action == "unban":
             async with open_accounts(self._settings) as accounts:
                 return await AccountAdmin(accounts, self._settings).unban(args.user)
+        if args.action == "access":
+            audit = EconomyAudit.open(self._settings.audit_log)
+            async with open_accounts(self._settings) as accounts:
+                admin = AccountAdmin(accounts, self._settings, audit)
+                return await admin.access(args.username, args.level)
         client_dir: Path = args.client_dir or self._settings.client_dir
         async with open_accounts(self._settings) as accounts:
             admin = AccountAdmin(accounts, self._settings)
@@ -178,6 +184,15 @@ def _parser() -> argparse.ArgumentParser:
     ban.add_argument("--days", type=int, required=True)
     unban = actions.add_parser("unban", help="remove o bloqueio da conta")
     unban.add_argument("--user", required=True)
+    access = actions.add_parser(
+        "access",
+        help=(
+            "nível de acesso GM: 0 jogador, 9 GM, 10 administrador; 10 some da lista de quem "
+            "tem menos de 10. Vale no próximo login"
+        ),
+    )
+    access.add_argument("username")
+    access.add_argument("level", type=int, help="0 a 255")
     item = actions.add_parser("item", help="itens do inventário")
     item_add = item.add_subparsers(dest="op", required=True).add_parser(
         "add", help="cria um item com prazo em dias"

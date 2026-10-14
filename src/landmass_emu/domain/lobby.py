@@ -6,9 +6,12 @@ from typing import Protocol
 
 
 class Recipient(Protocol):
-    """Destino de corpos já com cabeçalho (`net.session.Session` implementa)."""
+    """Destino de corpos já com cabeçalho (`net.session.Session` implementa). `close` encerra a
+    conexão; quem sai passa pelo `disconnect` do canal ao fim do laço de leitura."""
 
     def send(self, body: bytes) -> None: ...
+
+    def close(self) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +19,7 @@ class _Member:
     recipient: Recipient
     nickname: str
     total_exp: int
+    access: int  # `ucAccess` (D193): 9 ou mais tem comandos de GM
 
 
 class Lobby:
@@ -42,16 +46,29 @@ class Lobby:
         member = self._members.get(guid)
         return 0 if member is None else member.total_exp
 
+    def access_of(self, guid: int) -> int:
+        """Nível de acesso fixado na entrada no canal (0 para quem não está no lobby)."""
+        member = self._members.get(guid)
+        return 0 if member is None else member.access
+
+    def recipient_of(self, guid: int) -> Recipient | None:
+        member = self._members.get(guid)
+        return None if member is None else member.recipient
+
     def guid_of(self, recipient: Recipient) -> int | None:
         for guid, member in self._members.items():
             if member.recipient is recipient:
                 return guid
         return None
 
-    def join(self, guid: int, recipient: Recipient, nickname: str, total_exp: int = 0) -> None:
+    def join(
+        self, guid: int, recipient: Recipient, nickname: str, total_exp: int = 0, access: int = 0
+    ) -> None:
         # shortcut: a mesma conta em duas conexões substitui a primeira sem avisá-la; revisar
         # quando houver política de sessão única.
-        self._members[guid] = _Member(recipient, nickname, total_exp)
+        # shortcut: o nível vem da conta no login do Message; alterado pela CLI, vale no próximo
+        # login (como o bloqueio, D27).
+        self._members[guid] = _Member(recipient, nickname, total_exp, access)
 
     def leave(self, recipient: Recipient) -> int | None:
         guid = self.guid_of(recipient)

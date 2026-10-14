@@ -5,7 +5,9 @@ concede progressão (exp, LD, Cash).
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from landmass_emu.audit import EconomyAudit
 from landmass_emu.db.catalog import WdbCatalog
+from landmass_emu.domain.access import check_access_level
 from landmass_emu.domain.account import (
     Account,
     check_nickname,
@@ -20,9 +22,12 @@ from landmass_emu.settings import Settings
 
 
 class AccountAdmin:
-    def __init__(self, accounts: AccountRepository, settings: Settings) -> None:
+    def __init__(
+        self, accounts: AccountRepository, settings: Settings, audit: EconomyAudit | None = None
+    ) -> None:
         self._accounts = accounts
         self._settings = settings
+        self._audit = audit
 
     async def ban(self, username: str, days: int) -> str:
         """Bloqueio temporário (D106): recusa o login até o prazo. Sem aviso ao servidor (D27)."""
@@ -37,6 +42,22 @@ class AccountAdmin:
         account = await self._account(username)
         await self._accounts.set_banned_until(account.id, None)
         return f"{username}: bloqueio removido"
+
+    async def access(self, username: str, level: int) -> str:
+        """Nível de acesso GM (`ucAccess`, D193): 0 jogador, 9 GM, 10 administrador. Sem aviso ao
+        servidor em execução: vale no próximo login, como o bloqueio (D27)."""
+        check_access_level(level)
+        account = await self._account(username)
+        await self._accounts.set_access_level(account.id, level)
+        if self._audit is not None:
+            self._audit.record_account(
+                account.id,
+                account.nickname,
+                "gm_access",
+                before=account.access_level,
+                after=level,
+            )
+        return f"{username}: nível de acesso {level} (vale no próximo login)"
 
     async def _account(self, username: str) -> Account:
         account = await self._accounts.find_by_username(username)

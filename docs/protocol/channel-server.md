@@ -2,7 +2,7 @@
 
 Implementação: `protocol/channel.py` (codec), `domain/lobby.py` (presença), `domain/rooms.py` (salas em memória), `handlers/channel/` (comportamento; salas em `rooms.py`), `ports/options.py` (opções, gravadas pelo 544), `net/server.py` (transporte). Evidências e layouts completos: [`../../re/channel_server.md`](../../re/channel_server.md) e [`../../re/rooms.md`](../../re/rooms.md).
 
-Este documento cobre o que o emulador implementa: marco 2 (entrada, lobby, chat), F1 (opções, 544), marco 3 (salas: criar, entrar, sair, slots, pronto, início, configuração, convite e expulsão pelo 451) e F2 e F3 (tutorial, saldos e exp). Os demais opcodes da tabela completa seguem como não tratados: logados com hexdump e ignorados, sem derrubar a conexão.
+Este documento cobre o que o emulador implementa: marco 2 (entrada, lobby, chat), F1 (opções, 544), marco 3 (salas: criar, entrar, sair, slots, pronto, início, configuração, convite e expulsão pelo 451) F2 e F3 (tutorial, saldos e exp) e GM (aviso e expulsão, D193). Os demais opcodes da tabela completa seguem como não tratados: logados com hexdump e ignorados, sem derrubar a conexão.
 
 ## Grupos de opcodes
 
@@ -10,11 +10,11 @@ Este documento cobre o que o emulador implementa: marco 2 (entrada, lobby, chat)
 |-------|---------|--------|
 | 1xx | Entrada no canal, lobby, lista de jogadores e de salas | marco 2 (100, 120, 122); lista de salas no 141 pelo marco 3 |
 | 2 | Heartbeat | marco 2 |
-| 2xx | Chat | marco 2 (240/241); escopo da sala pelo marco 3 |
+| 2xx | Chat | marco 2 (240/241); escopo da sala pelo marco 3; aviso de GM (250/251, D193) |
 | 3xx | Salas: criar, entrar, sair, mudança de dono e remoção | marco 3 (301 a 342) |
 | 4xx | Sala: pronto, início, slot, configuração (411/412), expulsão (451) e convite (461 a 471) | marco 3 (401 a 471) |
 | 5xx | Itens, loja, hangar, presentes | marco 5 |
-| 7xx | Expulsão pelo console (700/701) | decodificado; não executado (item 20) |
+| 7xx | Expulsão pelo console (700/701) | GM: executa para nível 9 ou mais (D193; item 20) |
 | `GS_*` | Game Server Host ↔ Channel (autenticado por `ch_pw`) | não usado pelo DM (`re/game_server_host.md` §11) |
 
 Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151 → 141 → 121`. O emulador mantém a ordem.
@@ -42,7 +42,8 @@ Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151
 | `451` RoomExpel, 18 bytes, do dono | `322` ao lobby | Expulsa pelo nick. Sem resposta a quem pediu; quem não é dono é ignorado. Sem caminho de UI confirmado (item 20). |
 | `461` RoomInvite, nick de 17 bytes, do dono | `462` ao dono (`i32`); `463` ao convidado | Convite pendente até o 471. Resultado: 0 enviado; -2460 nick fora do canal; -2411 já em sala; -2406 sala cheia; -2412 partida iniciada. Quem não é dono: envelope `54` com 462 e -4061 (o cliente não mostra nada). |
 | `471` RoomInviteAnswer, `i32 room_id`, `u8 accept` | aceite: `549` a quem está na sala, `312` ao canal, `314` e `317` ao entrante | Aceite entra sem senha, e só com convite pendente para a sala. Recusa ou sem convite: sem resposta. |
-| `700` ExpelPlayer, `u8 kind` e nick | nenhuma | Console `/EXPEL`: decodificado, não executado (item 20). |
+| `250` SendCommand, `u8 todos`, `u8 len`, texto | `251` a todo o lobby, quem mandou incluído | Aviso de GM (`/NOTIFY` e `/ALLNOTIFY`). Sem nível 9 ou mais, ou fora do lobby: sem resposta. Um canal só: os dois alcançam o mesmo lobby (shortcut, D193). |
+| `700` ExpelPlayer, `u8 kind` e nick | `701` só a quem pediu: 0, `-2460` (nick fora do canal) ou `-4061` (nível insuficiente) | Expulsão de GM (`/EXPEL`): o alvo é desconectado e sai da sala e do lobby pelo caminho de queda (`123` aos demais). Sem nível 9 ou mais: sem resposta. (D193) |
 | `544` SaveOption, 37 bytes | nenhuma | Grava as 37 opções da conta logada em `account_options`. Sem login: ignorado. Payload curto: logado e ignorado. |
 | (queda da conexão) | `123` aos demais | Saída implícita; antes, sai da sala como em `321`. |
 | servidor, a cada 10 s | `2` heartbeat | O cliente responde com `2`; o servidor ignora essa resposta. |
@@ -76,6 +77,8 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 548 | S→C | `REFRESH_PLAYER_LIST_OUT` | `u8 count` + entradas de 20 bytes | implementado (resposta só a quem está no lobby) |
 | 240 | C→S | `SEND_MESSAGE` | `u8 msg_type`, `u8 len`, texto | implementado |
 | 241 | S→C | `SEND_MESSAGE_OUT` | 8 bytes + texto | implementado |
+| 250 | C→S | `SEND_COMMAND` | `u8 todos`, `u8 len`, texto | implementado (D193): aviso de GM, só nível 9 ou mais |
+| 251 | S→C | `SEND_COMMAND_OUT` | `u8 len`, texto, NUL | implementado (D193): a todo o lobby |
 | 600 | C→S | `TUTORIAL_CLEAR` | `u8 passo` (0 a 2) | implementado (F2): liga o bit `1 << passo`; passo fora da faixa é logado e nada é gravado |
 | 601 | S→C | `TUTORIAL_CLEAR_OUT` | `i32` máscara @0, `i32` LD @4 | implementado (F2); o LD vai no @4 porque o cliente o grava em `iPoint` |
 | 591 | S→C | `GACHA_PRIZE_OUT` | `u16 key` @0, `i32` quantidade @4, `i32 result` @8; registros de 0x110 a partir de @0xC (`i32` item_id, `i32` size, `i32` buy_option, texto UTF-8 NUL) | implementado (F11): resposta ao 560 com `308010006`; até 2 prêmios |
@@ -145,8 +148,8 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 582 | S→C | `ITEM_EXTEND_OUT` | 20 bytes: `u16 index` @0, `i32 apply_value` @4 (fim em segundos Unix), `i32 cash` @8, `i32 point` @0xc, `i32 result` @0x10 | implementado (F7) |
 | 585 | S→C | `ITEM_ENDTIME_OUT` | 4 bytes: `u8 0` @0, `u8 bItem` @1 (1), `u16 index` @2 | implementado (F7): no login, para item vencido |
 | 590 | S→C | `CHANGE_MORAT_CLASS_OUT` | 8 bytes: `u16 index` @0, `u8 classe` @2, `i32 result` @4 | implementado (F15, D134): sem guarda de resultado no cliente, a recusa vai por 561 |
-| 700 | C→S | `EXPEL_PLAYER` | `u8 kind`, nick de 17 bytes | só codec: não executado (console) |
-| 701 | S→C | `EXPEL_PLAYER_OUT` | `i32` 0 | só codec: nenhum handler envia |
+| 700 | C→S | `EXPEL_PLAYER` | `u8 kind`, nick de 17 bytes | implementado (D193): só nível 9 ou mais; alvo desconectado |
+| 701 | S→C | `EXPEL_PLAYER_OUT` | `i32` resultado | implementado (D193): só a quem pediu |
 | 464 | C→S | `GET_CHANNEL_PLAYER_INFO` | vazio | implementado: responde 151 a quem está no lobby e fora de sala (D67) |
 | 64, 66, 67 | C→S | pedidos de lista | — | não tratados |
 
@@ -171,6 +174,8 @@ Escopo da difusão:
 | 302 | lobby | toda a lista de salas recebe a nova sala |
 | 312 (sucesso) | lobby, menos quem já está na sala | o canal soma o jogador na sala; quem já está nela soma com o 549 |
 | 322 | lobby | saída ou expulsão |
+| 251 | lobby | aviso de GM (D193) |
+| 701 | quem pediu | resultado da expulsão de GM (D193) |
 | 332 | lobby | troca de dono |
 | 342 | lobby | sala removida |
 | 412 | lobby | estado da sala (jogando) |
@@ -196,7 +201,9 @@ Offsets no corpo, depois do cabeçalho `u16`. Campo sem nome no RE recebe o nome
 
 | Offset | Tipo | Campo | Valor |
 |-------:|------|-------|-------|
-| 0x00..0x27 | `byte[40]` | registro do próprio jogador (não decodificado) | zeros |
+| 0x00..0x10 | `byte[17]` | registro do próprio jogador (não decodificado) | zeros |
+| 0x11 | `u8` | `access` (`ucAccess`, nó+0x21; D193) | `accounts.access_level` |
+| 0x12..0x27 | `byte[22]` | registro do próprio jogador (não decodificado) | zeros |
 | 0x28 | `i32` | `iTutorialClear` (máscara, nó+0x38) | `accounts.tutorial_clear` (F2) |
 | 0x2C | `i32` | `iTotalExp` (nó+0x3c; patente é derivada no cliente) | `accounts.total_exp` (F3) |
 | 0x30..0x47 | `byte[24]` | não decodificado | zeros |
@@ -227,14 +234,14 @@ Em 121 o corpo é a entrada em @0. Em 151 as entradas começam em @2, com stride
 | 0x08 | `char[16]` | `nick`, ANSI, NUL-terminado (+0x10..0x1F): máximo 15 bytes |
 | 0x18 | `u8` | byte após o nick (+0x20), zero |
 | 0x19 | `u8` | `vehicle_licence` (+0x23) |
-| 0x1A | `u8` | `access` (+0x21) |
+| 0x1A | `u8` | `access` (`ucAccess`, +0x21; nível de GM, D193) |
 | 0x1B | `byte` | padding |
 | 0x1C | `i32` | `clan` (+0x28) |
 | 0x20 | `i32` | `clan_mark` (+0x2C) |
 | 0x24 | `u8` | `nest` (+0x30) |
 | 0x25..0x27 | `byte[3]` | padding |
 
-`total_exp`, clã, marca e nest vão zerados até o marco 5 (persistência). O nick vem de `account.nickname`.
+`total_exp`, clã, marca e nest vão zerados até o marco 5 (persistência). O nick vem de `account.nickname`, e o `access` de `accounts.access_level` (D193).
 
 **151 CHANNEL_PLAYER_INFO_OUT (S→C)**
 
@@ -275,6 +282,10 @@ Em 121 o corpo é a entrada em @0. Em 151 as entradas começam em @2, com stride
 | 0x05 | `u8` | `len` (máximo 0x78; o cliente descarta maior) |
 | 0x06..0x07 | `byte[2]` | padding |
 | 0x08 | `char[len]` | texto, sem NUL final |
+
+**250 SEND_COMMAND (C→S), 2 + len bytes** (D193): `u8 todos` @0 (1 para `/ALLNOTIFY`, 0 para `/NOTIFY`), `u8 len` @1 (máximo 0x78), texto[len] @2. Evidência: `FUN_100173b0` grava `Y` como 1 e corta o texto em 0x78; `FUN_10001790` copia os 2 bytes de cabeçalho e `len` bytes de texto. Sem resposta fora do 251.
+
+**251 SEND_COMMAND_OUT (S→C), 2 + len bytes** (D193): `u8 len` @0, texto[len] @1 e NUL logo depois. O `case 0xfb` do dispatcher (`channel_dispatch_FUN_1001da60.c` L1281 a L1311) lê `*param_2` como tamanho e passa `param_2 + 1` ao `NotifySendCommand`, lido como C string. O `re/protocol_full.md` chama @0 de "comando", mas o código o usa como tamanho (inferido: o cliente não usa o byte de flag do pedido). Mostrado no chat e no HUD (`GMSay`).
 
 **544 SAVE_OPTION (C→S), 37 bytes**
 
@@ -490,9 +501,9 @@ Campo sem bit fica de fora e não muda no cliente. MODE exige `game_mode` e `tea
 
 **549 ROOM_ENTRY_OUT (S→C), 48 bytes**: a entrada de jogador de 317 (tabela acima) de quem entrou. Vai só a quem já está na sala.
 
-**700 EXPEL_PLAYER (C→S), 18 bytes**: `u8 kind` @0 (0x10 WEB, 0x21 CHANNEL, 0x22 LOBBY) e `char nick[17]` @1. É o `/EXPEL` do console, não a expulsão do dono (essa é o 451). Não é executado (item 20).
+**700 EXPEL_PLAYER (C→S), 18 bytes**: `u8 kind` @0 (0x10 WEB, 0x21 CHANNEL, 0x22 LOBBY) e `char nick[17]` @1. É o `/EXPEL` do console, não a expulsão do dono (essa é o 451). Executa para nível 9 ou mais (D193): o alvo é o nick, o alvo é desconectado e o 701 volta a quem pediu.
 
-**701 EXPEL_PLAYER_OUT (S→C), 4 bytes**: `i32` 0. Só codec: nenhum handler envia.
+**701 EXPEL_PLAYER_OUT (S→C), 4 bytes**: `i32` resultado: 0 expulso; -2460 nick fora do canal; -4061 nível insuficiente. Vai só a quem pediu (D193).
 
 **545 REFRESH_ROOM_LIST (C→S), 44 bytes**
 
@@ -562,7 +573,7 @@ Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cli
 17. **Escopo da difusão.** Confirmado na análise de `re/rooms.md`, mas não no cliente real (ver tabela em [Salas](#salas)).
 18. **Início e endereço da partida (403).** O 403 vai só aos membros, com `address` de 16 bytes (hipótese, `re/rooms.md` §8) e `port`. Sem servidor de partida no ar, o cliente tenta conectar e falha; isso é esperado. Com `LANDMASS_MATCH_SERVER_DIR`, o emulador sobe um servidor por sala (marco 4). O critério do marco é o recebimento do 403.
 19. **Escopo do chat na sala (240).** O RE não decodifica o escopo (`re/rooms.md` §6). Assumido: remetente em sala fala só com a sala.
-20. **Console e expulsão (700, 451; D41).** O 700 é o `/EXPEL` do console (`u8 kind` + nick); não é executado, porque o emulador não tem papel de administrador. O dono expulsa pelo 451, sem resposta. A UI não chama o 451 (`XInterface` L29174, comentado): o caminho só é exercido por código e pelos testes.
+20. **Console e expulsão (700, 451; D41, D193).** O 700 é o `/EXPEL` do console (`u8 kind` + nick); executa para nível 9 ou mais, com o alvo pelo nick (D193). Não confirmado no cliente: o efeito da desconexão e se algum lugar mostra o 701 (nenhum `OnNotify` trata `NType_ExpelPlayer`). O dono expulsa pelo 451, sem resposta. A UI não chama o 451 (`XInterface` L29174, comentado): o caminho só é exercido por código e pelos testes.
 21. **Pronto e seletor (402, 317).** O bit de pronto é `u8 @4` do 402 e `u8 @0x29` do 317. O seletor `@0x2A` do 317 vai zero (inferido).
 22. **Limite de entrada.** Valores fora da faixa na criação são limitados e logados, não recusados. Sem paginação de salas: o limite de 955 por 141 vale até o marco 4.
 23. **Troca de dono (332).** Passa para o primeiro membro na ordem de entrada. Regra escolhida, não observada no cliente.
