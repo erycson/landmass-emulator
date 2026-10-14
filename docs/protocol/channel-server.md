@@ -122,14 +122,19 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 556 | S→C | `ITEM_DESTROY_OUT` | 12 bytes: `u16 index` @0, `u16 gate` @2, `u8 mounted` @4, `i32 result` @8 | implementado (F7); recusa com result ≠ 0 (ex.: último morat) |
 | 557 | S→C | `MORATS_DESTROY_OUT` | 8 bytes: `u16 gate` @0, `i32 result` @4 | implementado (F7) |
 | 559 | S→C | `ITEM_DESTROY_SYSTEM_OUT` | 12 bytes: `u16 index` @0, `u16 slot` @2, `u8` 1 @4, `i32 result` @8 | implementado (F7) |
-| 560 | C→S | `ITEM_USED_IN` | 8 bytes: `u16 index` @0, `u16 gate` @2, `i32 value` @4 | implementado (F6); `value` ≠ 0 (`ItemUsedByValue`) recusa com 561 |
+| 560 | C→S | `ITEM_USED_IN` | 8 bytes: `u16 index` @0, `u16 gate` @2, `i32 value` @4 | implementado (F6, F15); `value` ≠ 0 só em Alistar e Troca de Função (D133, D134); outros recusam com 561 |
 | 561 | S→C | `ITEM_USED_REFUSED_OUT` | 12 bytes: `i32 result` @8 | implementado (F6): recusa, sem registro |
 | 562 | S→C | `ITEM_USED_PIECE_OUT` | 12 bytes: `u16 gate` @0, `u16 index` @2, `u16 slot` @6 (0 a 15), `i32 result` @8 | implementado (F6) |
-| 570 | C→S | `ITEM_UNUSED_IN` | 4 bytes: `u16 index` @0, `u16 gate` @2 | implementado (F6); item de sistema recusa com -4 |
+| 565 | S→C | `SKIN_MOUNTED_OUT` | 12 bytes: `u16 gate` @0, `u16 index` @2 (índice da pintura, vai a `siSkinID[k]`), `u16 k` @4 (0 em F15), `i32 result` @8 | implementado (F15, D136) |
+| 568 | S→C | `ITEM_CONSUMED_OUT` | 8 bytes: `u16 index` @0 (o consumido), `i32 result` @4 | implementado (F15, D131 e D132): o cliente tira o item da lista |
+| 569 | S→C | `CHANGE_NEST_OUT` | 8 bytes: `u16 index` @0, `u8 nest` @2, `i32 result` @4 | implementado (F15, D133): o cliente troca o nest e tira o item |
+| 570 | C→S | `ITEM_UNUSED_IN` | 4 bytes: `u16 index` @0, `u16 gate` @2 | implementado (F6); item de sistema recusa com -4; pintura responde 573 |
 | 572 | S→C | `ITEM_UNUSED_PIECE_OUT` | 12 bytes: `u16 gate` @0, `u16 slot` @4, `i32 result` @8 | implementado (F6) |
+| 573 | S→C | `SKIN_UNUSED_OUT` | 12 bytes: `u16 gate` @0, `u16 k` @4, `i32 result` @8 | implementado (F15, D136) |
 | 580 | C→S | `ITEM_EXTEND_IN` | 8 bytes: `i32 id` @0, `u16 index` @4, `u8 point` @6 (1 = LD), `u8 option` @7 | implementado (F7); morat recusa com -4 |
 | 582 | S→C | `ITEM_EXTEND_OUT` | 20 bytes: `u16 index` @0, `i32 apply_value` @4 (fim em segundos Unix), `i32 cash` @8, `i32 point` @0xc, `i32 result` @0x10 | implementado (F7) |
 | 585 | S→C | `ITEM_ENDTIME_OUT` | 4 bytes: `u8 0` @0, `u8 bItem` @1 (1), `u16 index` @2 | implementado (F7): no login, para item vencido |
+| 590 | S→C | `CHANGE_MORAT_CLASS_OUT` | 8 bytes: `u16 index` @0, `u8 classe` @2, `i32 result` @4 | implementado (F15, D134): sem guarda de resultado no cliente, a recusa vai por 561 |
 | 700 | C→S | `EXPEL_PLAYER` | `u8 kind`, nick de 17 bytes | só codec: não executado (console) |
 | 701 | S→C | `EXPEL_PLAYER_OUT` | `i32` 0 | só codec: nenhum handler envia |
 | 464 | C→S | `GET_CHANNEL_PLAYER_INFO` | vazio | implementado: responde 151 a quem está no lobby e fora de sala (D67) |

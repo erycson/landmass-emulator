@@ -444,3 +444,23 @@ Resolve as dúvidas 8 (aridade de 570 e 580) e 9 (mapa `item_slot` → slot) de 
 O slot de sistema (`sEventSlot[10]`) fica no registro do jogador, em 0x50..0x59 do 101. Vazio é `0xFF`; o índice do item (até `0xFE`) é gravado como byte (inferido).
 
 **Códigos de resultado (inferidos, D68).** -1 sem gate (`NO_GATE`), -3 skin (`SKIN`), -4 genérico (`DENIED`), -7 requisito (`REQUIREMENT`). Os `CERR_*` não têm valor no dump.
+
+## 10. Layouts de pintura, consumo, nest e classe (F15)
+
+Resolve os layouts que faltavam para pintura e consumíveis. Os pedidos (C→S) são 560 e 570, já descritos em §9. As respostas (S→C) vêm do dispatcher `channel_dispatch_FUN_1001da60.c`. Os significados marcados como inferidos pedem captura no cliente real.
+
+| Opcode | Sentido | Campos (offset de corpo) | Corpo (bytes) | Fonte |
+|---|---|---|---|---|
+| 565 | S→C | `u16 gate` @0; `u16 index` @2 (índice da pintura no inventário, inferido); `u16 k` @4 (slot de `siSkinID`, 0 em F15); `i32 result` @8 | 12 | L2511–2525 |
+| 568 | S→C | `u16 index` @0 (item consumido); `i32 result` @4 | 8 | L2529–2571 |
+| 569 | S→C | `u16 index` @0 (chave: índice do item, inferido); `u8 nest` @2; `i32 result` @4 | 8 | L2572–2586 |
+| 573 | S→C | `u16 gate` @0; `u16 k` @4; `i32 result` @8 | 12 | L2616–2633 |
+| 590 | S→C | `u16 index` @0 (chave: índice do item, inferido); `u8 classe` @2; `i32 result` @4 | 8 | L2724–2748 |
+
+**Pintura (565 e 573).** O dispatcher acha o morat pelo `gate` e grava o índice da pintura em `siSkinID[k]`. O 103 leva os três slots de skin em @0x64 (`LM_MORATS_INFO`). Em F15, `k` é 0.
+
+**Consumo (568).** O cliente tira o item da lista ao receber 568 e chama `NotifyItemUsed` (101). Por isso o servidor não manda 556 para consumíveis.
+
+**Nest e classe (569 e 590).** 569 grava `u8` @2 no nó do jogador (+0x30) e tira o item. 590 grava `u8` @2 no nó do morat principal (+0x98) e tira o item. 590 não confere `result`, só o envelope: a recusa da Troca de Função vai por 561.
+
+**Status.** 565, 568, 569, 573 e 590 estão implementados no servidor (F15). Nenhum foi testado no cliente real.

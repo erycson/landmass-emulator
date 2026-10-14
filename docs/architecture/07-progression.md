@@ -83,6 +83,8 @@ erDiagram
     integer regular_nest_id
     integer regular_morat_class
     datetime banned_until
+    datetime record_reset_at
+    datetime combat_reset_at
     integer main_gate_index
     integer tutorial_clear
     integer total_gamecount
@@ -169,6 +171,8 @@ A tabela `accounts` existente ([04-persistence.md](04-persistence.md)) recebe as
 | `regular_nest_id` | `Integer` | sim | `tbl_account.nest`; `ucNest` | Nest regular: 1 Oddeye, 2 Shadow, 3 Leon. |
 | `regular_morat_class` | `Integer` | sim | (novo) | Classe regular: 1 a 4 (R-REG). |
 | `banned_until` | `DateTime(tz)` | sim | (novo) | Fim do bloqueio administrativo (D106). Nulo ou no passado: login liberado. |
+| `record_reset_at` | `DateTime` (fuso) | não | (novo, D131) | Marco de zerado de vitórias, derrotas e abandono (Queima de Arquivo). Nulo = nunca zerado. |
+| `combat_reset_at` | `DateTime` (fuso) | não | (novo, D132) | Marco de zerado de abates, mortes e headshots (Reconstituir). Nulo = nunca zerado. |
 | `main_gate_index` | `Integer` | sim | (novo) | Gate da morat principal, 0 a 7 (R-MAIN). |
 | `tutorial_clear` | `Integer` | não | `tbl_account.tutorial_clear`; `iTutorialClear` | Máscara de bits do tutorial (R-TUT). |
 | `total_gamecount` | `Integer` | não | `total_gamecount` | Partidas jogadas. |
@@ -325,13 +329,19 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-USE-01 | `ItemUsed(index, gate)` (560, corpo de 8 bytes: `u16 index` @0, `u16 gate` @2, `i32 value` @4): item com `inventory_index = index` é montado no gate `gate` (0 a 7). Peça (`Item_Equip`, grupo 2) vira `account_items.account_morat_id` da morat do gate, com `slot_name` pelo `item_slot` (D70; dúvida 9 resolvida). A resposta 562 leva gate, índice e slot. Gate sem morat responde 561 com -1. Morat (grupo 1) não entra por 560: recusa com -4. Skin recusa com -3 (F6 não cobre). | features §3.2 (inferido nos detalhes) |
+| R-USE-01 | `ItemUsed(index, gate)` (560, corpo de 8 bytes: `u16 index` @0, `u16 gate` @2, `i32 value` @4): item com `inventory_index = index` é montado no gate `gate` (0 a 7). Peça (`Item_Equip`, grupo 2) vira `account_items.account_morat_id` da morat do gate, com `slot_name` pelo `item_slot` (D70; dúvida 9 resolvida). A resposta 562 leva gate, índice e slot. Gate sem morat responde 561 com -1. Morat (grupo 1) não entra por 560: recusa com -4. Pintura (classe 7) monta em `skin_00` (R-SKIN-01). | features §3.2 (inferido nos detalhes) |
 | R-USE-02 | Gates: 8 por jogador (`sGate[8]`, `LM_GATE_SLOT`: `siIdx`, `bEnable`). Slots de sistema: 10 (`sEventSlot[10]`). | `LM_Engine.u` `LM_PLAYER_INFO` |
-| R-USE-03 | Slots de `slot_name` (de `LM_MORATS_INFO`): `main_weapon`, `sub_weapon`, `melee_weapon`, `etc_weapon_00..02`, `booster`, `generator`, `head`, `body`, `arm`, `leg`, `etc_item_00..03`, `skin_00..02`. | `LM_Engine.u` `LM_MORATS_INFO` |
-| R-USE-04 | Item de sistema (grupo 3, classe 8) vai para `system_slot` livre, de 0 a 9 (554 leva o slot). Sem slot livre, recusa com -4 (D74). Fica no slot até ser destruído (559 libera). ONCE e BUFF não são distinguidos: o wdb não traz `item_type` para item de sistema (gap, dúvida 25). | features §0.3, §3.2 (inferido nos detalhes) |
+| R-USE-03 | Slots de `slot_name` (de `LM_MORATS_INFO`): `main_weapon`, `sub_weapon`, `melee_weapon`, `etc_weapon_00..02`, `booster`, `generator`, `head`, `body`, `arm`, `leg`, `etc_item_00..03` e as skins `skin_00..02` (`siSkinID[3]`, D136). | `LM_Engine.u` `LM_MORATS_INFO` |
+| R-USE-04 | Item de sistema (grupo 3, classe 8) vai para `system_slot` livre, de 0 a 9 (554 leva o slot). Sem slot livre, recusa com -4 (D74). Fica no slot até ser destruído (559 libera). Tipo pelo id (D130): BUFF (tipo 2) fica no slot até o prazo (R-BUFF-01); ONCE (Queima de Arquivo, Reconstituir, Alistar e Troca de Função) é consumido (R-CON-01 a 04). Adicionar Hangar e Item Surpresa, também ONCE, ainda montam no slot pelo caminho de F6. | features §0.3, §3.2 (inferido nos detalhes) |
 | R-USE-05 | `ItemUnused(index, gate)` (570, corpo de 4 bytes: `u16 index` @0, `u16 gate` @2) remove a peça: zera `account_morat_id` e `slot_name`, e responde 572 com gate e slot. Item de sistema não desmonta por 570: recusa com -4 (D74). | `channel_server.md` §2; dúvida 8 (resolvida, `re/protocol_full.md` §9) |
-| R-USE-06 | Morat principal: `ItemUsedByValue` (560 com `value` ≠ 0) existe no wrapper `0x10018260`, mas o F6 o recusa com 561 e -4 (D75). A troca de morat principal (590 e `ChangeMoratsItemID`) fica fora do F6; `main_gate_index` não é escrito. | features §3.2; dúvida 7 |
+| R-USE-06 | Morat principal: `ItemUsedByValue` (560 com `value` ≠ 0) existe no wrapper `0x10018260`, fora dos consumíveis, o F6 o recusa com 561 e -4 (D75). A troca de morat principal entra só pelo consumível Troca de Função (R-CON-04); `main_gate_index` não é escrito. | features §3.2; dúvida 7 |
 | R-USE-07 | Usar item que não pertence à conta, ou item já montado no mesmo slot, responde erro sem alterar nada. | (inferido) |
+| R-CON-01 | Queima de Arquivo (`308010001`, ONCE): 560 com `value` 0 consome o item (apaga a unidade) e grava `accounts.record_reset_at`. Resposta 568 (`u16 index` @0, `i32 result` @4); o cliente tira o item da lista. Vitórias, derrotas e abandono passam a contar só partidas depois do marco (D131). A leitura entra quando as métricas existirem (D135). Ranking (`total_exp`) não muda. | `item_desc` do wdb; 568 (`re/protocol_full.md` §10) |
+| R-CON-02 | Reconstituir (`308010002`, ONCE): igual a R-CON-01, com `accounts.combat_reset_at`. Zera abates, mortes e headshots, não abandono (D132). | `item_desc` do wdb (kill, death e HeadShot); 568 |
+| R-CON-03 | Alistar (`308010003`, ONCE): 560 com `value` 1 a 3 grava `accounts.regular_nest_id` e consome. Resposta 569 (`u16 index` @0, `u8 nest` @2, `i32 result` @4); o cliente troca o nest e tira o item. `value` fora de 1 a 3 responde 561 com -4 (D133). | `LM_JoinNestPage` (`ItemUsedByValue`); 569 (`re/protocol_full.md` §10) |
+| R-CON-04 | Troca de Função (`308010004`, ONCE): 560 com `value` 1 a 4 grava `accounts.regular_morat_class` e consome. Resposta 590 (`u16 index` @0, `u8 classe` @2, `i32 result` @4). O 590 não confere o resultado: a recusa vai por 561 (D134). | `LM_ChangeMainMoratsPage` (`ItemUsedByValue`); 590 (`re/protocol_full.md` §10); inferido: a chave é o índice |
+| R-SKIN-01 | Pintura (`307010001` a `307010005`, classe 7): 560 com `gate` monta a pintura em `skin_00` do morat do gate, sem consumo. Resposta 565 (`u16 gate` @0, `u16 index` @2 (índice da pintura), `u16 k` @4 = 0, `i32 result` @8). O 103 leva o índice da pintura em `siSkinID[0]`; `siSkinID[1]` e `[2]` ficam em 0. Desmontar (570) responde 573 (`u16 gate` @0, `u16 k` @4, `i32 result` @8). Destruir pintura montada responde 556 com `mounted` 0 e, em seguida, 573 (D136). | `LM_MORATS_INFO` (`siSkinID`); 565 e 573 (`re/protocol_full.md` §10); inferido: `k` e o valor |
+| R-BUFF-01 | Buffs (`308020001` EXP, `308020002` LD, `308020003` Ressurreição; tipo 2): 560 monta no `sEventSlot` (554, R-USE-04) e o buff fica ativo até o prazo. `BuffService.active_buffs(account_id)` (`domain/buffs.py`) devolve `exp`, `ld` e `respawn`. O ×1.5 de EXP e LD é R-REW-08 (4); a recompensa ainda não lê `active_buffs`. Ressurreição só informa: o respawn é do servidor de partida, fora do canal (D137). | `item_desc` do wdb; `ApplySysItmValue` (XGame 16852); R-REW-08 |
 
 ### 5.5 Destruição e extensão (555, 556, 580, 582, 585)
 
@@ -458,9 +468,13 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 555 | C→S | Destruir | `account_items`, `account_morats` | 8 bytes: `i32 id` @0, `u16 index` @4 | implementado (F7) |
 | 556 / 557 / 559 | S→C | Resultados de destruir | `account_items`, `account_morats` | 556: `u16 index` @0, `u16 gate` @2, `u8 mounted` @4, `i32 result` @8; 557: `u16 gate` @0, `i32 result` @4; 559: `u16 index` @0, `u16 slot` @2, `u8` 1 @4, `i32 result` @8 | implementado (F7) |
 | 560 | C→S | Equipar | `account_items`, `account_morats` | 8 bytes: `u16 index` @0, `u16 gate` @2, `i32 value` @4 (≠ 0 recusa, D75) | implementado (F6) |
-| 561 / 562 | S→C | Resultados de equipar | `account_items` | 561: `i32 result` @8; 562: `u16 gate` @0, `u16 index` @2, `u16 slot` @6, `i32 result` @8 | implementado (F6); 565–568 falta |
+| 561 / 562 | S→C | Resultados de equipar | `account_items` | 561: `i32 result` @8; 562: `u16 gate` @0, `u16 index` @2, `u16 slot` @6, `i32 result` @8 | implementado (F6) |
+| 565 | S→C | Pintura montada | `account_items` | `u16 gate` @0, `u16 index` @2, `u16 k` @4, `i32 result` @8 | implementado (F15, D136) |
+| 568 | S→C | Consumo (Queima de Arquivo, Reconstituir) | `account_items` | `u16 index` @0, `i32 result` @4 | implementado (F15, D131 e D132) |
+| 569 | S→C | Troca de nest (Alistar) | `accounts` | `u16 index` @0, `u8 nest` @2, `i32 result` @4 | implementado (F15, D133) |
 | 570 | C→S | Desequipar | `account_items` | 4 bytes: `u16 index` @0, `u16 gate` @2 | implementado (F6) |
-| 572 | S→C | Resultado de desequipar | `account_items` | `u16 gate` @0, `u16 slot` @4, `i32 result` @8 | implementado (F6); 573 é de skin, não emitido |
+| 572 | S→C | Resultado de desequipar | `account_items` | `u16 gate` @0, `u16 slot` @4, `i32 result` @8 | implementado (F6); 573 em pintura (F15, D136) |
+| 590 | S→C | Troca de classe (Troca de Função) | `accounts` | `u16 index` @0, `u8 classe` @2, `i32 result` @4 | implementado (F15, D134) |
 | 580 | C→S | Estender | `account_items` | 8 bytes: `i32 id` @0, `u16 index` @4, `u8 point` @6, `u8 option` @7 | implementado (F7); morat recusa com -4 |
 | 582 | S→C | Resultado de estender | `account_items` | `u16 index` @0, `i32 apply_value` @4, `i32 cash` @8, `i32 point` @0xc, `i32 result` @0x10 | implementado (F7); 581 (morat) não emitido |
 | 585 | S→C (push) | Fim de prazo | `account_items` | `u8 0` @0, `u8 bItem` @1 (1 = item), `u16 index` @2 | implementado (F7): no login, para item vencido |
@@ -547,6 +561,7 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F12 (implementada, sem teste no cliente real) | Amigos, bloqueio e sussurro (Message 160–162, 180–193). Clã fica na F13. | Opcodes de amigo e bloqueio medidos (dúvida 16 parcial) | Adicionar amigo, reconectar: permanece. Bloquear e desbloquear. Sussurro chega ao outro cliente online. |
 | F13 (implementada, sem teste no cliente real) | Clã: dados (171/172), membros (174/175), chat (177/178) e lote (194/195). Criar, entrar e sair só pela CLI (D55). | F0 (172, 175); dúvida 18 (respondida por D55) | Conta com clã mostra nome e membros. Chat de clã chega aos membros online. |
 | F14 (implementada, sem teste no cliente real) | Ranking (Message 170/171). Ranking por nest, ver dúvida 22. | F0 (171), F3 | Lista com top 100 por `total_exp`; empates com a mesma posição (1, 1, 3). |
+| F15 (implementada, sem teste no cliente real) | Consumíveis (Queima de Arquivo, Reconstituir, Alistar e Troca de Função), pinturas (565 e 573) e buffs ativos (`active_buffs`). | F5, F6, F7 | Usar Queima e ver o item sair da lista; Alistar troca o nest; Troca de Função troca a classe; pintura aparece no morat após reconectar (103); Aumento de EXP fica montado com o prazo. |
 
 ## 8. Lacunas e dúvidas para o usuário
 
@@ -564,14 +579,14 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 3. **Resgate de presente [bloqueia F10].** `GiftItemUsed` (612) não tem chamador na UI. Como o destinatário recebe o presente?
 4. **Opções 8 e 9 (em aberto).** Chegam como opção 0, então cobram o prazo de 1 dia (R-PRC-02). Duração: 1 dia, sem prazo, ou outra?
 5. **Início da validade [bloqueia F6, F7].** Na F8 a validade começa na compra (inferido). Confirmar: começa na compra ou no uso? Como `apply_value` deve ser preenchido para cada `ITEM_APPLY`? Remoção automática de vencidos?
-6. **Efeito dos itens não-buff.** Não localizados: `308010001` (Queima de Arquivo), `308010002` (Reconstituir), `308010003` (Alistar), `308010004` (Troca de Função), `308010005` (Adicionar Hangar), `308020003` (Ressurreição). Sorteio do gacha também não existe no cliente [bloqueia F11].
+6. **Efeito dos itens não-buff (resolvida, F15).** Queima de Arquivo, Reconstituir, Alistar e Troca de Função têm texto no wdb e resposta no cliente (R-CON-01 a 04; D131 a D134). Ressurreição é buff (R-BUFF-01; o efeito é do servidor de partida). Adicionar Hangar (outro agente) e o sorteio do gacha seguem em aberto [bloqueia F11].
 7. **Morat principal (recusa, D75).** `ItemUsedByValue` existe (wrapper `0x10018260`, 560 com `value`). O F6 recusa com 561 e -4. A troca de morat principal fica fora. Aceitar essa limitação?
 8. **Aridade de 570 e 580 (resolvida, `re/protocol_full.md` §9).** 570 é `u16 index` + `u16 gate` (4 bytes); 580 é `i32 id` + `u16 index` + `u8 point` + `u8 option` (8 bytes). Medido nos wrappers. Confirmar com captura.
 9. **Mapa `item_slot` → `slot_name` (resolvida).** `item_slot` é o índice de `SLOT_NAMES` (`domain/equipment.py`), de 0 (`main_weapon`) a 11 (`leg`). Tabela completa em `re/protocol_full.md` §9. O slot de sistema vem do índice do item (inferido).
 10. **Requisitos na compra (resolvida, D51).** O servidor valida patente e nest e recusa os demais requisitos sem fonte (R-REQ-01).
 11. **Nível para escolher nest.** Exigir "Praça" (`SelectNestExp = 2800`) em `SetRegular`? O cliente não bloqueia.
 12. **Códigos de erro** de uso, extensão e presente: o mapa de `msg_error` não foi identificado para essas ações. A compra usa os códigos de `NotifyItemBuy` (R-BUY-03).
-25. **ONCE e BUFF (gap, não bloqueia F6).** O wdb não traz `item_type` nem `item_effect` para item de sistema (são 0). O servidor não distingue consumível de buff. Confirmar a regra no cliente real.
+25. **ONCE e BUFF (resolvida, D130).** O wdb traz `item_type` 0, mas o tipo está no id: `(id / 1e4) % 100`, com 1 ONCE e 2 BUFF (tabela de tipos em `re/features.md`). Inferido do id e dos textos dos itens; falta confirmar no cliente real.
 13. **Arredondamento** de exp e LD (float para inteiro): proposta, truncar. Confirmar.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
 15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
@@ -612,3 +627,11 @@ Registradas em [decisions/README.md](../decisions/README.md):
 - **D106** Banimento de conta pela CLI: `accounts.banned_until`, login recusado com -160 até o prazo vencer (R-PEN-01).
 - **D107** Ficha 542/543 montada no banco, sem tabela; posição como a do 171 (R-FIC-01).
 - **D108** Ranking por nest e penalidades de sala fora desta entrega (R-RNK-01).
+- **D130** Tipo do item de sistema (classe 8) pelo id: `(id / 1e4) % 100`, com 1 ONCE e 2 BUFF. O wdb traz `item_type` 0 para esses itens; o tipo está no id. Pinturas (classe 7) não usam esta regra.
+- **D131** Queima de Arquivo consome e grava `accounts.record_reset_at`. Vitórias, derrotas e abandono passam a contar após o marco; o ranking (`total_exp`) não muda. Texto do item no wdb (`item_desc`). O marco é gravado já; a leitura entra quando as métricas forem gravadas (D135).
+- **D132** Reconstituir consome e grava `accounts.combat_reset_at`: zera abates, mortes e headshots. Abandono não zera. O texto do item cita kill, death e headshot, não abandono. Diverge do plano de F15, que citava abandono.
+- **D133** Alistar: 560 com `value` (nest 1 a 3) grava `accounts.regular_nest_id`, consome e responde 569. Valor fora da faixa responde 561 com -4. `LM_JoinNestPage` usa `ItemUsedByValue`; 569 leva o nest e o índice do item (`re/protocol_full.md` §10).
+- **D134** Troca de Função: 560 com `value` (classe 1 a 4) grava `accounts.regular_morat_class`, consome e responde 590. Valor fora da faixa responde 561 com -4. `LM_ChangeMainMoratsPage` usa `ItemUsedByValue`. O 590 não confere o resultado, então a recusa vai por 561. Morat principal lido como morat regular, a única coluna desse tipo na conta.
+- **D135** A ficha (543) segue com zeros nesta fatia. As métricas de `match_players` são nulas; ligar a ficha agora mostraria abandono de 100%. Quando as métricas forem gravadas, a ficha conta só partidas depois dos marcos.
+- **D136** Pintura (classe 7) monta em `skin_00` do morat do gate, sem consumo, e responde 565. Desmontar responde 573. `siSkinID` está em `LM_MORATS_INFO` (103). O `k` fixo em 0 e o índice da pintura como valor são inferidos do dispatcher; não houve teste no cliente real.
+- **D137** Buffs (EXP, LD, Ressurreição) montam no `sEventSlot` (554) e ficam ativos até o prazo. `BuffService.active_buffs` expõe os buffs para a recompensa. Tipo 2 (BUFF) no id. Os ×1.5 de EXP e LD são R-REW-08 (4), ainda não lidos pela recompensa. Ressurreição só informa: o respawn é do servidor de partida, fora deste canal.
