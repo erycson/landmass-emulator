@@ -1,8 +1,8 @@
 """Salas: 301 criar, 311 entrar, 321 sair, 401 pronto e início, 411 configurar, 420 mudar grupo,
 451 expulsar, 461 convidar e 471 responder ao convite.
 
-Regras em `domain/rooms.py`; layouts em `protocol/channel.py`; evidências em `re/rooms.md` e
-`re/protocol_full.md`. O 700 (`/EXPEL` do console) não é executado: ver `CsExpelPlayerIn`.
+Regras em `domain/rooms.py`; layouts em `protocol/channel.py`; evidências em `tools/re/rooms.md` e
+`tools/re/protocol_full.md`. O 700 (`/EXPEL` do console) não é executado: ver `CsExpelPlayerIn`.
 Difusão: `lobby.broadcast` para o que o cliente aplica no canal inteiro (302 na criação, 312, 322,
 332, 342, 412). Na entrada, quem já está na sala recebe 549 e não 312 (ver `_joined`);
 `lobby.send_to` para quem está na sala (402, 403, 421) e para o convidado (463).
@@ -103,7 +103,7 @@ JOIN_CODES: dict[RoomReason, int] = {
     RoomReason.STARTED: 200,
 }
 
-# CERR de `Core.u` (re/layouts_f0.md §7.3) para a resposta 462 ao convite.
+# CERR de `Core.u` (tools/re/layouts_f0.md §7.3) para a resposta 462 ao convite.
 CERR_INVITE_ROOM_NOT_ADMIN = -4061  # quem não é dono: envelope, e o cliente não mostra nada
 CERR_FIND_PLAYER = -2460  # convidado fora do canal
 CERR_NOT_ROOM = -2408  # quem convida não está em sala

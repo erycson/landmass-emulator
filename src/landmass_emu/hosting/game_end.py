@@ -1,5 +1,6 @@
 """Bloco `GameEnded` do log do servidor de partida: um bloco por fim de partida, um registro por
-jogador (re/game_server_host.md, §11.4). Função pura: texto do log -> jogadores. Os nomes dos campos
+jogador (tools/re/game_server_host.md, §11.4). Função pura: texto do log -> jogadores. Os nomes dos
+campos
 são os do log (`XGame.u`, `Log(..., 'GameEnded')`); as chaves ausentes ficam `None`.
 
 As linhas de constantes (`GameEnded: DM_TakePoint = 1.00`) têm a mesma etiqueta, mas ficam fora do

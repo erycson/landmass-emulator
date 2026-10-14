@@ -95,5 +95,5 @@ Faça o backup com o servidor parado. Uma cópia do banco feita com o servidor n
 ## Limitações conhecidas
 
 - Uma réplica. O estado de salas e lobby fica na memória.
-- Sem TLS: os frames seguem o protocolo do cliente, sem criptografia (`re/channel_server.md`).
+- Sem TLS: os frames seguem o protocolo do cliente, sem criptografia (`tools/re/channel_server.md`).
 - `FixedMatchHost` (sem `match_server_dir`) manda toda partida a um endereço fixo. Serve para teste com um `servidor.bat` aberto à mão.

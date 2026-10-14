@@ -22,6 +22,6 @@ flowchart LR
 
 | Item | Referência | Estado |
 |---|---|---|
-| Menu e HUD sem esticar em 16:9 (área 4:3 no Canvas) | `re/widescreen.md` §3 caminho B | estudo |
-| Partida em 16:9 com FOV corrigido | `re/widescreen.md` §3 caminho D | estudo |
+| Menu e HUD sem esticar em 16:9 (área 4:3 no Canvas) | `tools/re/widescreen.md` §3 caminho B | estudo |
+| Partida em 16:9 com FOV corrigido | `tools/re/widescreen.md` §3 caminho D | estudo |
 | Cursor do Windows preso à janela sem tela cheia (patch `ClipCursor`) | `docs/operations/running-client.md` §Vídeo | adiado; hoje: janela sem borda do tamanho da tela |

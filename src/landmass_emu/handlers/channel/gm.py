@@ -30,7 +30,8 @@ POS_CHANNEL = 0x21
 POS_LOBBY = 0x22
 EXPEL_KINDS = (POS_WEB, POS_CHANNEL, POS_LOBBY)
 
-# Resultados do 701 (mesmos códigos de CERR em `re/layouts_f0.md` §7.3). A tela não mostra o 701,
+# Resultados do 701 (mesmos códigos de CERR em `tools/re/layouts_f0.md` §7.3). A tela não mostra o
+# 701,
 # então o código fica só na auditoria e no log.
 RESULT_EXPELLED = 0
 ERR_TARGET_OFFLINE = -2460  # nick fora do canal (CERR_FIND_PLAYER, rooms.py)

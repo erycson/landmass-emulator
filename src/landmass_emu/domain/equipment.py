@@ -1,6 +1,7 @@
 """Equipar e desequipar (F6): slots, regras de requisito e o `EquipService` que as aplica.
 
-Fontes: docs/architecture/07-progression.md §5.4 (R-USE-*); re/protocol_full.md §9 (slots, 560,
+Fontes: docs/architecture/07-progression.md §5.4 (R-USE-*); tools/re/protocol_full.md §9 (slots,
+560,
 570 e respostas). O slot de peça vem do catálogo (`item_slot` de `Item_Equip`), nunca do cliente.
 """
 

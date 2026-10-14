@@ -85,7 +85,8 @@ class Settings(BaseSettings):
     match_port_min: Annotated[int, Field(ge=1024, le=65535)] = 7800
     match_port_max: Annotated[int, Field(ge=1024, le=65535)] = 7899
     match_ready_timeout: Annotated[float, Field(gt=0, le=300)] = 30.0
-    # login_num do servidor de partida: o mesmo do cliente de teste (re/game_server_host.md §5).
+    # login_num do servidor de partida: o mesmo do cliente de teste (tools/re/game_server_host.md
+    # §5).
     match_login_num: Annotated[str | None, Field(max_length=36)] = None
     # Bots (D220): total mínimo de jogadores da partida, humanos e bots (`?MinPlayers=`). Só vale
     # com `match_server_dir`; o motor completa a partida com bots até este número.

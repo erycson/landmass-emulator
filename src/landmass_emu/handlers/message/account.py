@@ -50,7 +50,7 @@ class AccountHandlers:
         if is_banned(account, datetime.now(UTC)):
             # shortcut: bloqueio recusa com -160, o único código de login recusado conhecido. O
             # cliente pode mostrar "senha inválida"; o código próprio de bloqueio não foi achado
-            # (re/message_server.md §7). Expira sozinho (D106).
+            # (tools/re/message_server.md §7). Expira sozinho (D106).
             log.info("[%s] login recusado: conta bloqueada", session.peer)
             return [MsLoginOut(MsResult.INVALID_PASSWORD)]
         session.account = account

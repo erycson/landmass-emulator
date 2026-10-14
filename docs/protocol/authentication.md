@@ -7,7 +7,7 @@
 - Com `login_num` diferente de `DEVELOPERGUID`, o UnrealScript (`XInterface.u`, `NetGuidLogin`) envia o login automaticamente, sem formulário.
 - Como a conversão para minúsculas impede `DEVELOPERGUID`, o formulário de usuário/senha é inalcançável.
 
-Evidência: [`../../re/LandMass.exe/main_loop.c`](../../re/LandMass.exe/main_loop.c), [`../../re/NOTES.md`](../../re/NOTES.md).
+Evidência: [`../../tools/re/LandMass.exe/main_loop.c`](../../tools/re/LandMass.exe/main_loop.c), [`../../tools/re/NOTES.md`](../../tools/re/NOTES.md).
 
 ## Modelo adotado
 
@@ -28,7 +28,7 @@ O `login_num` só entra no Message. O Channel recebe uma chave de sessão, emiti
 - A chave não é persistida. Reiniciar o emulador invalida todas as chaves, e o cliente precisa refazer o `110`.
 - Chave zerada, desconhecida, expirada ou de conta reemitida: o Channel responde `101` com `result = -160` e não coloca o jogador no lobby.
 
-Evidência: layout de 111 em `re/message_server.md` §4 (33 bytes copiados para `DAT_1005AE20`). No teste com o cliente real, o `100` chegou com 33 bytes zerados depois de um `111` zerado. Não testado: o cliente aceitar uma chave não zerada, e a regra de expiração escolhida.
+Evidência: layout de 111 em `tools/re/message_server.md` §4 (33 bytes copiados para `DAT_1005AE20`). No teste com o cliente real, o `100` chegou com 33 bytes zerados depois de um `111` zerado. Não testado: o cliente aceitar uma chave não zerada, e a regra de expiração escolhida.
 
 ## Sequência
 

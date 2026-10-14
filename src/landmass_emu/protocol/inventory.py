@@ -1,6 +1,6 @@
 """Inventário do Channel Server: 102 (item), 103 (morat), 104 e 105 (morat regular).
 
-Layouts: re/layouts_f0.md §8. Offsets são do corpo (depois do cabeçalho `u16`).
+Layouts: tools/re/layouts_f0.md §8. Offsets são do corpo (depois do cabeçalho `u16`).
 
 Registro de item (`LM_ITEM_INFO`, 0x34 bytes, dump de LM_Engine): índice `short` @0, `int` @4
 (id do catálogo), GUID @8 (`char[37]`, inferido), `u8` apply_flag @0x2d, `int` apply_value @0x30.
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from typing import ClassVar
 
-# GUID de 36 caracteres mais NUL (`char[37]`). Inferido: ver re/layouts_f0.md §8.
+# GUID de 36 caracteres mais NUL (`char[37]`). Inferido: ver tools/re/layouts_f0.md §8.
 GUID_LENGTH = 36
 MORAT_PART_COUNT = 19
 # 16 peças em -1: o cliente usa o `DefaultSet` da classe do morat (XInterface, GetWeaponInfo:

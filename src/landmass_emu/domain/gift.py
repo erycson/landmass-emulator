@@ -1,7 +1,7 @@
 """Presente e Depósito (F10): envio por nick (615, 616), listagem (610, 611) e resgate
 (612, 613). Validação aqui; saldo e gravação ficam na porta `GiftRepository`.
 
-Fonte: docs/architecture/07-progression.md §5.6 (R-GIFT-01 a 05) e re/protocol_full.md §3.
+Fonte: docs/architecture/07-progression.md §5.6 (R-GIFT-01 a 05) e tools/re/protocol_full.md §3.
 Presente não tem exigência de patente: `LevelList` tem `enable_gift` no nível 0 e exp -1 (dúvida 3).
 """
 

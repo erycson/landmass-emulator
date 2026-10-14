@@ -1,4 +1,4 @@
-"""Mensagens do Message Server (porta 7313). Layouts em re/message_server.md (§4, §5)."""
+"""Mensagens do Message Server (porta 7313). Layouts em tools/re/message_server.md (§4, §5)."""
 
 import struct
 from dataclasses import astuple, dataclass
@@ -110,7 +110,8 @@ class MsLoginOut:
 
 @dataclass(frozen=True, slots=True)
 class LmRegisterInfo:
-    """LM_REGISTER_INFO: 37 bytes u8, nesta ordem (re/message_server.md §4.1). O 544 do Channel
+    """LM_REGISTER_INFO: 37 bytes u8, nesta ordem (tools/re/message_server.md §4.1). O 544 do
+    Channel
     (`SaveOption`) envia o mesmo bloco de 37 bytes.
 
     Nomes em snake_case, como em docs/architecture/07-progression.md §4.6. `mouse_sensitivity` é
@@ -168,7 +169,7 @@ class LmRegisterInfo:
 @dataclass(frozen=True, slots=True)
 class MsRegisterOut:
     """MS_REGISTER_OUT (111): LM_REGISTER_INFO @0x00, `char session_key[33]` @0x25 (32 hex + NUL),
-    padding @0x46..0x47, result @0x48. Total 0x4C. Layout: re/message_server.md §4."""
+    padding @0x46..0x47, result @0x48. Total 0x4C. Layout: tools/re/message_server.md §4."""
 
     options: LmRegisterInfo = LmRegisterInfo()
     session_key: str = ""
@@ -248,8 +249,8 @@ class MsGetChannelServerOut:
         return head + b"".join(c.pack() for c in self.channels)
 
 
-# Amigos, bloqueios e sussurro (F12). Layouts: re/protocol_full.md §2.1 e §2.2, e os cases
-# 161, 183, 184, 188, 189, 191 e 193 de re/LM_Engine.dll/message_dispatch_FUN_10025120.c.
+# Amigos, bloqueios e sussurro (F12). Layouts: tools/re/protocol_full.md §2.1 e §2.2, e os cases
+# 161, 183, 184, 188, 189, 191 e 193 de tools/re/LM_Engine.dll/message_dispatch_FUN_10025120.c.
 
 MAX_WHISPER_TEXT = 0x78  # o cliente descarta sussurro com `len > 0x78` (case 161)
 MAX_RELATION_IDS = 14  # ids por pedido de 190 e 192 (máximo do wrapper do cliente)
@@ -482,7 +483,8 @@ class MsWhisperErrorOut:
         return head + self.text
 
 
-# Ranking (F14), clã (F13). Layouts: re/protocol_full.md §2.1 e §2.2; re/message_server.md §4.
+# Ranking (F14), clã (F13). Layouts: tools/re/protocol_full.md §2.1 e §2.2;
+# tools/re/message_server.md §4.
 # Os trechos marcados (inferido) não têm leitor identificado no cliente; ver 07-progression §7.
 
 MAX_RANKING_ENTRIES = 100  # o laço de 171 do cliente para em 100 entradas
@@ -508,7 +510,8 @@ class MsRankingInfoOut:
     `char nick[17]` @6 (NUL), `i32 total_exp` @0x18, `u16 clan` @0x1C.
 
     Com menos de 100 linhas, a última entrada é zerada: o laço do cliente não confere o tamanho e
-    só para em `rank == 0` (inferido: o zero encerra, ver re/LM_Engine.dll/NotifyRankingInfo)."""
+    só para em `rank == 0` (inferido: o zero encerra, ver
+    tools/re/LM_Engine.dll/NotifyRankingInfo)."""
 
     entries: tuple[RankingEntry, ...]
     opcode: ClassVar[int] = MsOp.RANKING_INFO_OUT

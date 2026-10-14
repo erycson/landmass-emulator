@@ -1,7 +1,8 @@
 """Codecs de clã (F13) com os offsets que o cliente lê: 172, 175, 177, 178 e 195.
 
-Fontes: re/protocol_full.md §2.1 e §2.2; re/LM_Engine.dll/message_dispatch_FUN_10025120.c
-(cases 0xac, 0xaf, 0xb2, 0xc3); `execGetClanInfo` (re/LM_Engine.dll/all/1000a6c0)."""
+Fontes: tools/re/protocol_full.md §2.1 e §2.2;
+tools/re/LM_Engine.dll/message_dispatch_FUN_10025120.c
+(cases 0xac, 0xaf, 0xb2, 0xc3); `execGetClanInfo` (tools/re/LM_Engine.dll/all/1000a6c0)."""
 
 import struct
 

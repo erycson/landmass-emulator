@@ -3,7 +3,7 @@ pela tabela UDP do Windows (`netstat`) e encerramento ao fim da partida.
 
 Prontidão: a porta aparece na tabela com o PID do próprio processo. Bind de teste depois do
 lançamento disputaria a porta com o servidor, então não é usado. `PORT=` abre uma tentativa só
-(re/game_server_host.md §10): porta ocupada é falha, sem fallback.
+(tools/re/game_server_host.md §10): porta ocupada é falha, sem fallback.
 
 Fim: `end` digita `exit` na janela para o motor gravar o `LOG=` da partida e só então derruba o
 processo. `finish` derruba na hora (abandono e reinício de sala).

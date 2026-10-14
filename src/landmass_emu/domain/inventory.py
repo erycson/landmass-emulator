@@ -3,7 +3,7 @@
 Itens (grupos 2 e 3 do catálogo) e morats (grupo 1) têm índices em mapas separados no cliente
 (`FUN_100236b0` e `FUN_100237d0`). O morat usa como índice o próprio gate: o cliente guarda o
 morat em `sGate[k].siIdx` e busca por esse valor (`GetMoratsInfoByGate`, dump de LM_Engine).
-Inferido: ver re/layouts_f0.md §8 e D30.
+Inferido: ver tools/re/layouts_f0.md §8 e D30.
 """
 
 import uuid

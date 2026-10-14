@@ -1,6 +1,7 @@
 """Item Surpresa no Channel Server: 591 (`NotifyGetGatchaPrize`), resposta ao uso (560).
 
-Layout em re/protocol_full.md §3 (591) e em `channel_dispatch_FUN_1001da60.c` (0x24f): `u16 key`
+Layout em tools/re/protocol_full.md §3 (591) e em `channel_dispatch_FUN_1001da60.c` (0x24f): `u16
+key`
 @0 (índice do item consumido, que o cliente tira da lista), `i32 count` @4, `i32 result` @8
 (só com 0 o cliente abre o popup), e os registros `GACHA_PRIZE` a partir de @0xC, de 0x110 bytes.
 """

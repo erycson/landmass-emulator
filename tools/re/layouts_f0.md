@@ -212,7 +212,7 @@ Consequência para a lista vazia: a causa mais provável é que o servidor não 
 
 ## 6. Pendências desta rodada
 
-- Confirmar o nome do u16 de `nó+0x50` em 547 (`map_num` ou outro) e o conflito com 302 (`valor+0x10`). Depende de `re/rooms.md`.
+- Confirmar o nome do u16 de `nó+0x50` em 547 (`map_num` ou outro) e o conflito com 302 (`valor+0x10`). Depende de `tools/re/rooms.md`.
 - Byte `valor+0x10` (nó+0x20) gravado por 151/317/549 e sem leitura em `ConvertPlayerInfo`: nome não confirmado.
 - Chave do mapa em `nó+0x0c` para jogadores: inferido por 151 (disp@1179). Confirmar em `FUN_10007830` e `FUN_1001d5d0`.
 - `FUN_10019ad0` (remoção de nó, usado por 151): nome e efeito inferidos pelo uso. Não decompilado.
@@ -221,7 +221,7 @@ Consequência para a lista vazia: a causa mais provável é que o servidor não 
 
 ## 7. Fechado nesta rodada (P1 restante e P2)
 
-Arquivos de pseudocódigo: `re/LM_Engine.dll/FUN_10017530_CreateRoom.c` (301), `FUN_10018540_RefreshPlayerList.c` (546), `FUN_100183d0_RefreshRoomList.c` (545), `ConvertPlayerInfo_0x10006500.c`, `NotifyStartGame_0x10004440.c` (403), `NotifyRankingInfo_0x10003e30.c` (171).
+Arquivos de pseudocódigo: `tools/re/LM_Engine.dll/FUN_10017530_CreateRoom.c` (301), `FUN_10018540_RefreshPlayerList.c` (546), `FUN_100183d0_RefreshRoomList.c` (545), `ConvertPlayerInfo_0x10006500.c`, `NotifyStartGame_0x10004440.c` (403), `NotifyRankingInfo_0x10003e30.c` (171).
 
 ### 7.1 Pedido 301 `/CreateRoom` (`FUN_10017530`)
 
@@ -310,7 +310,7 @@ Os valores batem com os códigos observados no despacho. Que o servidor envie ex
 
 ### 7.5 451 `/RoomExpel` e 700 `/ExpelPlayer`
 
-- 451: pedido de 20 bytes (18 úteis; `FUN_10001830`, AX=0x1c3). **Não há `case` 452 no despacho** (grep de `0x1c4`/`452` em `re/` vazio). A resposta real de expulsão de sala é **gap**.
+- 451: pedido de 20 bytes (18 úteis; `FUN_10001830`, AX=0x1c3). **Não há `case` 452 no despacho** (grep de `0x1c4`/`452` em `tools/re/` vazio). A resposta real de expulsão de sala é **gap**.
 - 700: pedido de 20 bytes (`FUN_10001830`, AX=0x2bc). Resposta `701` `NotifyExpelPlayer(i32 result)` em `disp@2386-2387` e `disp@428-431`, `i32 @0` → `_DAT_1005aa54`.
 
 ### 7.6 P2: jogador, progressão e notificações (`FUN_1001da60`)
@@ -341,7 +341,7 @@ Obs.: 601 e 616 gravam nos campos de dinheiro e pontos conforme o código (601 g
 
 ## 8. Inventário e morat regular (F4 e F5)
 
-Fontes: `re/protocol_full.md` §2.1, §3.1 e §3.2 (102, 103, 104 e 105), `LM_PLAYER_INFO` em §1.1 (nest e `sGate`) e `GetMoratsInfoByGate` no dump de `LM_Engine` (L2288–2298). Código: `protocol/inventory.py` e `PlayerRecord` em `protocol/progression.py`.
+Fontes: `tools/re/protocol_full.md` §2.1, §3.1 e §3.2 (102, 103, 104 e 105), `LM_PLAYER_INFO` em §1.1 (nest e `sGate`) e `GetMoratsInfoByGate` no dump de `LM_Engine` (L2288–2298). Código: `protocol/inventory.py` e `PlayerRecord` em `protocol/progression.py`.
 
 **(RE)** = visto no dump ou no dispatcher. **(inferido)** = o emulador escreve assim, sem prova no cliente real.
 
@@ -366,7 +366,7 @@ Fontes: `re/protocol_full.md` §2.1, §3.1 e §3.2 (102, 103, 104 e 105), `LM_PL
 
 ### Peças, skins e índices
 
-- Índice de item começa em 1. O morat usa o gate (0 a 7) como índice ([D30](../docs/decisions/README.md)).
+- Índice de item começa em 1. O morat usa o gate (0 a 7) como índice ([D30](../../docs/decisions/README.md)).
 - Peça -1 é o padrão: o `GetWeaponInfo` do XInterface usa o índice explícito quando é `>= 0` e cai no `DefaultSet` da espécie quando é negativo (dump do XInterface, `GetWeaponInfo` e `SetMorats`). Peça 0 não resolve (`GetItemInfoByID(0)` falha) e deixa a arma vazia.
 - Skin: o emulador grava 0 (o kit antigo deixa NULL). Com 0, o botão de skin pode ficar vazio (inferido). Com -1, o cliente mostraria a skin do `DefaultSet`. Não alterado: decidir com captura no cliente.
 - Morat no gate 0 tem chave 0. Não verificado se `GetMoratsInfoByID(0)` resolve.
@@ -374,11 +374,11 @@ Fontes: `re/protocol_full.md` §2.1, §3.1 e §3.2 (102, 103, 104 e 105), `LM_PL
 ### Gates e conta sem morat
 
 - O 101 habilita `sGate[k]` só para os gates com morat, e o 103 vem para cada um. Teste: `test_kit_aplicado_vai_no_login_com_gates_habilitados`.
-- Conta sem morat trava a sala no cliente (observado ao vivo pelo coordenador, `LM_RoomPage`, "Infinite script recursion"). `GetMoratsInfoByGate` devolve false quando `bEnable` é 0 e também quando o `siIdx` não tem morat (dump, L2288–2298). Por isso habilitar gate sem morat não corrige: é preciso um morat. Dúvida 24 em [07-progression](../docs/architecture/07-progression.md).
+- Conta sem morat trava a sala no cliente (observado ao vivo pelo coordenador, `LM_RoomPage`, "Infinite script recursion"). `GetMoratsInfoByGate` devolve false quando `bEnable` é 0 e também quando o `siIdx` não tem morat (dump, L2288–2298). Por isso habilitar gate sem morat não corrige: é preciso um morat. Dúvida 24 em [07-progression](../../docs/architecture/07-progression.md).
 - Nada disso foi confirmado no cliente real.
 
 ### Divergências com o RE
 
 - `sEventSlot[10]`: o dump declara `LM_GATE_SLOT` (passo 4); a §1.1 lê `u8[10]` em 0x50..0x59. Resolver antes da F6 (equipar).
 - 569 (`NotifyChangeNest`) não é enviado. O nest sai só no 101 (inferido).
-- Layouts de 550, 555, 560, 570 e 580 (`re/protocol_full.md` §2.1) são de F6 a F8. Ainda não há codec: ao implementar, usar esses layouts.
+- Layouts de 550, 555, 560, 570 e 580 (`tools/re/protocol_full.md` §2.1) são de F6 a F8. Ainda não há codec: ao implementar, usar esses layouts.

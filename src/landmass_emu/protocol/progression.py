@@ -1,5 +1,6 @@
 """Mensagens de progressão do Channel Server: tutorial (600/601), saldos (900/902) e o registro do
-jogador que o 101 carrega. Layouts: re/layouts_f0.md §1.1 e §7.6; re/channel_server.md §3.2.
+jogador que o 101 carrega. Layouts: tools/re/layouts_f0.md §1.1 e §7.6; tools/re/channel_server.md
+§3.2.
 
 Offsets são do corpo, depois do cabeçalho `u16`. Os valores de `PlayerRecord` vão para o nó do
 jogador: `valor+X = nó+(X+0x10)`.
@@ -42,7 +43,7 @@ class PlayerRecord:
     nest: int = 0
     enabled_gates: tuple[int, ...] = ()  # gates com bEnable (domain/inventory: enabled_gates)
     system_slots: tuple[int | None, ...] = ()  # índice do item por slot de sistema; None = vazio
-    access: int = 0  # ucAccess @0x11 (nó+0x21, valor+0x11 em re/layouts_f0.md §1.1; D193)
+    access: int = 0  # ucAccess @0x11 (nó+0x21, valor+0x11 em tools/re/layouts_f0.md §1.1; D193)
     SIZE: ClassVar[int] = 0xA8
 
     def pack(self, client_guid: int) -> bytes:
@@ -121,7 +122,8 @@ class CsChargeCashOut:
 class CsChargePointOut:
     """CHARGE_POINT (902), servidor → cliente: `i32 point` @0 → iPoint (LD).
 
-    shortcut: 902 é um bloco misto no dispatcher (com NotifyClanInsertPlayer, re/channel_server.md
+    shortcut: 902 é um bloco misto no dispatcher (com NotifyClanInsertPlayer,
+    tools/re/channel_server.md
     §3.2). Só o campo de LD está confirmado; confirmar com o cliente real.
     """
 

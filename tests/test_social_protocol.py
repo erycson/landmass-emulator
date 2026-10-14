@@ -1,4 +1,5 @@
-"""Codecs de amigos, bloqueios e sussurro (F12). Offsets de re/protocol_full.md §2.1 e §2.2."""
+"""Codecs de amigos, bloqueios e sussurro (F12). Offsets de tools/re/protocol_full.md §2.1 e
+§2.2."""
 
 import struct
 

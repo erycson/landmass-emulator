@@ -8,7 +8,7 @@ Fora de escopo: a partida em si ([06-game-server-host.md](06-game-server-host.md
 
 - **Contrato com o cliente**: opcodes, layouts, ordem de bytes e comportamento observável. É o único ponto em que o servidor segue o legado ([D17](../decisions/README.md)).
 - **(inferido)**: dedução sem evidência direta no cliente. Sem marca: visto no código do cliente, no `landmass.wdb` ou no legado.
-- Evidências: [`re/features.md`](../../re/features.md) (citado por seção), [`re/channel_server.md`](../../re/channel_server.md) e [`re/message_server.md`](../../re/message_server.md) (opcodes e layouts), `landmass.wdb` (somente leitura, D7), dump UnrealScript de `LM_Engine.u`, `XInterface.u` e `XGame.u` (citado por função).
+- Evidências: [`tools/re/features.md`](../../tools/re/features.md) (citado por seção), [`tools/re/channel_server.md`](../../tools/re/channel_server.md) e [`tools/re/message_server.md`](../../tools/re/message_server.md) (opcodes e layouts), `landmass.wdb` (somente leitura, D7), dump UnrealScript de `LM_Engine.u`, `XInterface.u` e `XGame.u` (citado por função).
 - Legado `LM_account.sql`: usado só como pista de regra de negócio. Nenhuma coluna ou procedure é copiada por ser legada.
 
 ## 2. Princípios do servidor
@@ -207,7 +207,7 @@ Inventário, implementado em F4. Uma linha por unidade ([D22](../decisions/READM
 
 ### 4.5 `account_morats`
 
-Unidade de combate (espécie `SPECIES_*`), não moeda ([features §10](../../re/features.md)). Implementado em F5.
+Unidade de combate (espécie `SPECIES_*`), não moeda ([features §10](../../tools/re/features.md)). Implementado em F5.
 
 | Coluna | Tipo | Nulo | Regra |
 |--------|------|------|-------|
@@ -224,7 +224,7 @@ Uma linha por conta (1:1). Guarda as 37 opções de `LM_REGISTER_INFO`, que o cl
 
 - Constraints: `account_options_account_id_unique` e `account_options_account_id_foreign`.
 - Todas as colunas são `Integer`, `NOT NULL`, padrão `0`, faixa 0 a 255.
-- O codec mapeia por índice `@i` (ordem fixa de [message_server.md §4.1](../../re/message_server.md)). A ordem é o contrato; os nomes são só do banco.
+- O codec mapeia por índice `@i` (ordem fixa de [message_server.md §4.1](../../tools/re/message_server.md)). A ordem é o contrato; os nomes são só do banco.
 
 | `@i` | Coluna | `@i` | Coluna |
 |-----:|--------|-----:|--------|
@@ -310,7 +310,7 @@ Migração `e8b4d1f6a237` (sobre `5c1e8a3f7b92`). Modelo `ShopItemRow` em `db/mo
 
 ## 5. Regras de negócio
 
-Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte: seção de [features.md](../../re/features.md) ou função/linha do dump.
+Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte: seção de [features.md](../../tools/re/features.md) ou função/linha do dump.
 
 ### 5.1 Moedas e saldo
 
@@ -354,7 +354,7 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 | R-USE-02 | Gates: 8 por jogador (`sGate[8]`, `LM_GATE_SLOT`: `siIdx`, `bEnable`). Slots de sistema: 10 (`sEventSlot[10]`). | `LM_Engine.u` `LM_PLAYER_INFO` |
 | R-USE-03 | Slots de `slot_name` (de `LM_MORATS_INFO`): `main_weapon`, `sub_weapon`, `melee_weapon`, `etc_weapon_00..02`, `booster`, `generator`, `head`, `body`, `arm`, `leg`, `etc_item_00..03` e as skins `skin_00..02` (`siSkinID[3]`, D136). | `LM_Engine.u` `LM_MORATS_INFO` |
 | R-USE-04 | Item de sistema (grupo 3, classe 8) vai para `system_slot` livre, de 0 a 9 (554 leva o slot). Sem slot livre, recusa com -4 (D74). Fica no slot até ser destruído (559 libera). Tipo pelo id (D130): BUFF (tipo 2) fica no slot até o prazo (R-BUFF-01); ONCE (Queima de Arquivo, Reconstituir, Alistar e Troca de Função) é consumido (R-CON-01 a 04). Adicionar Hangar e Item Surpresa, também ONCE, não montam: o 560 os usa (R-USE-08). | features §0.3, §3.2 (inferido nos detalhes) |
-| R-USE-05 | `ItemUnused(index, gate)` (570, corpo de 4 bytes: `u16 index` @0, `u16 gate` @2) remove a peça: zera `account_morat_id` e `slot_name`, e responde 572 com gate e slot. Item de sistema não desmonta por 570: recusa com -4 (D74). | `channel_server.md` §2; dúvida 8 (resolvida, `re/protocol_full.md` §9) |
+| R-USE-05 | `ItemUnused(index, gate)` (570, corpo de 4 bytes: `u16 index` @0, `u16 gate` @2) remove a peça: zera `account_morat_id` e `slot_name`, e responde 572 com gate e slot. Item de sistema não desmonta por 570: recusa com -4 (D74). | `channel_server.md` §2; dúvida 8 (resolvida, `tools/re/protocol_full.md` §9) |
 | R-USE-06 | Morat principal: `ItemUsedByValue` (560 com `value` ≠ 0) existe no wrapper `0x10018260`, fora dos consumíveis, o F6 o recusa com 561 e -4 (D75). A troca de morat principal entra só pelo consumível Troca de Função (R-CON-04); `main_gate_index` não é escrito. | features §3.2; dúvida 7 |
 | R-USE-07 | Usar item que não pertence à conta, ou item já montado no mesmo slot, responde erro sem alterar nada. | (inferido) |
 | R-USE-08 | `ItemUsed` (560) com item especial não equipa: `308010006` (Item Surpresa) abre o gacha (R-GACHA-01) e `308010005` (Adicionar Hangar) sobe `gate_count` (R-GATE-01). Montado, de sistema ou vencido segue para o equipar, que recusa (vencido: -4). | D98, D99 |
@@ -365,10 +365,10 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-DEST-01 | `ItemDestroy(id, index)` (555: `i32 id` @0, `u16 index` @4) remove a linha por `DELETE`, sem histórico (D12). A resposta 556 leva o gate do morat (`u16 gate` @2) e `u8 mounted` @4, para o cliente tirar a peça. Item de sistema responde 559 com o slot. | features §3.3; `re/protocol_full.md` §9 |
+| R-DEST-01 | `ItemDestroy(id, index)` (555: `i32 id` @0, `u16 index` @4) remove a linha por `DELETE`, sem histórico (D12). A resposta 556 leva o gate do morat (`u16 gate` @2) e `u8 mounted` @4, para o cliente tirar a peça. Item de sistema responde 559 com o slot. | features §3.3; `tools/re/protocol_full.md` §9 |
 | R-DEST-02 | Destruir morat (557) zera as peças em `account_items` (`account_morat_id` e `slot_name`) e apaga a linha, na mesma transação (D76). Não destrói o último morat da conta (D69): recusa com -4. | (inferido); D69, D76 |
 | R-EXT-01 | `ItemExtend` (580: `i32 id` @0, `u16 index` @4, `u8 point` @6, `u8 option` @7) usa o preço e o prazo da tabela de compra (R-PRC-01). Se `expires_at` está no futuro, soma os dias a partir dele; se é nulo ou vencido, parte de agora (D71). Morat não tem prazo: recusa com -4. Saldo insuficiente recusa com o código de D51 e nada é debitado (D72). O preço hoje é o do wdb, não o de `shop_items` (aberto, R-BUY-07). | features §3.3; (inferido) |
-| R-EXT-02 | Resposta 582 (`NotifyItemExtend`): `u16 index` @0; `i32 apply_value` @4 (fim do prazo em segundos Unix, REALTIME); `i32 cash` @8; `i32 point` @0xc; `i32 result` @0x10. A extensão de morat (581) não é emitida. | features §3.3; `re/protocol_full.md` §9 |
+| R-EXT-02 | Resposta 582 (`NotifyItemExtend`): `u16 index` @0; `i32 apply_value` @4 (fim do prazo em segundos Unix, REALTIME); `i32 cash` @8; `i32 point` @0xc; `i32 result` @0x10. A extensão de morat (581) não é emitida. | features §3.3; `tools/re/protocol_full.md` §9 |
 | R-EXP-01 | Item REALTIME com `expires_at <= agora` gera o push `585` (`NotifyItemEndtime(nIndex, bItem, premium)`), que abre a tela de renovação. O item fica até renovação ou destruição. No login, item vencido recebe 585 com `bItem` = 1 (F7). Remoção automática não definida (dúvida 5). | features §3.3 (inferido nos detalhes) |
 | R-VAL-01 | `apply_value` por flag: REALTIME usa `expires_at` (inferido: `apply_value` com segundos absolutos, `0` quando `expires_at` é nulo); SIZE, PLAYTIME e ENABLE usam `apply_value` direto. | `LM_Engine.u` `ITEM_APPLY`; `XInterface` 36788–36798 (inferido nos valores) |
 
@@ -419,7 +419,7 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 | R-REW-08 | Ordem após o cálculo base: (1) `× ExpMult` e `× MoneyMult` se > 0 (ambos 1); (2) bônus PC-room com `pc_room`: `exp += exp × PCRoomBonusExp` e `money += money × PCRoomBonusPoint` (valor 1 = +100%, inferido); (3) bônus de evento: `exp += exp × BonusExpMult` e `money += money × BonusMoneyMult` (origem não localizada); (4) buffs: `exp × 1.5` se `bExpIncrement` (item `308020001`) e `money × 1.5` se `bLDIncrement` (item `308020002`). | `XGame` 6625–6640, 16296–16311; `ApplySysItmValue` 16852 |
 | R-REW-09 | Tipo de vitória: time vencedor (OP e TDM) ou ranking 1 (DM). Não há campo de vitória no cliente; a regra é (inferido). | (inferido) |
 | R-REW-10 | Gravação: uma transação por partida que soma `total_exp` e `ld` de cada jogador com dado (D155). `total_gamecount`, `total_win`, `total_lose`, `total_kill` e `total_death` não são somados: a ficha lê `match_players` (D107). Os valores float são convertidos para inteiro (regra de arredondamento: dúvida 13). | (inferido; D20) |
-| R-REW-11 | O resultado do DM não passa por GS_*. Sai no bloco `GameEnded` do log, lido ao fim da partida (D153, D154). Quem grava exp e LD na conta é `SqlMatchRepository.save` (D155). | `re/game_server_host.md` §11 |
+| R-REW-11 | O resultado do DM não passa por GS_*. Sai no bloco `GameEnded` do log, lido ao fim da partida (D153, D154). Quem grava exp e LD na conta é `SqlMatchRepository.save` (D155). | `tools/re/game_server_host.md` §11 |
 
 ### 5.10 Tutorial (600, 601)
 
@@ -444,14 +444,14 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 |----|-------|-------|
 | R-OPT-01 | `SaveOption` (544) grava as 37 opções de `account_options` (corpo de 37 bytes). Sem resposta conhecida. | `channel_server.md` §2 (544) |
 | R-OPT-02 | `Register` (110 → 111) devolve as 37 opções gravadas em `@0x00..0x24`. Conta sem registro recebe as teclas e a sensibilidade padrão (D140, D172). Implementado (F1). | `message_server.md` §4 (111) |
-| R-OPT-03 | Valor padrão de conta nova: teclas do `[Engine.Input]` do `User.ini` do cliente (`KeyBindDefaults`, D140) e sensibilidade do mouse 8 (`MouseDefaults`, D172); inverter, voz e volume ficam em 0, sem fonte (D173). | re/game_server_host.md §12 e §13 (inferido) |
+| R-OPT-03 | Valor padrão de conta nova: teclas do `[Engine.Input]` do `User.ini` do cliente (`KeyBindDefaults`, D140) e sensibilidade do mouse 8 (`MouseDefaults`, D172); inverter, voz e volume ficam em 0, sem fonte (D173). | tools/re/game_server_host.md §12 e §13 (inferido) |
 
 ### 5.13 Social, clã e abandono
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-SOC-01 | Amigos: 180 responde 183 por amigo e 188 por bloqueado (lista vazia: nada). 181 cria a linha por nick e responde 183 com o registro. 182 remove pelo id e responde 184. 190 responde 191 só com os ids da própria lista. Pedido recusado responde registro de id 0 com `result` -11 (D35). | `protocol/message-server.md`; `re/protocol_full.md` §2 |
-| R-SOC-02 | Bloqueio: 186 cria por nick e responde 188; 187 remove pelo id e responde 189; 192 responde 193 só com os ids da própria lista. Layouts de 181, 182, 186 e 187 medidos nos wrappers (dúvida 16). O bloqueio só tem efeito no sussurro (R-SOC-04, D38). | `protocol/message-server.md`; `re/protocol_full.md` §2 |
+| R-SOC-01 | Amigos: 180 responde 183 por amigo e 188 por bloqueado (lista vazia: nada). 181 cria a linha por nick e responde 183 com o registro. 182 remove pelo id e responde 184. 190 responde 191 só com os ids da própria lista. Pedido recusado responde registro de id 0 com `result` -11 (D35). | `protocol/message-server.md`; `tools/re/protocol_full.md` §2 |
+| R-SOC-02 | Bloqueio: 186 cria por nick e responde 188; 187 remove pelo id e responde 189; 192 responde 193 só com os ids da própria lista. Layouts de 181, 182, 186 e 187 medidos nos wrappers (dúvida 16). O bloqueio só tem efeito no sussurro (R-SOC-04, D38). | `protocol/message-server.md`; `tools/re/protocol_full.md` §2 |
 | R-SOC-03 | Limite de amigos e de bloqueados: não localizado (dúvida 17). | — |
 | R-SOC-04 | Sussurro (160): 161 vai só ao destinatário conectado no Message, sem confirmação ao remetente. Destinatário fora do Message, ou que bloqueou o remetente: 162 com -19. Nick inexistente: 162 com -11 (D36). | `protocol/message-server.md` |
 | R-SOC-05 | Presença: online = conexão autenticada no Message (D32). Sem aviso de entrada e saída, pois não há opcode: o estado vem nas consultas 180, 190 e 192 (D39). | `protocol/message-server.md` |
@@ -475,8 +475,8 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 
 | Opcode | Direção | Caso de uso | Tabelas | Layout (re) | Estado |
 |-------:|:-------:|-------------|---------|-------------|--------|
-| 102 | S→C (push) | Lista de itens da conta | `account_items` | parcial: `u16 @0` chave, zerar `@0x35` ([layouts_f0 §8](../../re/layouts_f0.md)) | implementado (F4, no login) |
-| 103 | S→C (push) | Lista de morats com gate | `account_morats` | parcial: `u16 @0` gate, `u8 @0x5d`, registro de 92 bytes ([layouts_f0 §8](../../re/layouts_f0.md)) | implementado (F5, no login) |
+| 102 | S→C (push) | Lista de itens da conta | `account_items` | parcial: `u16 @0` chave, zerar `@0x35` ([layouts_f0 §8](../../tools/re/layouts_f0.md)) | implementado (F4, no login) |
+| 103 | S→C (push) | Lista de morats com gate | `account_morats` | parcial: `u16 @0` gate, `u8 @0x5d`, registro de 92 bytes ([layouts_f0 §8](../../tools/re/layouts_f0.md)) | implementado (F5, no login) |
 | 104 | S→C | Resposta de `SetRegular` | `accounts` | corpo vazio | implementado (F5) |
 | 105 | C→S | Morat regular | `accounts` | `u8 nest @0`, `u8 classe @1` | implementado (F5) |
 | 107 / 108 | S→C | Morat de treino / criado | `account_morats` | falta | falta |
@@ -516,7 +516,7 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 900 | S→C (push) | Saldo de Cash | `accounts` | `i32 @0` | implementado (F3, no login) |
 | 901 | S→C (push) | Premium | `accounts` | falta | falta |
 | 902 | S→C (push) | Saldo de LD (bloco misto) | `accounts` | `i32 @0` | implementado (F3, no login) |
-| GS_* (1002, 1010, 1011, 1020) | GS ↔ Channel | Entrada e saída de jogadores da partida | — | documentado; o DM não usa (`re/game_server_host.md` §11) | não usado |
+| GS_* (1002, 1010, 1011, 1020) | GS ↔ Channel | Entrada e saída de jogadores da partida | — | documentado; o DM não usa (`tools/re/game_server_host.md` §11) | não usado |
 
 ### 6.2 Message (porta 7313)
 
@@ -553,13 +553,13 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 194 | C→S | Atualizar clãs | `clan_members` | `MS_RELATION_IDS_IN`, como 190; responde 195 só com os ids do próprio clã | implementado (F13) |
 | 195 | S→C | Lote de membros do clã | `clan_members` | cabeçalho de 12 bytes: `i32` clã @0, `i32` marca @4, `u8` zero @8, `u8` contagem @9; registros de 0x0C a partir de @0x0C: `i32` conta @0, `i32` exp @4, `u8` estado @8 | implementado (F13) |
 
-Correção a [features.md §15](../../re/features.md): `GetRankingInfo` tem opcode medido, **170** ([message_server.md §1](../../re/message_server.md)). O item "lacuna" de §15 está desatualizado.
+Correção a [features.md §15](../../tools/re/features.md): `GetRankingInfo` tem opcode medido, **170** ([message_server.md §1](../../tools/re/message_server.md)). O item "lacuna" de §15 está desatualizado.
 
 O opcode **171** vale nas duas direções: C→S pede os dados do clã (responde 172) e S→C é a lista de ranking. O roteador usa só o valor C→S (`MsOp.GET_CLAN_INFO`; comentário em `protocol/message.py`).
 
 ### 6.3 Pontos de contato com a partida
 
-- A recompensa (R-REW-*) é calculada pelo servidor no `EndGame` e gravada no log (bloco `GameEnded`). No DM, nada chega ao canal por GS_* (`re/game_server_host.md` §11). O emulador lê o bloco ao fim da partida e aplica exp e LD (D153 a D155); a prova com dois clientes é pendente.
+- A recompensa (R-REW-*) é calculada pelo servidor no `EndGame` e gravada no log (bloco `GameEnded`). No DM, nada chega ao canal por GS_* (`tools/re/game_server_host.md` §11). O emulador lê o bloco ao fim da partida e aplica exp e LD (D153 a D155); a prova com dois clientes é pendente.
 - O cliente de partida usa `GameRewardConstant` e o próprio `XGame`. O servidor reimplementa as fórmulas; não existe, no cliente, cálculo autoritativo fora da partida.
 
 ## 7. Ordem de implementação
@@ -568,7 +568,7 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 
 | Fatia | Entrega | Depende de | Critério de aceite no cliente real |
 |-------|---------|-----------|------------------------------------|
-| F0 | Decodificar layouts pendentes: 102, 103 (completo), 151/317/549 (exp e saldos), 171, 512, 551, 552, 601, 611, 616, 900–902. Cada um vira fixture em `tests/fixtures/` com teste de ida e volta. | — | Cada layout confere com captura real; `re/` atualizado. |
+| F0 | Decodificar layouts pendentes: 102, 103 (completo), 151/317/549 (exp e saldos), 171, 512, 551, 552, 601, 611, 616, 900–902. Cada um vira fixture em `tests/fixtures/` com teste de ida e volta. | — | Cada layout confere com captura real; `tools/re/` atualizado. |
 | F1 (implementada) | `account_options`. 544 grava 37 bytes; 110 → 111 devolve os valores. | — | Mudar sensibilidade do mouse em Opções, sair do jogo, logar: valor mantido. |
 | F2 (implementada) | `accounts.tutorial_clear`. 600 marca o bit; 601 responde. | F0 (601) | Concluir passo 1; reiniciar o servidor; passo aparece concluído e não é reenviado. |
 | F3 (implementada) | `total_exp`, `ld`, `cash`; patente derivada; push 900/902; CLI `account grant --exp --ld --cash`. | F0 (151/317/900/902) | `grant --exp 2800 --ld 1000`: cliente mostra LD 1000, patente "Praça" e progresso. `grant --cash 500`: Cash 500 na loja. |
@@ -603,12 +603,12 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 5. **Início da validade [bloqueia F6, F7].** Na F8 a validade começa na compra (inferido). Confirmar: começa na compra ou no uso? Como `apply_value` deve ser preenchido para cada `ITEM_APPLY`? Remoção automática de vencidos?
 6. **Efeito dos itens não-buff (resolvida, F15).** Queima de Arquivo, Reconstituir, Alistar e Troca de Função têm texto no wdb e resposta no cliente (R-CON-01 a 04; D131 a D134). Ressurreição é buff (R-BUFF-01; o efeito é do servidor de partida). Adicionar Hangar (308010005) e o sorteio do gacha (308010006) foram definidos pelo servidor (D98, D99).
 7. **Morat principal (recusa, D75).** `ItemUsedByValue` existe (wrapper `0x10018260`, 560 com `value`). O F6 recusa com 561 e -4. A troca de morat principal fica fora. Aceitar essa limitação?
-8. **Aridade de 570 e 580 (resolvida, `re/protocol_full.md` §9).** 570 é `u16 index` + `u16 gate` (4 bytes); 580 é `i32 id` + `u16 index` + `u8 point` + `u8 option` (8 bytes). Medido nos wrappers. Confirmar com captura.
-9. **Mapa `item_slot` → `slot_name` (resolvida).** `item_slot` é o índice de `SLOT_NAMES` (`domain/equipment.py`), de 0 (`main_weapon`) a 11 (`leg`). Tabela completa em `re/protocol_full.md` §9. O slot de sistema vem do índice do item (inferido).
+8. **Aridade de 570 e 580 (resolvida, `tools/re/protocol_full.md` §9).** 570 é `u16 index` + `u16 gate` (4 bytes); 580 é `i32 id` + `u16 index` + `u8 point` + `u8 option` (8 bytes). Medido nos wrappers. Confirmar com captura.
+9. **Mapa `item_slot` → `slot_name` (resolvida).** `item_slot` é o índice de `SLOT_NAMES` (`domain/equipment.py`), de 0 (`main_weapon`) a 11 (`leg`). Tabela completa em `tools/re/protocol_full.md` §9. O slot de sistema vem do índice do item (inferido).
 10. **Requisitos na compra (resolvida, D51).** O servidor valida patente e nest e recusa os demais requisitos sem fonte (R-REQ-01).
 11. **Nível para escolher nest.** Exigir "Praça" (`SelectNestExp = 2800`) em `SetRegular`? O cliente não bloqueia.
 12. **Códigos de erro** de uso, extensão e presente: o mapa de `msg_error` não foi identificado para essas ações. Presente usa -2407, -4055, -4056 e 8000 (R-GIFT-01, inferido de `CERR_*`, D97). A compra usa os códigos de `NotifyItemBuy` (R-BUY-03).
-25. **ONCE e BUFF (resolvida, D130).** O wdb traz `item_type` 0, mas o tipo está no id: `(id / 1e4) % 100`, com 1 ONCE e 2 BUFF (tabela de tipos em `re/features.md`). Inferido do id e dos textos dos itens; falta confirmar no cliente real.
+25. **ONCE e BUFF (resolvida, D130).** O wdb traz `item_type` 0, mas o tipo está no id: `(id / 1e4) % 100`, com 1 ONCE e 2 BUFF (tabela de tipos em `tools/re/features.md`). Inferido do id e dos textos dos itens; falta confirmar no cliente real.
 13. **Arredondamento** de exp e LD (float para inteiro): proposta, truncar. Confirmar.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
 15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
@@ -620,7 +620,7 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 21. **Penalidades (resolvida em parte, D106 e D108).** Banimento de conta entra, pela CLI. O cliente não tem tela de penalidade para abandono (features §12), então a deserção não gera efeito. Expulsão e banimento de sala ficam em aberto: pedem `rooms.py` e, na expulsão pela CLI, um push que não existe (D27).
 22. **Ranking por nest** (`oddeye`, `shadow`, `leon` do legado): o usuário pôs no escopo (ver Decisões), mas 170 não tem corpo e 171 não tem campo de nest (D56). Precisa de um pacote que traga o nest, ainda não medido. Até lá, não entra (D108).
 23. **Pacotes `gift_okcashback1..3`:** quem os concede e quando?
-24. **Conta sem morat trava a sala (observado ao vivo) [bloqueia a sala para contas sem morat].** O cliente trava em `LM_RoomPage` quando nenhum gate tem morat. Habilitar gate sem morat não resolve ([layouts_f0 §8](../../re/layouts_f0.md)). Conceder o kit no login quando a conta não tem morat muda o login e escreve no banco. Decisão do usuário: conceder no login, ou só pela CLI (`account kit apply`)?
+24. **Conta sem morat trava a sala (observado ao vivo) [bloqueia a sala para contas sem morat].** O cliente trava em `LM_RoomPage` quando nenhum gate tem morat. Habilitar gate sem morat não resolve ([layouts_f0 §8](../../tools/re/layouts_f0.md)). Conceder o kit no login quando a conta não tem morat muda o login e escreve no banco. Decisão do usuário: conceder no login, ou só pela CLI (`account kit apply`)?
 
 ## 9. Decisões
 
@@ -659,7 +659,7 @@ Registradas em [decisions/README.md](../decisions/README.md):
 - **D130** Tipo do item de sistema (classe 8) pelo id: `(id / 1e4) % 100`, com 1 ONCE e 2 BUFF. O wdb traz `item_type` 0 para esses itens; o tipo está no id. Pinturas (classe 7) não usam esta regra.
 - **D131** Queima de Arquivo consome e grava `accounts.record_reset_at`. Vitórias, derrotas e abandono passam a contar após o marco; o ranking (`total_exp`) não muda. Texto do item no wdb (`item_desc`). O marco é gravado já; a leitura entra quando as métricas forem gravadas (D135).
 - **D132** Reconstituir consome e grava `accounts.combat_reset_at`: zera abates, mortes e headshots. Abandono não zera. O texto do item cita kill, death e headshot, não abandono. Diverge do plano de F15, que citava abandono.
-- **D133** Alistar: 560 com `value` (nest 1 a 3) grava `accounts.regular_nest_id`, consome e responde 569. Valor fora da faixa responde 561 com -4. `LM_JoinNestPage` usa `ItemUsedByValue`; 569 leva o nest e o índice do item (`re/protocol_full.md` §10).
+- **D133** Alistar: 560 com `value` (nest 1 a 3) grava `accounts.regular_nest_id`, consome e responde 569. Valor fora da faixa responde 561 com -4. `LM_JoinNestPage` usa `ItemUsedByValue`; 569 leva o nest e o índice do item (`tools/re/protocol_full.md` §10).
 - **D134** Troca de Função: 560 com `value` (classe 1 a 4) grava `accounts.regular_morat_class`, consome e responde 590. Valor fora da faixa responde 561 com -4. `LM_ChangeMainMoratsPage` usa `ItemUsedByValue`. O 590 não confere o resultado, então a recusa vai por 561. Morat principal lido como morat regular, a única coluna desse tipo na conta.
 - **D135** A ficha (543) segue com zeros nesta fatia. As métricas de `match_players` são nulas; ligar a ficha agora mostraria abandono de 100%. Quando as métricas forem gravadas, a ficha conta só partidas depois dos marcos.
 - **D136** Pintura (classe 7) monta em `skin_00` do morat do gate, sem consumo, e responde 565. Desmontar responde 573. `siSkinID` está em `LM_MORATS_INFO` (103). O `k` fixo em 0 e o índice da pintura como valor são inferidos do dispatcher; não houve teste no cliente real.

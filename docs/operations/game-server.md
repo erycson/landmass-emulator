@@ -1,6 +1,6 @@
 # Servidor de partida (cópia `servidor-partida`)
 
-Status: cópia montada, patches aplicados, partidas testadas com clientes reais. A evidência de engenharia reversa e as pendências estão em [`../../re/game_server_host.md`](../../re/game_server_host.md).
+Status: cópia montada, patches aplicados, partidas testadas com clientes reais. A evidência de engenharia reversa e as pendências estão em [`../../tools/re/game_server_host.md`](../../tools/re/game_server_host.md).
 
 ## Montagem da cópia
 
@@ -28,7 +28,7 @@ cmp -l system\Core.dll system\Core.dll.orig        # 2 bytes: 260551 e 260552
 cmp -l system\LandMass.exe system\LandMass.exe.orig # 1 byte: 133605
 ```
 
-Não foi aplicado patch em `LM_Engine.dll`. O patch mínimo em `LoginPlayer` (aceitar qualquer jogador) não teria efeito com os mapas atuais: `LoginPlayer` só é chamado por `UServerLevel::NotifyReceivedText`, e o nível da partida não é `UServerLevel` (ver `re/game_server_host.md`, seção 9).
+Não foi aplicado patch em `LM_Engine.dll`. O patch mínimo em `LoginPlayer` (aceitar qualquer jogador) não teria efeito com os mapas atuais: `LoginPlayer` só é chamado por `UServerLevel::NotifyReceivedText`, e o nível da partida não é `UServerLevel` (ver `tools/re/game_server_host.md`, seção 9).
 
 ### Não tocado
 
@@ -42,15 +42,15 @@ Execute `system\servidor.bat` (a janela fica aberta enquanto o servidor roda). A
 LandMass.exe ONS-Treino?listen -server -log login_server=127.0.0.1:7313?version=<V>?login_num=<L>
 ```
 
-- Argumentos do motor vêm ANTES de `login_server=`. Nas execuções de 2026-10-13, a linha montada com aspas duplas no PowerShell perdeu `login_num=` e o executável saiu com código 0, sem log (`re/game_server_host.md` §11.1). Qualquer token depois de `login_num=...` também pode fazer o executável sair com código 0, sem log (regra de §2 de `re/game_server_host.md`; não reverificada em 2026-10-13). Montada por concatenação, a linha sobe (validado em 2026-10-13: UDP 7777 aberta, `Game class is 'LM_DeathMatch'`, `Bringing Level ONS-Treino.myLevel up for play`).
-- `version=` e `login_num=` são copiados de `cliente\system\jogar_teste.bat`. Sem eles o executável também sai com 0 (ver [`../../re/cmdline.md`](../../re/cmdline.md)).
-- A partida DM não abre TCP para o Message Server (7313) nem para o Channel (7314) em 15 s, mesmo com `login_server=` apontando para um listener local (`re/game_server_host.md` §11.2).
+- Argumentos do motor vêm ANTES de `login_server=`. Nas execuções de 2026-10-13, a linha montada com aspas duplas no PowerShell perdeu `login_num=` e o executável saiu com código 0, sem log (`tools/re/game_server_host.md` §11.1). Qualquer token depois de `login_num=...` também pode fazer o executável sair com código 0, sem log (regra de §2 de `tools/re/game_server_host.md`; não reverificada em 2026-10-13). Montada por concatenação, a linha sobe (validado em 2026-10-13: UDP 7777 aberta, `Game class is 'LM_DeathMatch'`, `Bringing Level ONS-Treino.myLevel up for play`).
+- `version=` e `login_num=` são copiados de `cliente\system\jogar_teste.bat`. Sem eles o executável também sai com 0 (ver [`../../tools/re/cmdline.md`](../../tools/re/cmdline.md)).
+- A partida DM não abre TCP para o Message Server (7313) nem para o Channel (7314) em 15 s, mesmo com `login_server=` apontando para um listener local (`tools/re/game_server_host.md` §11.2).
 - `-log` sem valor: o nome do arquivo de log segue o padrão do motor (`system\LandMass.log`). `-log=Server.log` não foi testado.
 - Não rode o servidor dentro de `cliente` ou `cliente2`. Cada pasta tem seu próprio `LandMass.log` e `User.ini`.
 
 ## Porta
 
-- Protocolo UDP, porta **7777** (`[URL] Port=7777` em `LandMass.ini`). O driver é `IpDrv.TcpNetDriver`, mas o socket é `SOCK_DGRAM` (ver `re/cmdline.md`, seção 2).
+- Protocolo UDP, porta **7777** (`[URL] Port=7777` em `LandMass.ini`). O driver é `IpDrv.TcpNetDriver`, mas o socket é `SOCK_DGRAM` (ver `tools/re/cmdline.md`, seção 2).
 - Conferir com o servidor no ar:
 
 ```
@@ -82,7 +82,7 @@ Arquivo: `D:\landmass\servidor-partida\system\LandMass.log`, gravado no encerram
 | `Game class is '...'` e `Bringing Level ... up for play` | Mapa carregado (padrão observado no cliente; a linha exata do servidor não foi observada). |
 | `binding to port ... failed` (IpDrv) ou `Failed to listen` / `NetListen` (Engine) | A porta não abriu. |
 | Saída em poucos segundos, sem `LandMass.log` | Aspas duplas no PowerShell perdem `login_num=` (monte por concatenação); token depois de `login_num=` (não reverificado); ou falta `login_server=`/`version=`/`login_num=`. Ponha os argumentos do motor no início. |
-| Log de LOGIN recusado | A validação está na lógica UnrealScript (`XGame`), não em `LM_Engine.dll` (ver `re/game_server_host.md`). |
+| Log de LOGIN recusado | A validação está na lógica UnrealScript (`XGame`), não em `LM_Engine.dll` (ver `tools/re/game_server_host.md`). |
 
 ## Partida lançada pelo emulador (marco 4)
 
@@ -130,22 +130,22 @@ Os logs do servidor de partida (`servidor-partida\system\LandMass.log`) só são
 | Caso | Como provocar | Esperado |
 |------|---------------|----------|
 | Faixa sem porta livre | `LANDMASS_MATCH_PORT_MIN=7800` e `MAX=7800`, com outro programa usando UDP 7800. | Ana recebe o erro "Não foi possível iniciar a partida. Tente novamente."; emulador: `partida da sala 1 não começou: nenhuma porta UDP livre na faixa configurada`. Sala continua em espera. |
-| Servidor não abre a porta | `LANDMASS_MATCH_LOGIN_NUM=0` (o valor de teste que não sobe o servidor, re/game_server_host.md §5). | Erro igual ao anterior; emulador: `servidor de partida encerrou antes de abrir a porta`. |
+| Servidor não abre a porta | `LANDMASS_MATCH_LOGIN_NUM=0` (o valor de teste que não sobe o servidor, tools/re/game_server_host.md §5). | Erro igual ao anterior; emulador: `servidor de partida encerrou antes de abrir a porta`. |
 | Servidor cai depois de pronto | Encerrar o `LandMass.exe` durante a partida. | `servidor de partida da sala 1 caiu sozinho`. Histórico com `end_reason = server_exit`. |
 
 ### Limites conhecidos
 
 - A partida não foi jogada por agente. Os passos 5 a 10 dependem do cliente real.
-- O equipamento (D190) não foi visto no jogo. Não há prova de que o `LMEmuLoadout` aplique as peças, e o gate do `selected_morats` do 401 é tratado como índice sem prova (`re/rooms.md` §5).
+- O equipamento (D190) não foi visto no jogo. Não há prova de que o `LMEmuLoadout` aplique as peças, e o gate do `selected_morats` do 401 é tratado como índice sem prova (`tools/re/rooms.md` §5).
 - Não há prazo próprio de partida. Se um cliente nunca manda 500 e o servidor não cai, a sala fica jogando até alguém sair.
-- As métricas de jogador ficam nulas quando o log não traz o bloco `GameEnded` (D153, D154; `re/game_server_host.md` §11.4 e §11.7) (ver `04-persistence.md`, "Histórico de partidas").
+- As métricas de jogador ficam nulas quando o log não traz o bloco `GameEnded` (D153, D154; `tools/re/game_server_host.md` §11.4 e §11.7) (ver `04-persistence.md`, "Histórico de partidas").
 - Salas e partidas em andamento são só de memória: reiniciar o emulador zera as salas.
 
 ## Riscos e pendências
 
-- Não testado com cliente. Com `servidor.bat`, a UDP 7777 foi vista aberta (2026-10-13), mas o chamador de `ULevel::Listen` ainda não foi achado (ver `re/game_server_host.md`, seção 9). Se o servidor não abrir a porta, esse é o primeiro ponto a investigar.
+- Não testado com cliente. Com `servidor.bat`, a UDP 7777 foi vista aberta (2026-10-13), mas o chamador de `ULevel::Listen` ainda não foi achado (ver `tools/re/game_server_host.md`, seção 9). Se o servidor não abrir a porta, esse é o primeiro ponto a investigar.
 - Com ou sem `LANDMASS_MATCH_SERVER_DIR`, o 401 consulta o mapa em `landmass.wdb` (`LANDMASS_CLIENT_DIR`). Sem o arquivo ou sem o mapa da sala, a partida não inicia (241000201).
 - Saídas precoces (~20 ms, sem log) ainda sem causa comprovada; podem afetar o servidor.
 - A conexão com o Channel (`GS_*`, `CServerRoom`) não está no caminho desta cópia. Um LOGIN recusado não vem do `LM_Engine.dll`.
 - Os patches são binários de 2008 alterados à mão. Restaure com os arquivos `.orig` se algo se comportar de forma estranha.
-- Log por partida: `LOG=partida-<porta>-<id>.log` antes de `-log` gera um arquivo por partida (verificado, `re/game_server_host.md` §11.5; D153). Os arquivos ficam em `system\`. O `LandMass.log` deixa de ser o log das partidas do emulador.
+- Log por partida: `LOG=partida-<porta>-<id>.log` antes de `-log` gera um arquivo por partida (verificado, `tools/re/game_server_host.md` §11.5; D153). Os arquivos ficam em `system\`. O `LandMass.log` deixa de ser o log das partidas do emulador.

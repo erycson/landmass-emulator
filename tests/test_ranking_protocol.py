@@ -1,5 +1,6 @@
-"""Codec de 171 (ranking, F14): offsets que `NotifyRankingInfo` lê no cliente (re/protocol_full.md
-§2.2; re/LM_Engine.dll/NotifyRankingInfo_0x10003e30.c)."""
+"""Codec de 171 (ranking, F14): offsets que `NotifyRankingInfo` lê no cliente
+(tools/re/protocol_full.md
+§2.2; tools/re/LM_Engine.dll/NotifyRankingInfo_0x10003e30.c)."""
 
 import struct
 

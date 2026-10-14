@@ -1,4 +1,5 @@
-"""Mensagens do Channel Server (porta 7314, net_code 14). Layouts: re/channel_server.md (§2, §3.1).
+"""Mensagens do Channel Server (porta 7314, net_code 14). Layouts: tools/re/channel_server.md (§2,
+§3.1).
 
 Offsets são do corpo (depois do cabeçalho `u16`). Campo sem nome no RE recebe o nome do offset.
 """
@@ -18,7 +19,7 @@ MAX_CHAT_TEXT = 0x78
 # max_clients passar disso, paginar a lista (opcodes 545/546 do cliente, layout não decodificado).
 MAX_LOBBY_ENTRIES = 1600
 
-# Registro de sala (re/rooms.md §1 e §2; offsets relativos ao valor do nó, ver `CsRoom`).
+# Registro de sala (tools/re/rooms.md §1 e §2; offsets relativos ao valor do nó, ver `CsRoom`).
 ROOM_SLOTS = 70  # node+0x60..0x177 (`FUN_10019e90` + `0x18*4`; 421 e 549 usam o mesmo bloco)
 ROOM_SPECTATORS = 60  # node+0x184..0x273; sem uso confirmado, sempre -1 (espectador é slot 60..69)
 ROOM_RECORD_SIZE = 0x264  # 612: 302 copia 0x99 dwords para o nó (`disp@1312-1347`)
@@ -27,7 +28,8 @@ ROOM_INFO_SIZE = 0x38  # 56: 314 lê até @0x36 + 2
 ROOM_PLAYER_SIZE = 0x30  # 48: entrada de jogador de 317 (`disp@1389-1473`)
 MAX_ROOM_ENTRIES = 955
 MAX_ROOM_PLAYERS = 255  # `u8 count` de 317
-# Bits de 411 (`flags`) e de 412 (`mask`): os mesmos (dispatcher `0x19c`, re/layouts_f0.md §7.2).
+# Bits de 411 (`flags`) e de 412 (`mask`): os mesmos (dispatcher `0x19c`, tools/re/layouts_f0.md
+# §7.2).
 ROOM_FLAG_MAP = 0x01  # map_num: u16 @2 em 411; i16 @6 em 412
 ROOM_FLAG_MODE = 0x02  # game_mode @4 e team_count @5 em 411; @8 e @9 em 412
 ROOM_FLAG_LIMIT_PLAYER = 0x04  # max_player: u8 @6 em 411; @0xa em 412
@@ -114,7 +116,8 @@ class CsInChannelServerIn:
     """IN_CHANNEL_SERVER (100): `char session_key[33]` @0 (32 hex + NUL).
 
     Evidência: no teste com o cliente real, o 100 chegou com 33 bytes zerados, depois de um 111 com
-    33 bytes zerados. O 111 copia 33 bytes para `DAT_1005AE20` (re/message_server.md §4). Inferido:
+    33 bytes zerados. O 111 copia 33 bytes para `DAT_1005AE20` (tools/re/message_server.md §4).
+    Inferido:
     esses são os bytes de chave que o cliente devolve no 100. Não testado: o cliente aceitar uma
     chave não zerada."""
 
@@ -154,7 +157,7 @@ class CsInChannelServerOut:
 @dataclass(frozen=True, slots=True)
 class CsChannelPlayer:
     """Registro de jogador do canal, 40 bytes: entrada de 151 (a partir de @2, stride 40) e
-    corpo de 121 (@0). Campos gravados por 151 (`re/layouts_f0.md` §1.2):
+    corpo de 121 (@0). Campos gravados por 151 (`tools/re/layouts_f0.md` §1.2):
 
     R+0x00 i32 client_guid (nó+0xa0) | R+0x04 i32 total_exp (nó+0x3c)
     R+0x08 char[16] nick, ANSI NUL-padded (nó+0x10..0x1f)
@@ -203,7 +206,7 @@ class CsInChannelOut:
 
 @dataclass(frozen=True, slots=True)
 class CsChannelInfoOut:
-    """CHANNEL_INFO_OUT (111): `u8 count` @0 e `u8 load` por canal em @1+i (re/rooms.md, asm
+    """CHANNEL_INFO_OUT (111): `u8 count` @0 e `u8 load` por canal em @1+i (tools/re/rooms.md, asm
     0x1001de7d..0x1001dea2). O nome exibido é `strChannel` + índice (texto do cliente).
     Carga: >=100 FULL (desabilitado), >80 Tumulto, >50 Bom, senão Ótimo.
 
@@ -300,7 +303,8 @@ class CsSendMessageOut:
 class CsSendCommandIn:
     """SEND_COMMAND (250): `u8 todos` @0 (1 = `/ALLNOTIFY`, 0 = `/NOTIFY`), `u8 len` @1, texto[len]
     @2. Evidência: `FUN_100173b0` grava 'Y' como 1 e corta o texto em 0x78; `FUN_10001790` copia
-    os 2 bytes de cabeçalho e `len` bytes de texto (`re/layouts_f0.md` §7.6, `protocol_full.md`)."""
+    os 2 bytes de cabeçalho e `len` bytes de texto (`tools/re/layouts_f0.md` §7.6,
+    `protocol_full.md`)."""
 
     all_server: bool
     text: bytes
@@ -320,9 +324,11 @@ class CsSendCommandIn:
 class CsSendCommandOut:
     """SEND_COMMAND_OUT (251): `u8 len` @0, texto[len] @1 e NUL logo depois.
 
-    Evidência: o case 0xfb de `re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (L1281-1311) lê
+    Evidência: o case 0xfb de `tools/re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (L1281-1311)
+    lê
     `*param_2` como tamanho e copia esse número de bytes de `param_2 + 1`; o `NotifySendCommand`
-    recebe o ponteiro do texto, lido como C string. O `re/protocol_full.md` chama @0 de "comando",
+    recebe o ponteiro do texto, lido como C string. O `tools/re/protocol_full.md` chama @0 de
+    "comando",
     mas o código o usa como tamanho. O cliente não usa o byte de flag do pedido.
     """
 
@@ -335,7 +341,8 @@ class CsSendCommandOut:
         return bytes((len(self.text),)) + self.text + b"\x00"
 
 
-# ---- Salas (marco 3). Layouts e evidências: re/rooms.md §1-§8 e re/channel_server.md §2-§3. -----
+# ---- Salas (marco 3). Layouts e evidências: tools/re/rooms.md §1-§8 e tools/re/channel_server.md
+# §2-§3.
 # Os offsets do registro (`CsRoom`) são do corpo do 302 e relativos ao valor do nó (nó + 0x10),
 # que é o que `FUN_1001d640` devolve. O 314, o 412 e o erro do 312 usam o mesmo mapa.
 
@@ -348,7 +355,8 @@ ROOM_JOIN_ERROR_SIZE = 0x12
 class CsCreateRoomIn:
     """CREATE_ROOM (301), 74 bytes: `u16 map_num` @0, `char name[51]` @2, `char password[13]`
     @0x35, `u8` scale @0x42, game_mode @0x43, team_count @0x44, max_player @0x45, limit_time @0x46
-    e `u16 limit_score` @0x48 (re/layouts_f0.md §7.1; confere com o hexdump do cliente real)."""
+    e `u16 limit_score` @0x48 (tools/re/layouts_f0.md §7.1; confere com o hexdump do cliente
+    real)."""
 
     name: str
     password: str
@@ -416,7 +424,7 @@ class CsReadyGameIn:
 @dataclass(frozen=True, slots=True)
 class CsChangeRoomSlotIn:
     """CHANGE_ROOM_SLOT (420): `u8 team` @0, o grupo novo (`ChangeTeam` manda `slot % team_count`;
-    `re/rooms.md` §4). O servidor escolhe o slot livre dentro do grupo."""
+    `tools/re/rooms.md` §4). O servidor escolhe o slot livre dentro do grupo."""
 
     team: int
 
@@ -486,7 +494,8 @@ class CsRoomInviteIn:
 @dataclass(frozen=True, slots=True)
 class CsInviteResultOut:
     """ROOM_INVITE_OUT (462), 4 bytes: `i32 result` @0, resposta ao convidador. 0 = convite
-    enviado; CERR negativo = recusado (`re/layouts_f0.md` §7.3). O envelope de -4061 (quem não é
+    enviado; CERR negativo = recusado (`tools/re/layouts_f0.md` §7.3). O envelope de -4061 (quem
+    não é
     dono) não mostra nada no cliente (dispatcher `0x1ce`, `disp@407-415`)."""
 
     result: int
@@ -696,7 +705,8 @@ class CsRoomInfoOut:
 @dataclass(frozen=True, slots=True)
 class CsRoomPlayer:
     """Jogador da sala, entrada de 317: 48 bytes. Os 40 primeiros são o registro de jogador do
-    canal (`CsChannelPlayer`, `re/layouts_f0.md` §1.2). Depois: `u8 slot` @0x28 (índice no nó da
+    canal (`CsChannelPlayer`, `tools/re/layouts_f0.md` §1.2). Depois: `u8 slot` @0x28 (índice no nó
+    da
     sala), `u8 ready` @0x29 (bit0), `u8` flag de estado @0x2a (0: o cliente põe 0x23, em sala),
     `u8` pc_room @0x2b (zero) e `i32 morats` @0x2c (`select_morats_id`, +0xb4).
 
@@ -757,7 +767,7 @@ class CsOutRoomOut:
 class CsChangeRoomMasterOut:
     """CHANGE_ROOM_MASTER_OUT (332), 8 bytes: `i32 room_guid` @0 e `i32 client_guid` @4 (novo
     dono). Ordem pela assinatura `NotifyChangeRoomMaster(int room_guid, int client_guid)`
-    (re/protocol_full.md §7, item 7).
+    (tools/re/protocol_full.md §7, item 7).
 
     shortcut: a ordem vem da assinatura do evento, sem captura; o efeito no nó (+0x5c) não está
     confirmado. Revisar na primeira troca de dono capturada."""
@@ -774,7 +784,7 @@ class CsChangeRoomMasterOut:
 @dataclass(frozen=True, slots=True)
 class CsRemoveRoomOut:
     """REMOVE_ROOM_OUT (342), 4 bytes: `i32 room_guid` @0 (assinatura `NotifyRemoveRoom(int
-    room_guid)`, re/protocol_full.md §7, item 7).
+    room_guid)`, tools/re/protocol_full.md §7, item 7).
 
     shortcut: os 4 bytes vêm da assinatura do evento; sem captura de 342 para confirmar que o
     cliente não lê mais que isso. Revisar na primeira captura de sala removida."""
@@ -817,7 +827,8 @@ class CsEnterHangarOut:
 @dataclass(frozen=True, slots=True)
 class CsLeaveHangarOut:
     """LEAVE_HANGAR_OUT (589), 8 bytes: `i32 client_guid` @0 e `u8 position` @4. O cliente volta à
-    página da sala só com a chave própria e a posição 0x23 (dispatcher `case 0x24d`, re/rooms.md
+    página da sala só com a chave própria e a posição 0x23 (dispatcher `case 0x24d`,
+    tools/re/rooms.md
     §12). O tamanho de 8 bytes é inferido: o dispatcher lê até o byte 4."""
 
     client_guid: int
@@ -850,7 +861,7 @@ class CsStartGameOut:
 @dataclass(frozen=True, slots=True)
 class CsChangeRoomPropertyIn:
     """CHANGE_ROOM_PROPERTY (411), corpo de 10 bytes (wrapper `FUN_10017820`,
-    re/layouts_f0.md §7.2): `u8 flags` @0; `u16 map_num` @2 (se MAP); `u8 game_mode` @4 e
+    tools/re/layouts_f0.md §7.2): `u8 flags` @0; `u16 map_num` @2 (se MAP); `u8 game_mode` @4 e
     `u8 team_count` @5 (se MODE); `u8 max_player` @6; `u8 limit_time` @7; `u16 limit_score` @8.
     @1 e @9 não são usados.
 
@@ -1036,7 +1047,7 @@ class CsExpelPlayerOut:
 @dataclass(frozen=True, slots=True)
 class CsExitPlayOut:
     """EXIT_PLAY_OUT (501), 4 bytes: `i32 result` @0. Resposta a 500 (EXIT_PLAY, corpo vazio).
-    shortcut: valor 0 não confirmado no cliente; ver re/game_server_host.md."""
+    shortcut: valor 0 não confirmado no cliente; ver tools/re/game_server_host.md."""
 
     result: int = 0
     opcode: ClassVar[int] = CsOp.EXIT_PLAY_OUT
@@ -1057,7 +1068,7 @@ class CsErrorEnvelope:
     real_opcode: int
     error: int
     opcode: ClassVar[int] = CsOp.ERROR
-    # 8 bytes: o código fica em @4 (re/channel_server.md §3), não @2.
+    # 8 bytes: o código fica em @4 (tools/re/channel_server.md §3), não @2.
     _FIXED = struct.Struct("<H2xi")
 
     def pack(self) -> bytes:
@@ -1114,7 +1125,7 @@ class CsPlayerProperty:
 class CsRefreshPlayerListOut:
     """NOTIFY_CHANGE_PLAYER_PROPERTY (548), resposta a 546: `u8 count` @0, 3 bytes sem uso e
     entradas de 20 bytes a partir de @4. O cliente só atualiza quem já tem nó (ver `CsRoomPlayer`
-    e `CsChannelPlayer`); não cria jogador (`re/layouts_f0.md` §3.1)."""
+    e `CsChannelPlayer`); não cria jogador (`tools/re/layouts_f0.md` §3.1)."""
 
     players: tuple[CsPlayerProperty, ...]
     opcode: ClassVar[int] = CsOp.REFRESH_PLAYER_LIST_OUT
@@ -1140,7 +1151,7 @@ class CsRefreshRoomListIn:
 @dataclass(frozen=True, slots=True)
 class CsRefreshRoomListOut:
     """NOTIFY_CHANGE_ROOM_PROPERTY (547), resposta a 545: `u8 count` @0, 3 bytes sem uso e entradas
-    de 16 bytes a partir de @4 (`re/layouts_f0.md` §4.2): `i32 room_guid` +0, `u8 state` +4
+    de 16 bytes a partir de @4 (`tools/re/layouts_f0.md` §4.2): `i32 room_guid` +0, `u8 state` +4
     (0 espera, 1 jogando), `game_mode` +5, `team_count` +6, `curr_player` +7,
     `curr_spectator` +8, `max_player` +9, `open` +10, 1 de padding, `u16 map_num` +12 e 2 de
     padding.

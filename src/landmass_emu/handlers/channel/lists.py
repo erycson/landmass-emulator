@@ -27,7 +27,8 @@ from landmass_emu.protocol.channel import (
 )
 
 # shortcut: código do envelope 54 do 543 quando o nick não está no canal (CERR_FIND_PLAYER,
-# `re/layouts_f0.md` §7.3). A UI deve fechar "Buscando..."; a mensagem não é conhecida. Confirmar.
+# `tools/re/layouts_f0.md` §7.3). A UI deve fechar "Buscando..."; a mensagem não é conhecida.
+# Confirmar.
 ERR_FIND_PLAYER = -2460
 
 

@@ -76,7 +76,7 @@ Não use `Launcher.exe`: ele tenta FTP de patch inexistente. Inicie `LandMass.ex
 ## Vídeo
 
 - `LandMass.ini`, `[D3DDrv.D3DRenderDevice]`: `Use16bit=False`. Com `True`, drivers atuais não oferecem modo 16 bits e o cliente aborta em `OpenWindow → SetRes` ("No acceptable display modes found"). Backup do original: `cliente\system\LandMass.ini.bak`.
-- O cliente força tela cheia (`WinDrv` grava `UWindowsViewport+0xD0=1` em `TryRenderDevice`; ver [`../../re/fullscreen.md`](../../re/fullscreen.md)). Não há chave de `.ini` nem opção de linha de comando para janela.
+- O cliente força tela cheia (`WinDrv` grava `UWindowsViewport+0xD0=1` em `TryRenderDevice`; ver [`../../tools/re/fullscreen.md`](../../tools/re/fullscreen.md)). Não há chave de `.ini` nem opção de linha de comando para janela.
 - Modo janela: wrapper **dgVoodoo2 v2.87.5** (D3D8 → D3D11), em `D:\landmass\tools\dgvoodoo2`.
   - Instalação por pasta do cliente: copie `extracted\MS\x86\D3D8.dll` e `dgVoodoo.landmass.conf` (renomeado para `dgVoodoo.conf`) para `system\`.
   - Config: `FullScreenMode=false`, `AppControlledScreenMode=false`, `DisableAltEnterToToggleScreenMode=false`, `dgVoodooWatermark=false`.

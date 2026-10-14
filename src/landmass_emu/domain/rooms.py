@@ -14,14 +14,14 @@ ROOM_PLAYING = 1
 MAX_SLOTS = 70
 # Slots de jogador são 0..59. O cliente trata slot >= 60 como espectador (`MySlot >= 60`, que
 # põe `?SpectatorOnly=1` na URL; XInterface L29597) e 549 conta `idx < 0x3c` como jogador
-# (re/rooms.md §2).
+# (tools/re/rooms.md §2).
 ROOM_PLAYER_SLOTS = 60
 # Teto de espectadores por sala: o mesmo `?MaxSpectators=` que vai para o servidor de partida.
 # shortcut: valor do LandMass.ini de referência (MaxSpectators=2). O cliente aceita mais slots
 # (70 - 60); o teto é o que o servidor de partida aceita. Confirmar com o servidor de partida real.
 MAX_SPECTATORS = 2
 NAME_MIN_BYTES = 3
-# 301 traz char[51] e char[13] (re/layouts_f0.md §7.1).
+# 301 traz char[51] e char[13] (tools/re/layouts_f0.md §7.1).
 NAME_MAX_BYTES = 50
 PASSWORD_MAX_BYTES = 12
 # Campos que o dono muda por 411 (`configure`).
@@ -268,7 +268,8 @@ class Rooms:
 
     def change_slot(self, guid: int, team: int) -> Room:
         """Mudar grupo (420). O cliente manda o grupo novo, não o slot: o grupo do slot `i` é
-        `i % team_count` (`ChangeTeam`, `re/rooms.md` §4). Vai para o primeiro slot livre desse
+        `i % team_count` (`ChangeTeam`, `tools/re/rooms.md` §4). Vai para o primeiro slot livre
+        desse
         grupo, sem contar o próprio slot; sem vaga, recusa."""
         room = self.room_of(guid)
         if room is None:

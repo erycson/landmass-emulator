@@ -2,9 +2,9 @@
 
 Fonte da verdade: o cliente em `D:\landmass\cliente\system` (2009). Os servidores em `D:\landmass\servidor` são de 2006-07.
 
-Protocolo consolidado (opcodes C→S/S→C, layouts, pares e lacunas): `re/protocol_full.md`. Pseudocódigo em lote por função: `re/<binário>/all/` (índice `_index.tsv`).
+Protocolo consolidado (opcodes C→S/S→C, layouts, pares e lacunas): `tools/re/protocol_full.md`. Pseudocódigo em lote por função: `tools/re/<binário>/all/` (índice `_index.tsv`).
 
-## Linha de comando do LandMass.exe (`re/LandMass.exe/main_loop.c`)
+## Linha de comando do LandMass.exe (`tools/re/LandMass.exe/main_loop.c`)
 
 - `version=<n>` **obrigatório** — sem ele o jogo fecha. Vira `LocalVersion()`.
 - `login_num=<guid>` **obrigatório** — sem ele o jogo fecha. Vira `LoginGUID()`.
@@ -14,12 +14,12 @@ Protocolo consolidado (opcodes C→S/S→C, layouts, pares e lacunas): `re/proto
 
 O Launcher monta: `LandMass.exe %s%s?%s%I64d?%s%s` com `login_server=`, `version=`, `login_num=`.
 
-## Tela cheia x janela (`re/fullscreen.md`)
+## Tela cheia x janela (`tools/re/fullscreen.md`)
 
 - Causa estática: `TryRenderDevice` grava `UWV+0xD0` = 1 no cliente, então o SetRes sai em tela cheia. Sem foco, o SetRes não roda e a janela é minimizada.
 - Não há chave de ini nem token de linha de comando para janela. Patch de 1 byte proposto em `WinDrv.dll` offset `0x1349D` (não aplicado).
 
-## Widescreen (`re/widescreen.md`)
+## Widescreen (`tools/re/widescreen.md`)
 
 - A UI posiciona por frações da tela: acompanha qualquer resolução, mas estica em 16:9. Caminho proposto: área 4:3 no Canvas.
 
@@ -40,8 +40,8 @@ Os demais `.wdb` (magic `f7 db 00 00 72 f3 31 01`) são tabelas proprietárias (
 - `UServerLevel::NotifyReceivedText` trata o handshake Unreal (`CONNECT`, `NETSPEED`, `LOGIN`, `JOIN`).
   No `LOGIN URL=...?name=...?team=...?key=...`, chama `LoginPlayer(key, name, team)`, que confere o
   jogador contra o `CServerRoom` (dados enviados pelo Channel via `GS_IN_PLAYER`, gravados por `CServerRoom::InPlayer`
-  `0x100159A0`). `-1` = recusa. Com a sala vazia, todo LOGIN devolve -1 (ver `re/LM_Engine.dll/LoginPlayer.c`).
-  Esse ramo só roda se o nível for `UServerLevel`; no caminho `GameEngine` + `ULevel` não roda (inferido, `re/cmdline.md` §2).
+  `0x100159A0`). `-1` = recusa. Com a sala vazia, todo LOGIN devolve -1 (ver `tools/re/LM_Engine.dll/LoginPlayer.c`).
+  Esse ramo só roda se o nível for `UServerLevel`; no caminho `GameEngine` + `ULevel` não roda (inferido, `tools/re/cmdline.md` §2).
   Ou seja: o LOGIN da partida é validado pela sala que o Channel Server informou.
 
 ## Fluxo observado (LandMass.log do cliente)

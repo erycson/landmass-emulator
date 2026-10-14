@@ -2,7 +2,8 @@
 Função (D131 a D134). Regras puras de efeito e o `ConsumableService` que as aplica numa transação.
 
 Fonte: `item_desc` do `landmass.wdb` (classe 8, tipo 1 ONCE); 560 com `value` (LM_JoinNestPage e
-LM_ChangeMainMoratsPage); respostas 568, 569 e 590 (`re/protocol_full.md` §9). Os demais itens de
+LM_ChangeMainMoratsPage); respostas 568, 569 e 590 (`tools/re/protocol_full.md` §9). Os demais
+itens de
 sistema (buffs, Adicionar Hangar e Item Surpresa) não passam por aqui: `NotConsumable`.
 """
 

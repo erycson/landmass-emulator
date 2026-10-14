@@ -68,7 +68,7 @@ def test_in_channel_server_out_resultado_negativo_e_location() -> None:
 
 
 def test_channel_player_tamanho_e_offsets() -> None:
-    # Layout de re/layouts_f0.md §1.2 (registro de 151 e 121).
+    # Layout de tools/re/layouts_f0.md §1.2 (registro de 151 e 121).
     raw = CsChannelPlayer(
         client_guid=0x01020304,
         nick="Ana",

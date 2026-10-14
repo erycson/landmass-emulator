@@ -1,5 +1,5 @@
 """Codecs de equipar, desequipar, destruir e estender (554 a 585): tamanho e offsets do corpo,
-conferidos contra o dispatcher (re/protocol_full.md §3.1 e §3.2)."""
+conferidos contra o dispatcher (tools/re/protocol_full.md §3.1 e §3.2)."""
 
 import struct
 

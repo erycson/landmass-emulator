@@ -20,7 +20,8 @@ def _to_domain(row: OptionsRow) -> LmRegisterInfo:
 
 class KeyBindDefaults:
     """Teclas padrão (valores `EInputKey`, que são códigos VK) de conta sem registro e de tecla
-    gravada em 0. Fonte: `[Engine.Input]` do `User.ini` do cliente (re/game_server_host.md, §12).
+    gravada em 0. Fonte: `[Engine.Input]` do `User.ini` do cliente (tools/re/game_server_host.md,
+    §12).
     `jump` é a tecla de `CancelStatus`, o pulo do LandMass (`SetAliasToKey(Options.jump,
     "CancelStatus")`): em 0 o personagem não pula. `object` (`TogglePoints`) não tem tecla no
     `User.ini`, e o cliente não liga `screenshot` (linha comentada); os dois ficam em 0.

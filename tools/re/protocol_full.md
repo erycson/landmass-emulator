@@ -17,10 +17,10 @@ Pseudocódigo em lote (Ghidra 12.1.4, mesmo provider do REA):
 
 | Binário | Pasta | Funções | Decompiladas | Observação |
 |---|---|---|---|---|
-| `LM_Engine.dll` | `re/LM_Engine.dll/all/` | 983 | 972 | 11 já existiam em `re/LM_Engine.dll/` (não duplicadas, marcadas `duplicate` no índice). `1000e800` (LoadMap) expirou no dump headless e foi obtida por `mcp__rea__batch_decompile`. |
-| `+server_interface.dll` | `re/+server_interface.dll/all/` | 409 | 409 | Inclui `Cchannel_interface`, `Cmessage_interface`, `Cresource_interface`, `Cupdate_interface`, `Cmembership_interface`. |
-| `+manager_interface.dll` | `re/+manager_interface.dll/all/` | 350 | 350 | `Cmanager_interface` (porta 7310, fora do escopo). |
-| `_core_network.dll` | `re/_core_network.dll/all/` | 373 | 373 | Transporte (`CnetworkClient`). |
+| `LM_Engine.dll` | `tools/re/LM_Engine.dll/all/` | 983 | 972 | 11 já existiam em `tools/re/LM_Engine.dll/` (não duplicadas, marcadas `duplicate` no índice). `1000e800` (LoadMap) expirou no dump headless e foi obtida por `mcp__rea__batch_decompile`. |
+| `+server_interface.dll` | `tools/re/+server_interface.dll/all/` | 409 | 409 | Inclui `Cchannel_interface`, `Cmessage_interface`, `Cresource_interface`, `Cupdate_interface`, `Cmembership_interface`. |
+| `+manager_interface.dll` | `tools/re/+manager_interface.dll/all/` | 350 | 350 | `Cmanager_interface` (porta 7310, fora do escopo). |
+| `_core_network.dll` | `tools/re/_core_network.dll/all/` | 373 | 373 | Transporte (`CnetworkClient`). |
 
 Cada pasta tem um `_index.tsv` (endereço, nome, tamanho, thunk, status, arquivo, duplicata). Arquivo: `<endereço>_<nome>.c`.
 
@@ -82,7 +82,7 @@ Interface paralela `Cmembership_interface` (seção `:MEMBERSHIP` com `server_ip
 
 ### 2.2 Respostas S→C (`FUN_10025120`, dispatcher do Message)
 
-Dispatcher: `re/LM_Engine.dll/message_dispatch_FUN_10025120.c`. Rótulos de `case` e `if` (parser automático sobre o `.c`): 0, 1, 101, 111, 121, 131, 141, 151, 153, 161, 162, 171, 172, 173, 175, 176, 178, 183, 184, 188, 189, 191, 193, 195, e o `default` (sem efeito) para 3. Layouts completos e evidências por linha: `message_server.md` §4.
+Dispatcher: `tools/re/LM_Engine.dll/message_dispatch_FUN_10025120.c`. Rótulos de `case` e `if` (parser automático sobre o `.c`): 0, 1, 101, 111, 121, 131, 141, 151, 153, 161, 162, 171, 172, 173, 175, 176, 178, 183, 184, 188, 189, 191, 193, 195, e o `default` (sem efeito) para 3. Layouts completos e evidências por linha: `message_server.md` §4.
 
 | op | Evento (`ULM_ServerInterface::Notify*`) | Struct | Corpo (resumo) | Par (pedido) | Evidência |
 |---|---|---|---|---|---|
@@ -189,7 +189,7 @@ Nota de consistência: os opcodes 850–890 são pedidos de administração (`Re
 
 ### 3.2 Respostas S→C (`FUN_1001da60`, dispatcher do Channel)
 
-Dispatcher: `re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (2940 linhas). Rótulos de `case`/`if` extraídos automaticamente (`dispatch_cases.py`, ~89 rótulos). Layouts por evento: `channel_server.md` §3.1 (linhas `L…` do `.c`) e `layouts_f0.md` (§1.2 jogadores, §3.1 jogador, §4.2 salas, §7.4 start, §7.6 itens). Abaixo, uma linha por opcode; **corpo** = resumo; detalhe completo no arquivo indicado.
+Dispatcher: `tools/re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (2940 linhas). Rótulos de `case`/`if` extraídos automaticamente (`dispatch_cases.py`, ~89 rótulos). Layouts por evento: `channel_server.md` §3.1 (linhas `L…` do `.c`) e `layouts_f0.md` (§1.2 jogadores, §3.1 jogador, §4.2 salas, §7.4 start, §7.6 itens). Abaixo, uma linha por opcode; **corpo** = resumo; detalhe completo no arquivo indicado.
 
 Envelope de erro (op 54, L96–108): `u16 @0` = opcode real; `i32 @4` = erro; se erro ≠ 0, chama `NotifyErrorMessage(erro)`.
 
@@ -310,7 +310,7 @@ Aceite: `ServerRoom+0 == body+0x88`, ou `ServerRoom+0x5e4 == 6` e `ServerRoom+0x
 
 ## 5. Pares pedido → resposta
 
-Observados no log do cliente (`re/NOTES.md`, `LandMass.log`) ou confirmados no código:
+Observados no log do cliente (`tools/re/NOTES.md`, `LandMass.log`) ou confirmados no código:
 - Message: 100→101, 110→111, 120→121, 130→131 (`message_server.md` §1).
 - Channel: sequência observada no log 101, 111, 103 (repetido), 151, 141, 121. Mostra a ordem, não o par (`channel_server.md` §3).
 
@@ -325,7 +325,7 @@ Sem par identificado: 451→452 (gap: sem `case 452`); 461 (convite enviado) nã
 
 ## 6. Correções aplicadas nesta revisão
 
-1. `re/channel_server.md` §3.2, linha da tabela do opcode 902: a faixa `2416–2451` juntava três eventos. Corrigida para: 902 = `NotifyChargePoint` (2416–2429); cauda `LAB_10021279` = `NotifyClanInsertPlayer` (2430–2439, alcançada por `goto` de 661 e 662); 601 = `NotifyTutorialClear` (2440–2449, `if (param_1 == 0x259)`). A faixa 2440–2449 do 601 e a 2416–2429 do 902 já estavam certas em `channel_server.md` §3.1 e `layouts_f0.md`.
+1. `tools/re/channel_server.md` §3.2, linha da tabela do opcode 902: a faixa `2416–2451` juntava três eventos. Corrigida para: 902 = `NotifyChargePoint` (2416–2429); cauda `LAB_10021279` = `NotifyClanInsertPlayer` (2430–2439, alcançada por `goto` de 661 e 662); 601 = `NotifyTutorialClear` (2440–2449, `if (param_1 == 0x259)`). A faixa 2440–2449 do 601 e a 2416–2429 do 902 já estavam certas em `channel_server.md` §3.1 e `layouts_f0.md`.
 2. Blocos que `channel_server.md` §3.2 marcava como "goto não reatribuído" foram atribuídos pelo parser de rótulos: 617 → `NotifyGetGift` (L1626–1640), 656 → `NotifyEndMatch` (L2077–2118), 658 → `NotifyChangeGroupSlot` (L1641–1667), 643 → `NotifyMatchingGroupList` (L1668–1700), 648–652 (`NotifyRequestMatch` … `NotifyCancelMatch`), 559 → `NotifyGetSystemItemState` + `NotifyItemDestroy`.
 3. Message: `message_server.md` §4 descrevia 191, 193 e 195 como "(break)"; o caso é resposta em lote aos pedidos 190, 192 e 194 (par inferido, seção 5).
 4. Opcode 641 (0x281): o dispatcher tem a guarda `!= 0x281` (L1481) e não trata 641. Não há evento para 641 (inferido: `RegisterGroup` 640 não tem resposta).

@@ -1,7 +1,7 @@
 # LandMass Emulator — Documentação técnica
 
 Software Architecture Document dividido por assunto. Comece por **Escopo** e **Contexto**; consulte o resto sob demanda.
-Evidências de engenharia reversa (endereços, pseudocódigo, capturas) ficam em [`../re/`](../re/NOTES.md). Estes documentos descrevem o projeto; não registram histórico de desenvolvimento.
+Evidências de engenharia reversa (endereços, pseudocódigo, capturas) ficam em [`../tools/re/`](../tools/re/NOTES.md). Estes documentos descrevem o projeto; não registram histórico de desenvolvimento.
 
 ## Mapa
 
@@ -13,7 +13,7 @@ flowchart LR
   idx --> D[decisions/]
   idx --> R[roadmap.md]
   idx --> K[risks.md]
-  P -. evidências .-> RE[../re/]
+  P -. evidências .-> RE[../tools/re/]
 ```
 
 ## Índice

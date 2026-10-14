@@ -1,5 +1,6 @@
 """Atalhos da conta: os 5 slots que `InitializeQuickSlot` do SQL antigo (LM_account.sql) grava na
-criação. O cliente não tem opcode de carga nem de gravação (re/features.md §4), então o conteúdo só
+criação. O cliente não tem opcode de carga nem de gravação (tools/re/features.md §4), então o
+conteúdo só
 é gravado; nada o lê no protocolo ainda (D73)."""
 
 from dataclasses import dataclass

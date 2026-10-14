@@ -1,5 +1,5 @@
 """Porta dos atalhos da conta (`account_quick_slots`). Hoje só a semeadura: o cliente não tem opcode
-de carga e de gravação (re/features.md §4), então nada lê estes dados no protocolo."""
+de carga e de gravação (tools/re/features.md §4), então nada lê estes dados no protocolo."""
 
 from collections.abc import Sequence
 from typing import Protocol

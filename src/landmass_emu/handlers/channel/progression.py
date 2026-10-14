@@ -44,7 +44,8 @@ class ProgressionHandlers:
 
     async def total_exp(self, account_id: int) -> int:
         """Exp do jogador que entra no lobby. O 121 sobrescreve o nó do próprio jogador (`@4` →
-        +0x3c, re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c L2772–2824), então o 121 precisa
+        +0x3c, tools/re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c L2772–2824), então o 121
+        precisa
         levar a exp real (`CsChannelPlayer.total_exp`)."""
         return (await self._progression.get(account_id)).total_exp
 

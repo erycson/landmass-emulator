@@ -67,7 +67,8 @@ def with_played(
 
 @dataclass(frozen=True, slots=True)
 class GameEndedPlayer:
-    """Um jogador do bloco `GameEnded` do log do servidor de partida (re/game_server_host.md §11.4).
+    """Um jogador do bloco `GameEnded` do log do servidor de partida (tools/re/game_server_host.md
+    §11.4).
     O `Played` do log não entra no histórico: o tempo jogado vem do canal (`with_played`)."""
 
     nickname: str

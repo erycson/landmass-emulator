@@ -6,7 +6,7 @@ nest não entra: 170 não tem corpo e 171 não tem campo de nest (dúvida 22).""
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-MAX_RANKING_ROWS = 100  # o cliente lê no máximo 100 linhas (re/protocol_full.md §2.2)
+MAX_RANKING_ROWS = 100  # o cliente lê no máximo 100 linhas (tools/re/protocol_full.md §2.2)
 
 
 @dataclass(frozen=True, slots=True)

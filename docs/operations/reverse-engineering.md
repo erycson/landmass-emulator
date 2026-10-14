@@ -29,7 +29,7 @@ O REA mantém um único binário ativo. Não paralelize análises que troquem de
 
 ## Registro de achados
 
-- Grave em `re/` com evidência: binário, endereço ou função, ou linha de script.
+- Grave em `tools/re/` com evidência: binário, endereço ou função, ou linha de script.
 - Marque inferências com "(inferido)".
-- Salve pseudocódigo relevante em `re/<binário>/<função>.c`.
+- Salve pseudocódigo relevante em `tools/re/<binário>/<função>.c`.
 - Promova para `docs/protocol/` somente o que estiver confirmado.

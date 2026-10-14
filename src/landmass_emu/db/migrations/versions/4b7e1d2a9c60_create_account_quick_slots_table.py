@@ -1,7 +1,7 @@
 """create account_quick_slots table: atalhos da conta (tbl_quickslot do SQL antigo, D73).
 
 Cinco linhas por conta, semeadas na criação e no `account kit apply`. Sem opcode no cliente: só
-gravadas (re/features.md §4).
+gravadas (tools/re/features.md §4).
 """
 
 import sqlalchemy as sa

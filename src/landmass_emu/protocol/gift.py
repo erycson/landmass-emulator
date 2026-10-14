@@ -1,6 +1,7 @@
 """Depósito e presente no Channel Server: 610 e 611 (listagem), 612 e 613 (resgate), 615 e 616
-(envio) e 617 (aviso ao destinatário). Layouts em re/protocol_full.md §3 (610 a 617) e nos
-dispatchers de `re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (casos 0x262 a 0x269). Offsets são
+(envio) e 617 (aviso ao destinatário). Layouts em tools/re/protocol_full.md §3 (610 a 617) e nos
+dispatchers de `tools/re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (casos 0x262 a 0x269).
+Offsets são
 do corpo, depois do cabeçalho `u16`.
 """
 

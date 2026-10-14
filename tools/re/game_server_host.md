@@ -6,13 +6,13 @@
 
 - Última execução com log: cliente via `jogar_teste.bat`, `LandMass.log` gravado às 16:21:43–16:21:46. Depois disso, nenhuma execução gravou log.
 - A partir daí, o exe sai com código 0 em 0,02–0,05 s em todas as variantes testadas, inclusive a linha exata do `jogar_teste.bat`. Não há porta 7777 (TCP ou UDP) em uso. **Correção (seção 11.1):** nas minhas execuções, essa saída veio da montagem da linha no PowerShell, que perdia `login_num=`. A linha do `.bat` não foi reexecutada.
-- (Corrigido em 2026-10-13, REA; ver `re/cmdline.md`.) O parse de argumentos participa: sem `version=` o main sai com 0 (`FUN_10903A70`). Isso explica o teste N (sem argumentos). Nos testes com `version=` (A, V2, V0, V6, D), a saída sem log continua sem explicação estática.
-- Não é mutex de instância única: `UnrealIsRunning` não existe (`OpenMutexW` retorna erro 2), e `FUN_1090AD30` descarta `GetLastError()`, então o mutex nunca bloqueia. O bloqueio real é o repasse WLog (`FUN_10911EE0`, `re/cmdline.md` §3).
+- (Corrigido em 2026-10-13, REA; ver `tools/re/cmdline.md`.) O parse de argumentos participa: sem `version=` o main sai com 0 (`FUN_10903A70`). Isso explica o teste N (sem argumentos). Nos testes com `version=` (A, V2, V0, V6, D), a saída sem log continua sem explicação estática.
+- Não é mutex de instância única: `UnrealIsRunning` não existe (`OpenMutexW` retorna erro 2), e `FUN_1090AD30` descarta `GetLastError()`, então o mutex nunca bloqueia. O bloqueio real é o repasse WLog (`FUN_10911EE0`, `tools/re/cmdline.md` §3).
 - Não é `Running.ini`: removido (teste E2), o exe continua saindo antes de recriá-lo.
 - Não há evento no Windows (Application, System, Defender) nem alteração de binário (mtime de `LandMass.exe` e `LM_Engine.dll`: 27/08/2008).
 - HShield: não confirmado como causa. Nenhum binário do cliente referencia `EhSvc`, `EGRNAP` ou `HShield` por nome, e o exe não importa DLL de proteção. A pasta `cliente\system\HShield` existe (EhSvc.dll, EGRNAP.dll, EGRNAPX2.dll, V3*). Ver seção 5.
 - Causa da saída precoce (corrigido em 2026-10-13): parcialmente identificada.
-  - Com a 1ª instância aberta, a 2ª sai com 0 antes de `appInit`: repasse para a janela `WLog` (`FUN_10911EE0`, `0x10911FD0..0x1091201A`; ver `re/cmdline.md` §3). Isso confirma a medição do coordenador (<3 s, sem `LandMass.log`).
+  - Com a 1ª instância aberta, a 2ª sai com 0 antes de `appInit`: repasse para a janela `WLog` (`FUN_10911EE0`, `0x10911FD0..0x1091201A`; ver `tools/re/cmdline.md` §3). Isso confirma a medição do coordenador (<3 s, sem `LandMass.log`).
   - Sem nenhuma instância aberta, `FindWindowExW` não acha `WLog` e o código segue para o start normal (`0x109121CA`). O repasse, portanto, **não** explica as saídas em 20 ms dos testes A, V0, V2, V6, D, N e E1/E2.
   - Sem argumentos (teste N): sai por falta de `version=` (`FUN_10903A70`).
   - Demais casos (A, V0, V2, V6, D, E1, E2 sem instância aberta): não identificados. Hipóteses restantes: CRT/`DllMain` de `LM_Engine.dll` ou `Core.dll`, ou um `exit(0)` depois de `main` começar, antes de criar o log.
@@ -20,7 +20,7 @@
 
 ## 2. Achados estáticos (`LandMass.exe`)
 
-- Base de imagem: `0x10900000` (cabeçalho PE). Main decompilado: `FUN_10910d20` em `re/LandMass.exe/main_loop.c`.
+- Base de imagem: `0x10900000` (cabeçalho PE). Main decompilado: `FUN_10910d20` em `tools/re/LandMass.exe/main_loop.c`.
 - Delimitadores resolvidos no binário: `DAT_109209cc` = espaço (`0x109209cc`), `DAT_109209c8` = `?` (`0x109209c8`). `DAT_10920970` = `"LOG"`.
 - Regra de remoção (confirmada no decompile). Para cada chave, na ordem `version=`, `login_server=`, `login_num=`:
   1. remove de `chave=` até o próximo espaço em qualquer posição posterior;
@@ -30,7 +30,7 @@
 - Saída precoce: se `Parse("version=")` ou `Parse("login_num=")` falha, o código faz `goto LAB_109111e2` → `FUN_10903a70()` e retorna antes de `appInit`. Esse caminho produz código 0 sem log, compatível com o que foi observado. Não foi possível confirmar que é esse o caminho, porque a saída também acontece sem argumentos (ver seção 4).
 - Instância única: strings UTF-16 `UnrealIsRunning` (offset de arquivo 127612) e `%sUnreal%s`. Imports `CreateMutexA/W`, `FindWindowExW`, `GetWindowThreadProcessId`, `SetForegroundWindow`, `ShellExecuteA/W`. Repasse de linha de comando para uma instância já aberta (corrigido: é `FUN_10911EE0`, não `FUN_109018e0`, que é a tela de splash). Condição: nenhum de `NewWindow`, `changevideo`, `TestRenDev`, `COMMAND=` na linha. Se houver janela `WLog` com `IsBrowser`, envia `WM_COPYDATA` e sai com 0.
 - Imports relevantes: `LM_Engine.dll` importa apenas `ExitProcess` de KERNEL32 (além dos exports LM). `Core.dll` importa `LoadLibrary`, `GetProcAddress`, `ExitProcess`. `Window.dll` importa `LoadLibrary` e `GetProcAddress`. `LandMass.exe` não tem TLS directory (RVA 0).
-- Discrepância resolvida (2026-10-13): o `Command line:` vazio no log vem do gate `GIsLMServer` em `Core.dll appInit` (`0x1013F9C6`, `je +0x0E`). Com `GIsLMServer == 0`, a linha não é copiada para `appCmdLine()`. O resíduo `??` fica na cópia do main e não chega à engine (inferido). Patch P1 em `re/cmdline.md` §1.
+- Discrepância resolvida (2026-10-13): o `Command line:` vazio no log vem do gate `GIsLMServer` em `Core.dll appInit` (`0x1013F9C6`, `je +0x0E`). Com `GIsLMServer == 0`, a linha não é copiada para `appCmdLine()`. O resíduo `??` fica na cópia do main e não chega à engine (inferido). Patch P1 em `tools/re/cmdline.md` §1.
 
 ## 3. Mapas (tabela `maps` de `cliente\system\landmass.wdb`, somente leitura)
 
@@ -85,9 +85,9 @@ Logs sanitizados (versão e token trocados por `***`) em `scratchpad\run_*.log` 
 
 ## 7. Opções e recomendação
 
-- **(a) Servidor dedicado** (`-server`/`SERVER`): não exige código nem toolchain se o caminho UE2 padrão funcionar. Corrigido em 2026-10-13: `GIsClient=0` só acontece se `-server` chegar a `appCmdLine()`, o que exige P1 (`Core.dll` 260550, `74 0E`→`90 90`) na cópia do servidor. Caminho estático: `UGameEngine` (Engine.dll) → `Browse` → `LoadMap` → `ULevel::Listen` → `IpDrv.UTcpNetDriver` em **UDP 7777** (`re/cmdline.md` §2). Sem `InitServer` e sem `CServerRoom` nesse caminho (inferido). Não testado.
+- **(a) Servidor dedicado** (`-server`/`SERVER`): não exige código nem toolchain se o caminho UE2 padrão funcionar. Corrigido em 2026-10-13: `GIsClient=0` só acontece se `-server` chegar a `appCmdLine()`, o que exige P1 (`Core.dll` 260550, `74 0E`→`90 90`) na cópia do servidor. Caminho estático: `UGameEngine` (Engine.dll) → `Browse` → `LoadMap` → `ULevel::Listen` → `IpDrv.UTcpNetDriver` em **UDP 7777** (`tools/re/cmdline.md` §2). Sem `InitServer` e sem `CServerRoom` nesse caminho (inferido). Não testado.
 - **(b) Listen server** (`?listen` no cliente): fallback se (a) não subir. Depende do mesmo cliente que hoje sai no startup. Ver pendência: o chamador de `ULevel::Listen` ainda não foi achado.
-- **(c) Host próprio de 32 bits** chamando `InitServer`: só se o LOGIN exigir `CServerRoom` preenchida. Corrigido: com a sala vazia, `LoginPlayer` retorna -1 para qualquer LOGIN (`re/LM_Engine.dll/LoginPlayer.c`). Esse caminho é `UServerLevel`, que o caminho (a) não instancia (inferido). Não há toolchain instalado; proposta: MSVC 2008 x86 ou mingw32 (não instalado).
+- **(c) Host próprio de 32 bits** chamando `InitServer`: só se o LOGIN exigir `CServerRoom` preenchida. Corrigido: com a sala vazia, `LoginPlayer` retorna -1 para qualquer LOGIN (`tools/re/LM_Engine.dll/LoginPlayer.c`). Esse caminho é `UServerLevel`, que o caminho (a) não instancia (inferido). Não há toolchain instalado; proposta: MSVC 2008 x86 ou mingw32 (não instalado).
 
 **Recomendação provisória: (a), com P1 aplicado só na cópia do servidor (`D:\landmass\servidor_teste`, nunca em `cliente`/`cliente2`).** Não há evidência experimental de que o servidor suba. A escolha vem da análise estática (inferido). Antes de confirmar, o exe precisa voltar a iniciar e a porta UDP 7777 precisa ser testada.
 
@@ -95,7 +95,7 @@ Logs sanitizados (versão e token trocados por `***`) em `scratchpad\run_*.log` 
 
 Itens 1 a 5 são sobre a saída de startup e vêm primeiro. Itens 6 a 8 só importam depois que o exe iniciar.
 
-Status em 2026-10-13 (REA usado, nenhum binário alterado; detalhes em `re/cmdline.md`):
+Status em 2026-10-13 (REA usado, nenhum binário alterado; detalhes em `tools/re/cmdline.md`):
 - 1, 2, 3, 5: pendentes (não lidos nesta etapa). Os itens 1 e 2 continuam abertos para os testes sem instância.
 - 4: respondido. `FUN_109018E0` é splash. O repasse é `FUN_10911EE0`.
 - 6: respondido. `InitServer` (`0x1000C6D0`) só carrega chaves e `.wdb`, não conecta. `LoginPlayer` (`0x1000B680`) com sala vazia retorna -1.
@@ -120,14 +120,14 @@ Status em 2026-10-13 (REA usado, nenhum binário alterado; detalhes em `re/cmdli
 
 ## 9. Preparação da cópia `servidor-partida` (2026-10-13)
 
-Evidência: REA sobre `LM_Engine.dll` (SHA-256 `4a08e7ce...`) e `Engine.dll` (SHA-256 `fc1369fa...`), mais os pseudocódigos em `re/LM_Engine.dll/`. Nenhum binário de `cliente` foi alterado. Operação de execução e testes: [`../docs/operations/game-server.md`](../docs/operations/game-server.md).
+Evidência: REA sobre `LM_Engine.dll` (SHA-256 `4a08e7ce...`) e `Engine.dll` (SHA-256 `fc1369fa...`), mais os pseudocódigos em `tools/re/LM_Engine.dll/`. Nenhum binário de `cliente` foi alterado. Operação de execução e testes: [`../../docs/operations/game-server.md`](../../docs/operations/game-server.md).
 
 ### 9.1 Patches aplicados (só na cópia, com `.orig`)
 
 - P1 `system\Core.dll` offset `0x3F9C6` (260550): `74 0E` → `90 90`.
 - P-A `system\LandMass.exe` offset `0x209E4` (133604): `57` → `58` (UTF-16 `WLog` → `XLog`).
 - Conferido: `cmp -l` mostra só esses bytes; o `.orig` é idêntico ao de `cliente`.
-- Correção: `re/cmdline.md` dava `0x20A64` para P-A. O literal está em `0x209E4`; `0x20A64` (133732) tem outros bytes.
+- Correção: `tools/re/cmdline.md` dava `0x20A64` para P-A. O literal está em `0x209E4`; `0x20A64` (133732) tem outros bytes.
 
 ### 9.2 Patch de `LoginPlayer` (b): não aplicado, sem efeito no caminho atual
 
@@ -138,7 +138,7 @@ Evidência: REA sobre `LM_Engine.dll` (SHA-256 `4a08e7ce...`) e `Engine.dll` (SH
 
 ### 9.3 Protocolo GS_* (opção a), para registro
 
-Fonte: `re/channel_server.md`, seção 4, e `LM_Engine.dll/all/1000bcd0_FUN_1000bcd0.c`. Não implementado.
+Fonte: `tools/re/channel_server.md`, seção 4, e `LM_Engine.dll/all/1000bcd0_FUN_1000bcd0.c`. Não implementado.
 
 - Direção Channel → partida: `1010` `GS_IN_PLAYER`, `1020` `GS_OUT_PLAYER`, `1002` controle. Resposta da partida: `1011`. Opcode = `hdr >> 5`; o net_code aceito é 14 (`ChannelNetCode()`).
 - `1010`, corpo (a partir do corpo, não do frame): `0x00..0x83` dados do jogador (copiados para `this+slot*0x90+0x604`); `0x84` flag (eco); `0x85` slot; `0x88` room guid; `0x8C` chave (guardada em `+0x4BC+slot*4`); `0x90..0xA0` nome de 17 bytes. Aceita se o room guid bate com `ServerRoom+0`, ou com `+0x600` quando `+0x5E4 == 6`. Senão responde `0xFFFFF060`.
@@ -165,7 +165,7 @@ Fonte: `re/channel_server.md`, seção 4, e `LM_Engine.dll/all/1000bcd0_FUN_1000
 
 ## 10. Partida por sala: linha de comando, `PORT=`, fim e estatísticas (marco 4)
 
-Implementação: `src/landmass_emu/hosting/command.py` (linha de comando, tabela UDP), `hosting/process.py` (processo por sala) e `domain/match.py` (plano). Arquitetura em [`../docs/architecture/06-game-server-host.md`](../docs/architecture/06-game-server-host.md).
+Implementação: `src/landmass_emu/hosting/command.py` (linha de comando, tabela UDP), `hosting/process.py` (processo por sala) e `domain/match.py` (plano). Arquitetura em [`../../docs/architecture/06-game-server-host.md`](../../docs/architecture/06-game-server-host.md).
 
 ### 10.1 Linha de comando da partida
 
@@ -176,11 +176,11 @@ Forma escrita pelo emulador:
 ```
 
 - `version=` e `login_num=` continuam como último token, sem nada depois (seção 2).
-- `PORT=` vem antes de `-log`. O `main` (`re/LandMass.exe/main_loop.c`, linhas 74-162) remove cada chave de login do fim e preserva o prefixo, então `PORT=` chega ao `appInit`.
+- `PORT=` vem antes de `-log`. O `main` (`tools/re/LandMass.exe/main_loop.c`, linhas 74-162) remove cada chave de login do fim e preserva o prefixo, então `PORT=` chega ao `appInit`.
 - `game=`, `MaxPlayers`, `TimeLimit` e `GoalScore` são opções de URL. Os nomes vêm do `XGame` (inferido); o servidor ainda não as confirmou em execução.
 - `?lmemu=<chave>` (D190) manda o pacote `LMEmu` ler a seção `[<chave> LMEmuLoadout]` do `LMEmu.ini` da pasta de sistema, com o equipamento de cada jogador.
 - Classes lançadas: `LMEmu.LMEmuDeathMatch`, `LMEmu.LMEmuTeamDeathMatch`, `LMEmu.LMEmuTeamOperation` e `LMEmu.LMEmuBombingRun` (D190, D192). Por baixo, são `XGame.LM_DeathMatch`, `XGame.LM_TeamDeathMatch` (time, D170; antes `XGame.LM_TeamGame`), `XGame.LM_TeamOperation` e `XGame.xBombingRun`.
-- Regra de modo, como `CServerRoom::Init` (`re/LM_Engine.dll/all/100163d0_Init.c`, linhas 317 a 363). Modo 0 com `team_count >= 2` é time. Modo 1 escolhe pelo `OPType` do mapa: 1 é Bombing Run, 0 é OP. Outro `OPType` vira `LM_OnslaughtGame` no nativo, e DM no emulador (D192). Antes, a regra não olhava o `OPType` e tratava qualquer modo 1 como OP (D53).
+- Regra de modo, como `CServerRoom::Init` (`tools/re/LM_Engine.dll/all/100163d0_Init.c`, linhas 317 a 363). Modo 0 com `team_count >= 2` é time. Modo 1 escolhe pelo `OPType` do mapa: 1 é Bombing Run, 0 é OP. Outro `OPType` vira `LM_OnslaughtGame` no nativo, e DM no emulador (D192). Antes, a regra não olhava o `OPType` e tratava qualquer modo 1 como OP (D53).
 
 ### 10.2 `PORT=` (RE de `IpDrv` e `Core`)
 
@@ -207,7 +207,7 @@ Com o servidor aberto, `netstat -ano -p UDP` mostra `0.0.0.0:<porta>` com o PID 
 
 ### 10.5 Correções a notas anteriores
 
-- `re/cmdline.md`, passo 7: o `namelen` do bind é `0x10`, não 1 (hipótese refutada em 10.2). Esclarecimento: o `re/cmdline.md` usa `cliente\system` (hash `b478ca32...`). O `Core.dll` patchado da cópia do servidor é `128ae25a...`, e o `.orig` dela é o mesmo `b478ca32...` do cliente.
+- `tools/re/cmdline.md`, passo 7: o `namelen` do bind é `0x10`, não 1 (hipótese refutada em 10.2). Esclarecimento: o `tools/re/cmdline.md` usa `cliente\system` (hash `b478ca32...`). O `Core.dll` patchado da cópia do servidor é `128ae25a...`, e o `.orig` dela é o mesmo `b478ca32...` do cliente.
 
 ### 10.6 Pendências
 
@@ -221,7 +221,7 @@ Método: instâncias próprias de `LandMass.exe -server` em `servidor-partida\sy
 
 ### 11.1 Causa das saídas precoces desta sessão
 
-- Nas execuções de 2026-10-13, as subidas que saíam em cerca de 50 ms foram montadas no PowerShell com aspas duplas: `"...version=$ver?login_num=$login"`. O PowerShell gera `version==<token>`, sem `login_num=`. `Parse("login_num=")` falha e o `main` sai com código 0 antes de `appInit` (`re/LandMass.exe/main_loop.c`, `goto LAB_109111e2`). Conferido: a string montada não contém `login_num=`.
+- Nas execuções de 2026-10-13, as subidas que saíam em cerca de 50 ms foram montadas no PowerShell com aspas duplas: `"...version=$ver?login_num=$login"`. O PowerShell gera `version==<token>`, sem `login_num=`. `Parse("login_num=")` falha e o `main` sai com código 0 antes de `appInit` (`tools/re/LandMass.exe/main_loop.c`, `goto LAB_109111e2`). Conferido: a string montada não contém `login_num=`.
 - Com concatenação (`'...version=' + $ver + '?login_num=' + $login`), a instância fica viva.
 - Hipótese de `Running.ini` bloqueando: refutada. Com o marcador presente, a instância sobe e abre UDP. O arquivo é criado depois de `appInit` (`FUN_1090ad30`) e apagado na saída normal (`FUN_10903a70`).
 - As tentativas da seção 4 montadas do mesmo modo têm a mesma causa provável; não foram reproduzidas uma a uma. A linha do `jogar_teste.bat` não foi reexecutada, e a causa dela não está confirmada.
@@ -305,7 +305,7 @@ Sintoma relatado pelo usuário na primeira partida real (dois clientes, `LM_Team
 
 Fonte: `XGame.u` e `XInterface.u` do cliente, extraídos em UTF-16 e ASCII (o mesmo pacote está no `servidor-partida`, com o mesmo tamanho). As linhas citadas são de um dump de extração feito na sessão, não versionado. Decisões: D170 a D177.
 
-- **Classe de time (D170).** `class LM_TeamGame extends LM_DeathMatch` (UTF-16, linha 6695) não sobrescreve `BecomeSpectator`. Herda `LM_DeathMatch.BecomeSpectator`, que retorna `false` (linha 16028). `class LM_TeamDeathMatch extends LM_TeamGame` (ASCII 0x00235415) sobrescreve `BecomeSpectator` (0x00238782, retorna `true` com a partida começada) e `AllowBecomeActivePlayer` (0x00238A00). Sem `game=` na sala, o `CServerRoom::Init` nativo escolhe `XGame.LM_TeamDeathMatch` para modo 0 com `team_count >= 2` (`re/LM_Engine.dll/all/100163d0_Init.c`, linhas 317 a 339). O emulador manda `game=XGame.LM_TeamGame` (`domain/match.py`).
+- **Classe de time (D170).** `class LM_TeamGame extends LM_DeathMatch` (UTF-16, linha 6695) não sobrescreve `BecomeSpectator`. Herda `LM_DeathMatch.BecomeSpectator`, que retorna `false` (linha 16028). `class LM_TeamDeathMatch extends LM_TeamGame` (ASCII 0x00235415) sobrescreve `BecomeSpectator` (0x00238782, retorna `true` com a partida começada) e `AllowBecomeActivePlayer` (0x00238A00). Sem `game=` na sala, o `CServerRoom::Init` nativo escolhe `XGame.LM_TeamDeathMatch` para modo 0 com `team_count >= 2` (`tools/re/LM_Engine.dll/all/100163d0_Init.c`, linhas 317 a 339). O emulador manda `game=XGame.LM_TeamGame` (`domain/match.py`).
 - **Respawn (D171).** `state Dead` do `LM_xPlayer` (ASCII 0x0018A764, linhas 1083 a 1102 do dump de respawn): `Timer` chama `BecomeSpectator()` se `bTeamGame` e `RespawnCountDown <= RespawnDelay * 0.8`, e esse ramo não decrementa o contador. `LM_xPlayer.BecomeSpectator` (0x001842C4) sai cedo quando `Level.Game.BecomeSpectator` é falso. Resultado: o contador para em 0,8 do prazo. O prazo (`var const int RespawnDelay`) não tem valor no texto; com 10 s, o HUD mostra "8 s". Os estados `BehindCamera` e `Spectating` chamam `BecomeActivePlayer()` quando o contador chega a 1, e o pawn nunca chega lá.
 - **Time nulo (não é a causa do 8 s).** `LM_xPawn.TakeDamage` acessa `Team` nulo no log do servidor. `RatePlayerStart` (UTF-16, linha 7788) recusa todo ponto quando `bSpawnInTeamArea` e o time não casa; isso bloquearia o spawn depois do congelamento. O envio de time e de loadout é do outro agente.
 - **Mouse (D172).** `OnApply` do slider grava `mousesence` = `fMouseSence` (XInterface UTF-16, linhas 14346 a 14351). O motor recebe `FClamp(v * 0.1 + 0.25, 0.25, 10.25)`. Leitura inversa: `(MouseSensitivity - 0.25) * 10` (linha 14395). `cliente\system\User.ini` tem `MouseSensitivity=0.250000` (linha 461), gravado pelo próprio cliente depois de aplicar 0. `tools\UT2004\Installer\User.ini` tem `MouseSensitivity=1.000000` (linha 345), `bInvertMouse=False` (338) e `bNoMouseSmoothing=True` (344). Mínimo e máximo do slider não foram lidos.

@@ -1,4 +1,5 @@
-"""Salas: codec com offsets conferidos nos bytes (re/rooms.md) e regras do domínio em memória."""
+"""Salas: codec com offsets conferidos nos bytes (tools/re/rooms.md) e regras do domínio em
+memória."""
 
 import struct
 

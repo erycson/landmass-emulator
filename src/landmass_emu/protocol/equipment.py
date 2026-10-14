@@ -1,8 +1,9 @@
 """Equipar, desequipar, destruir e estender (F6, F7) no Channel Server: 554 a 585.
 
 Requisições (cliente → servidor): 555, 560, 570, 580. Respostas: 554, 556, 557, 559, 561, 562, 572,
-582, 585. Offsets são do corpo, depois do cabeçalho `u16`. Fonte: re/protocol_full.md §3.1 e §3.2;
-dispatcher `re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (L110–170, L776–802, L2490–2528,
+582, 585. Offsets são do corpo, depois do cabeçalho `u16`. Fonte: tools/re/protocol_full.md §3.1 e
+§3.2;
+dispatcher `tools/re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (L110–170, L776–802, L2490–2528,
 L2616–2633, L2634–2704). Cada resposta só aplica o estado no cliente com `result` 0; por isso a
 recusa vai com o opcode da resposta e `result` ≠ 0, sem registro.
 """

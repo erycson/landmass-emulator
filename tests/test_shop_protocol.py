@@ -1,5 +1,5 @@
 """Codecs da loja: compra (550) e resultado (551 para item, 552 para morat). Offsets do corpo,
-depois do cabeçalho u16 (re/protocol_full.md §3.1 e §3.2)."""
+depois do cabeçalho u16 (tools/re/protocol_full.md §3.1 e §3.2)."""
 
 import struct
 

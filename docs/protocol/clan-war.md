@@ -1,6 +1,6 @@
 # Guerra de clã: fluxo no cliente e no canal
 
-Mapa do fluxo de clã (somente leitura do cliente, `re/LM_Engine.dll` e fontes `XInterface`/`LM_Engine`).
+Mapa do fluxo de clã (somente leitura do cliente, `tools/re/LM_Engine.dll` e fontes `XInterface`/`LM_Engine`).
 Estados: **confirmado** = lido no código ou na fonte; **inferido** = dedução indicada no texto;
 **gap** = não decodificado.
 
@@ -131,7 +131,7 @@ Opcodes 644 a 647 e 655 e 657 (C→S) não têm case S→C no dispatcher: ao che
   `1001d910`. Logo `nó+0x60` e `nó+0x184`.
 - **G1 resolvida.** `CM_CLAN` = 6 em `Core.u`.
 
-## 5. Correções ao `re/protocol_full.md` (registro)
+## 5. Correções ao `tools/re/protocol_full.md` (registro)
 
 - L167 (linha 640) e §6 item 4 (L331): dizem que 641 não é tratado. Errado: 641 chama
   `NotifyRegisterGroup(body[0])` em L1636 (guarda em L1479 a L1481).

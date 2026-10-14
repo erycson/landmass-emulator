@@ -1,6 +1,6 @@
 """Entrada no canal (100) com o inventário do login: 101 com nest, gates e slots de sistema, 111 (do
 EntryHandlers), depois um 102 por item, um 103 por morat com gate (com as peças montadas) e um 585
-por item vencido. Ordem de re/NOTES.md: 101 → 111 → 103×n; 102 antes de 103 é inferido."""
+por item vencido. Ordem de tools/re/NOTES.md: 101 → 111 → 103×n; 102 antes de 103 é inferido."""
 
 import dataclasses
 from collections.abc import Sequence

@@ -1,7 +1,7 @@
 # Formato de fio
 
 Aplica-se às portas 7313 (Message) e 7314 (Channel). Implementação: `net/framing.py`, `protocol/header.py`.
-Evidência: [`../../re/NOTES.md`](../../re/NOTES.md), seção "Protocolo do Message/Channel".
+Evidência: [`../../tools/re/NOTES.md`](../../tools/re/NOTES.md), seção "Protocolo do Message/Channel".
 
 ## Frame
 

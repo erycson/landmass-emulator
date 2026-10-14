@@ -1,9 +1,10 @@
 """Plano da partida: mapa, classe do jogo e limites a partir da sala. Só regras, sem IO.
 
 Mapa: `RecordIndex` da tabela `maps` do `landmass.wdb` é o `map_num` da sala. Modo, como o servidor
-nativo (`LM_Engine` `CServerRoom::Init`, `re/LM_Engine.dll/all/100163d0_Init.c`, linhas 317 a 363):
+nativo (`LM_Engine` `CServerRoom::Init`, `tools/re/LM_Engine.dll/all/100163d0_Init.c`, linhas 317 a
+363):
 `game_mode == 1` é OP ou Bombing Run pelo `OPType` do mapa; `game_mode == 0` com dois ou mais times
-é time; o resto é DM. As classes estão em `re/game_server_host.md`, seção 10. O time é
+é time; o resto é DM. As classes estão em `tools/re/game_server_host.md`, seção 10. O time é
 `XGame.LM_TeamDeathMatch` (D170), estendido pelo pacote LMEmu (D190). Regra do modo: D192.
 """
 
@@ -41,7 +42,8 @@ class MatchPlan:
     map_file: str
     game_class: str
     max_players: int
-    time_limit: int  # limit_time da sala, em minutos (inferido pela UI; ver re/game_server_host.md)
+    # limit_time da sala, em minutos (inferido pela UI; ver tools/re/game_server_host.md)
+    time_limit: int
     goal_score: int  # limit_score da sala
     # `?MaxSpectators=` da URL: o teto de espectadores da sala (D197).
     max_spectators: int = MAX_SPECTATORS

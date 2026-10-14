@@ -12,7 +12,7 @@ Cadeia observada:
 
 1. CRT entry `0x10919d3e` chama `FUN_10911ee0(hInstance)`.
 2. `FUN_10911ee0` (`0x10911ee0`): `DAT_1092f990 = GetCommandLineW()`, a linha completa, com o caminho do exe. Depois faz o repasse para instância existente (seção 3) e chama `FUN_10910d20` (main).
-3. `FUN_10910d20` (main, `re/LandMass.exe/main_loop.c`): remove da linha as chaves `version=`, `login_server=`, `login_num=` (regra em `game_server_host.md` §2). Chama `appInit(GPackage, linha restante, ...)` na linha 165. Depois, `GIsServer = 1` (linha 169) e `GIsClient = !ParseParam(appCmdLine(), "SERVER")` (linha 172).
+3. `FUN_10910d20` (main, `tools/re/LandMass.exe/main_loop.c`): remove da linha as chaves `version=`, `login_server=`, `login_num=` (regra em `game_server_host.md` §2). Chama `appInit(GPackage, linha restante, ...)` na linha 165. Depois, `GIsServer = 1` (linha 169) e `GIsClient = !ParseParam(appCmdLine(), "SERVER")` (linha 172).
 4. `Core.dll appInit` (`0x1013f8d0`): pula o nome do exe (aspas ou primeiro espaço) e só copia a linha para o buffer de `appCmdLine()` (`DAT_101e4488`) se `GIsLMServer != 0`:
    - `0x1013f9bd`: `call OutputDebugStringW`; `0x1013f9c0`: `cmp [GIsLMServer], ebx` (ebx = 0); `0x1013f9c6`: `74 0E` (`je +0x0E`), que pula o `appStrcpy` em `0x1013f9c8`.
    - Com `GIsLMServer == 0`, `appCmdLine()` devolve string vazia. Todos os `ParseParam`/`Parse` que vêm depois (STRICT, LOG, nocheat, `-MainMenu=`, INI=, USERINI=, e o `SERVER` do próprio main) veem vazio.
@@ -61,7 +61,7 @@ Com P1 aplicado na cópia do servidor e linha do tipo `ONS-Treino.map?listen -se
    - `Parse(appCmdLine(), "PORT=", URL+0x18)` só se a chave existir. A porta do bind é `htons(URL.Port)`. Sem `PORT=`, vale o default de `[URL] Port=7777` do ini (FURL). Ver nota abaixo sobre `PORT=`.
    - `bind(...)` (`FUN_10701880`, inferido: `bind`) e depois `FUN_10719480` (inferido: modo não bloqueante). Falha → log "binding to port %i failed".
    - Ao fim: `URL.Port = ntohs(sockaddr.port)`, a porta efetivamente ligada.
-   - Correção: o tamanho do `bind` é constante (`namelen = 0x10`), com ou sem `PORT=`. A hipótese anterior de tamanho 1 foi refutada pelo RE de `InitListen` (ver `re/game_server_host.md`, seção 10.2). Com `PORT=`, uma tentativa só, sem fallback. Teste em execução pendente.
+   - Correção: o tamanho do `bind` é constante (`namelen = 0x10`), com ou sem `PORT=`. A hipótese anterior de tamanho 1 foi refutada pelo RE de `InitListen` (ver `tools/re/game_server_host.md`, seção 10.2). Com `PORT=`, uma tentativa só, sem fallback. Teste em execução pendente.
 
 Resposta curta: o servidor de partida, nesse caminho, é `UGameEngine` (Engine.dll) com nível `ULevel` (Engine.dll) e net driver `IpDrv.UTcpNetDriver` em UDP/7777. `UServerLevel` (LM_Engine) não entra.
 
@@ -85,7 +85,7 @@ Explica a medição do coordenador (2ª instância sai em <3 s sem `LandMass.log
 ### Patch P-A (mínimo: 1 byte)
 
 - Arquivo: `D:\landmass\cliente\system\LandMass.exe`
-- Offset de arquivo: `133604` (`0x209E4`) (corrigido em 2026-10-13: o valor `0x20A64` anterior estava errado; ver `re/game_server_host.md`, seção 9), literal UTF-16 `"WLog"` (verificado: `57 00 4C 00 6F 00 67 00 00 00`).
+- Offset de arquivo: `133604` (`0x209E4`) (corrigido em 2026-10-13: o valor `0x20A64` anterior estava errado; ver `tools/re/game_server_host.md`, seção 9), literal UTF-16 `"WLog"` (verificado: `57 00 4C 00 6F 00 67 00 00 00`).
 - Bytes antigos: `57` (`W`)
 - Bytes novos: `58` (`X`)
 - Efeito: `FindWindowExW(..., "XLog", ...)` não acha a janela da 1ª instância. O repasse não acontece e a 2ª instância segue para `appInit`, gravando o próprio `LandMass.log`.
@@ -106,7 +106,7 @@ Explica a medição do coordenador (2ª instância sai em <3 s sem `LandMass.log
 
 ## 5. Pergunta 3 (InitServer / ChannelServerTick) e pergunta 4 (LoginPlayer com CServerRoom vazio)
 
-Binário: `LM_Engine.dll` (SHA-256 `4a08e7ce...fd04230f`). Pseudocódigo em `re/LM_Engine.dll/InitServer.c`, `LoginPlayer.c`, `UServerLevel_NotifyReceivedText.c`.
+Binário: `LM_Engine.dll` (SHA-256 `4a08e7ce...fd04230f`). Pseudocódigo em `tools/re/LM_Engine.dll/InitServer.c`, `LoginPlayer.c`, `UServerLevel_NotifyReceivedText.c`.
 
 **Q3 (contrato):**
 - `InitServer(ushort *CmdLine)` (export, `0x1000C6D0`) faz, nesta ordem:
@@ -115,7 +115,7 @@ Binário: `LM_Engine.dll` (SHA-256 `4a08e7ce...fd04230f`). Pseudocódigo em `re/
   3. Carrega `ServerMessage.wdb` e `error.wdb` (`Cdb_table::Load`, caminho relativo ao diretório atual, inferido). Se ambos carregam, retorna `true`; senão, `Cdebug::Dump` e `false`.
   - **InitServer não abre socket e não conecta no Channel.** Só guarda `ch_*`.
 - `ChannelServerTick()` (export, `0x1000BB70`) chama `FUN_1000BA90()`, que devolve o singleton estático em `0x10057040` (vtable `PTR_FUN_1002D638`), e depois `vt+0x10` (Tick, não lido). A conexão com o Channel, se existir, está nesse Tick (inferido).
-- Nenhum chamador interno de `InitServer` nem de `ChannelServerTick` foi observado: são exports para um host. Nenhum binário do cliente importa `InitServer` (ver `re/NOTES.md`). No caminho `GameEngine` (seção 2), nada disso roda.
+- Nenhum chamador interno de `InitServer` nem de `ChannelServerTick` foi observado: são exports para um host. Nenhum binário do cliente importa `InitServer` (ver `tools/re/NOTES.md`). No caminho `GameEngine` (seção 2), nada disso roda.
 
 **Q4 (LoginPlayer com CServerRoom vazio):**
 - `LoginPlayer(int key, ushort *name, int team, FString &Err)` (`0x1000B680`) é chamado só por `UServerLevel::NotifyReceivedText` (`0x10014E60`), no ramo `LOGIN`.

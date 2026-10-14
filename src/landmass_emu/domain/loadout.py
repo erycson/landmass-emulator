@@ -83,9 +83,10 @@ def player_line(nickname: str, opcoes: Sequence[tuple[str, int | str]]) -> str:
 
 
 def team_options(game_class: str, slot: int, team_count: int) -> list[tuple[str, int | str]]:
-    """Grupo do jogador: `slot % team_count`, como `ChangeTeam` (re/rooms.md §4). Só em modo de
+    """Grupo do jogador: `slot % team_count`, como `ChangeTeam` (tools/re/rooms.md §4). Só em modo
+    de
     time; em DM não há grupo. OP e Bombing Run usam pelo menos dois times no servidor nativo
-    (`CServerRoom::Init`, `re/LM_Engine.dll/all/100163d0_Init.c`, linhas 325 a 361), então o
+    (`CServerRoom::Init`, `tools/re/LM_Engine.dll/all/100163d0_Init.c`, linhas 325 a 361), então o
     mínimo é 2 também aqui (D192)."""
     if game_class == GAME_DEATHMATCH:
         return []

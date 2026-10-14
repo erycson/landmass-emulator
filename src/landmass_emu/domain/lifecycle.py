@@ -1,6 +1,6 @@
 """Destruir e estender (F7): dono, morat e prazo, com os serviços que os aplicam.
 
-Fontes: docs/architecture/07-progression.md §5.5 (R-DEST-*, R-EXT-*) e re/protocol_full.md §9
+Fontes: docs/architecture/07-progression.md §5.5 (R-DEST-*, R-EXT-*) e tools/re/protocol_full.md §9
 (555, 556, 557, 559, 580 e respostas). Preço e prazo de extensão são os da compra (`quote`).
 """
 

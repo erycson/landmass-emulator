@@ -1,6 +1,7 @@
 """Loja do Channel Server: compra (550) e resultados (551 para item, 552 para morat).
 
-Layouts em re/protocol_full.md §3.1 (550) e §3.2 (551, 552); re/layouts_f0.md §7.6. Offsets são do
+Layouts em tools/re/protocol_full.md §3.1 (550) e §3.2 (551, 552); tools/re/layouts_f0.md §7.6.
+Offsets são do
 corpo, depois do cabeçalho `u16`. O registro da unidade vem dos codecs 102 e 103 (`CsGetItemOut`,
 `CsGetMoratsOut`): o 551 usa os primeiros 0x34 bytes do 102, e o 552, os primeiros 0x5c do 103.
 """

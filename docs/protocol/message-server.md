@@ -1,6 +1,6 @@
 # Message Server (TCP 7313, `net_code` 13)
 
-Implementação: `protocol/message.py` (layouts), `handlers/message/` (comportamento), `net/server.py` (transporte). Evidências e layouts completos: [`../../re/message_server.md`](../../re/message_server.md).
+Implementação: `protocol/message.py` (layouts), `handlers/message/` (comportamento), `net/server.py` (transporte). Evidências e layouts completos: [`../../tools/re/message_server.md`](../../tools/re/message_server.md).
 
 ## Opcodes
 
@@ -108,8 +108,8 @@ No fluxo por token, `id` e `pw` vêm vazios e são ignorados (senha fica para o 
 
 | Offset | Tamanho | Campo |
 |-------:|--------:|-------|
-| 0x00 | 37 | `LM_REGISTER_INFO`: 37 `u8` na ordem de `re/message_server.md` §4.1 (`background` … `screenshot`). Opções gravadas pelo 544 do Channel (`account_options`); teclas e sensibilidade padrão se a conta não tem registro (D140, D172). |
-| 0x25 | `char[33]` | `session_key`, NUL-terminado: 32 caracteres hexadecimais minúsculos (`secrets.token_hex(16)`). Emitida para a conta logada. O cliente copia os 33 bytes para `DAT_1005AE20` (`re/message_server.md` §4) e os envia no `100` do Channel. |
+| 0x00 | 37 | `LM_REGISTER_INFO`: 37 `u8` na ordem de `tools/re/message_server.md` §4.1 (`background` … `screenshot`). Opções gravadas pelo 544 do Channel (`account_options`); teclas e sensibilidade padrão se a conta não tem registro (D140, D172). |
+| 0x25 | `char[33]` | `session_key`, NUL-terminado: 32 caracteres hexadecimais minúsculos (`secrets.token_hex(16)`). Emitida para a conta logada. O cliente copia os 33 bytes para `DAT_1005AE20` (`tools/re/message_server.md` §4) e os envia no `100` do Channel. |
 | 0x46 | 2 | padding |
 | 0x48 | `i32` | `result` = `0` |
 

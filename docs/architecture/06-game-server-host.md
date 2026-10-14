@@ -2,7 +2,7 @@
 
 ## Problema
 
-A partida roda em um processo UE2 em modo servidor (`LandMass.exe ... -server`). O cliente só precisa do endereço e da porta no 403 (`NotifyStartGame`); o servidor abre a porta UDP sozinho. O caminho com `GS_*` (`UServerEngine` e `InitServer` de `LM_Engine.dll`) não é usado para o deathmatch. Evidência: [`../../re/game_server_host.md`](../../re/game_server_host.md), seções 9, 10 e 11.
+A partida roda em um processo UE2 em modo servidor (`LandMass.exe ... -server`). O cliente só precisa do endereço e da porta no 403 (`NotifyStartGame`); o servidor abre a porta UDP sozinho. O caminho com `GS_*` (`UServerEngine` e `InitServer` de `LM_Engine.dll`) não é usado para o deathmatch. Evidência: [`../../tools/re/game_server_host.md`](../../tools/re/game_server_host.md), seções 9, 10 e 11.
 
 ## Como funciona (marco 4)
 
@@ -27,7 +27,7 @@ Uma partida por sala. O canal lança um servidor próprio para cada sala que ini
   3. Lança `LandMass.exe <mapa>?listen?game=<classe>?MaxPlayers=<n>?MaxSpectators=<s>?TimeLimit=<t>?GoalScore=<g>?lmemu=<chave> -server PORT=<porta> -log login_server=<msg>?version=<v>?login_num=<l>`. `login_server` é `LANDMASS_PUBLIC_HOST:LANDMASS_MESSAGE_PORT`. A classe é `LMEmu.*` (D190).
   4. Espera a porta aparecer em `netstat -ano -p UDP` com o PID do próprio processo, até `LANDMASS_MATCH_READY_TIMEOUT` segundos. Não há bind de teste depois do lançamento: disputaria a porta com o servidor.
   5. Se o processo cai antes de abrir a porta, ou o prazo vence, o processo é encerrado, a seção sai do `LMEmu.ini` e a partida falha.
-- `PORT=` abre uma única tentativa, sem fallback (re/game_server_host.md, §10). Porta ocupada é falha, não troca.
+- `PORT=` abre uma única tentativa, sem fallback (tools/re/game_server_host.md, §10). Porta ocupada é falha, não troca.
 - Plano da partida (`domain/match.py`, puro): mapa de `maps` (`RecordIndex` = `map_num`), classe pelo modo e pelo `OPType` do mapa (D53, D170, D192), `MaxPlayers` limitado pelo mapa e no mínimo 2. `MaxSpectators` vem de `MatchPlan.max_spectators` (`MAX_SPECTATORS` = 2, D197, D198).
 - Equipamento (`domain/loadout.py`, puro, com as portas de inventário e conta): para cada jogador, o morat do gate escolhido no 401, com peças e pinturas montadas, senão o `DefaultSet` do wdb. Ver D190.
 
@@ -45,7 +45,7 @@ Quem entra de novo na própria sala depois da partida (311) recebe 312, 314 e 31
 
 Quem sai antes do fim (500 com outros ainda em jogo, ou o 311 de volta nesse caso) fica na sala sem pronto (D210). O canal zera o pronto e manda o 317 só a quem saiu. Sem isso, o cliente trava Sair, Opções e Iniciar, que dependem de sala jogando sem pronto (`LM_RoomPage.RefreshPlayers`).
 
-O bloco `GameEnded` é lido ao fim da partida. O servidor o escreve no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador pede a saída pelo console (`exit`), espera o motor gravar o `LOG=` da partida e só então derruba o processo (D153). `hosting/game_end.py` lê o último bloco completo e os jogadores casam pelo nick (D154). Quem não aparece no bloco fica com métricas nulas e sem recompensa (`re/game_server_host.md`, seções 11.4 e 11.7).
+O bloco `GameEnded` é lido ao fim da partida. O servidor o escreve no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador pede a saída pelo console (`exit`), espera o motor gravar o `LOG=` da partida e só então derruba o processo (D153). `hosting/game_end.py` lê o último bloco completo e os jogadores casam pelo nick (D154). Quem não aparece no bloco fica com métricas nulas e sem recompensa (`tools/re/game_server_host.md`, seções 11.4 e 11.7).
 
 ## Partida em memória
 
@@ -61,7 +61,7 @@ Salas e partida em andamento ficam só em memória (D24, D52). Se o emulador cai
 | `ServerRoom()` | Acesso ao `CServerRoom` (jogadores autorizados da sala). |
 | `UServerLevel::NotifyReceivedText` | Handshake UE2; no `LOGIN`, chama `LoginPlayer(key, name, team)`. |
 
-Este contrato só seria necessário se a validação de jogador fosse feita pelo servidor de partida. Hoje o `key` e o `team` do cliente não são conferidos no caminho de deathmatch (re/game_server_host.md, §9.2). A subida DM não abre TCP para 7313 nem 7314 (`re/game_server_host.md`, §11.2), e o DM não lê `key` nas opções de URL (§11.3).
+Este contrato só seria necessário se a validação de jogador fosse feita pelo servidor de partida. Hoje o `key` e o `team` do cliente não são conferidos no caminho de deathmatch (tools/re/game_server_host.md, §9.2). A subida DM não abre TCP para 7313 nem 7314 (`tools/re/game_server_host.md`, §11.2), e o DM não lê `key` nas opções de URL (§11.3).
 
 ## Abordagens
 
@@ -88,5 +88,5 @@ Este contrato só seria necessário se a validação de jogador fosse feita pelo
 - Entrar de novo numa partida em andamento não tem suporte (D210). O 401 de quem saiu com a sala jogando é recusado sem resposta, e o botão de pronto continua habilitado no cliente.
 - Quem saiu aparece como pronto para os outros jogadores até o fim da partida (D210). Só o próprio cliente recebe o pronto zerado.
 - Modo fixo também precisa do `landmass.wdb` e do mapa da sala: sem eles o 401 devolve 241000201. Antes do marco 4 o 403 saía sem consultar o catálogo, então é uma mudança de comportamento.
-- Equipamento na partida (D190): o cliente não manda o equipamento (`EnterGame` não manda `character`, D141). O emulador monta cada jogador no `LMEmu.ini` a partir do inventário. Não validado no jogo: o pacote `LMEmu` precisa estar em `servidor-partida\system` (ver [game-server](../operations/game-server.md)), e o `selected_morats` do 401 é tratado como gate sem prova (`re/rooms.md` §5).
+- Equipamento na partida (D190): o cliente não manda o equipamento (`EnterGame` não manda `character`, D141). O emulador monta cada jogador no `LMEmu.ini` a partir do inventário. Não validado no jogo: o pacote `LMEmu` precisa estar em `servidor-partida\system` (ver [game-server](../operations/game-server.md)), e o `selected_morats` do 401 é tratado como gate sem prova (`tools/re/rooms.md` §5).
 - Bombing Run (D192): a classe e o grupo mínimo de dois times vêm do `CServerRoom::Init` nativo. Não testados com clientes.

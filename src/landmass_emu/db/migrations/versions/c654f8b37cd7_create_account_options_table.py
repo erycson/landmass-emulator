@@ -8,7 +8,7 @@ down_revision = "d511fd6ac388"
 branch_labels = None
 depends_on = None
 
-# Ordem de LM_REGISTER_INFO (re/message_server.md §4.1). A ordem é o contrato com o cliente.
+# Ordem de LM_REGISTER_INFO (tools/re/message_server.md §4.1). A ordem é o contrato com o cliente.
 OPTIONS = (
     "background",
     "effect",

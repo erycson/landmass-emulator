@@ -62,7 +62,7 @@ Fonte: [07-progression.md §4.6](07-progression.md). Modelo: `db/models.py` (`Op
 |--------|------|------|--------|-----|
 | `id` | `Integer` PK, autoincremento | não | — | Id da linha. |
 | `account_id` | `Integer`, único | não | — | FK `accounts.id`. Uma linha por conta. |
-| 37 colunas de opção | `Integer` | não | `0` | Uma por campo de `LmRegisterInfo`, com os nomes de 07 §4.6. A ordem é o layout do 111 e do 544 (`re/message_server.md` §4.1). |
+| 37 colunas de opção | `Integer` | não | `0` | Uma por campo de `LmRegisterInfo`, com os nomes de 07 §4.6. A ordem é o layout do 111 e do 544 (`tools/re/message_server.md` §4.1). |
 | `created_at`, `updated_at` | `DateTime(timezone=True)` | não | — | Criação e última gravação. |
 
 - Constraints: `account_options_account_id_foreign` (FK) e `account_options_account_id_unique`.
@@ -85,7 +85,7 @@ Fonte: [07-progression](07-progression.md) (tabela de legado `tbl_quickslot`, D7
 
 - Constraints: `account_quick_slots_account_id_foreign` (FK) e `account_quick_slots_account_id_slot_index_unique`.
 - Semeadura: `DEFAULT_QUICK_SLOTS` (`domain/quick_slots.py`) grava as cinco linhas padrão: slots 0 e 1 ligados (gates 0 e 1), 2 e 3 desligados (gates 2 e 3), 4 desligado sem gate. Acontece na criação da conta e em `account kit apply`. Repetir não duplica (índice único).
-- O cliente não tem opcode para ler ou gravar atalhos (`re/features.md` §4): nenhum pacote do protocolo lê a tabela.
+- O cliente não tem opcode para ler ou gravar atalhos (`tools/re/features.md` §4): nenhum pacote do protocolo lê a tabela.
 
 ## Tabelas `friends` e `blocks` (F12)
 
