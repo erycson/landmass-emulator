@@ -31,5 +31,5 @@ O REA mantém um único binário ativo. Não paralelize análises que troquem de
 
 - Grave em `tools/re/` com evidência: binário, endereço ou função, ou linha de script.
 - Marque inferências com "(inferido)".
-- Salve pseudocódigo relevante em `tools/re/<binário>/<função>.c`.
+- Salve pseudocódigo relevante em `tools/re/<binário>/<função>.c`. Os `.c` não entram no git (derivados dos binários do jogo); registre a conclusão e o endereço da função num `.md`.
 - Promova para `docs/protocol/` somente o que estiver confirmado.

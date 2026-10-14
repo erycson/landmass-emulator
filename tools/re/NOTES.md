@@ -2,7 +2,7 @@
 
 Fonte da verdade: o cliente em `D:\landmass\cliente\system` (2009). Os servidores em `D:\landmass\servidor` são de 2006-07.
 
-Protocolo consolidado (opcodes C→S/S→C, layouts, pares e lacunas): `tools/re/protocol_full.md`. Pseudocódigo em lote por função: `tools/re/<binário>/all/` (índice `_index.tsv`).
+Protocolo consolidado (opcodes C→S/S→C, layouts, pares e lacunas): `tools/re/protocol_full.md`. Pseudocódigo em lote por função: `tools/re/<binário>/all/` (índice `_index.tsv`). Os `.c` ficam só na cópia local (`.gitignore`): são derivados dos binários do jogo e não vão ao repositório público. Para gerar de novo, use o REA ou o Ghidra ([reverse-engineering.md](../../docs/operations/reverse-engineering.md)); as citações de `.c` nos docs apontam para essa cópia.
 
 ## Linha de comando do LandMass.exe (`tools/re/LandMass.exe/main_loop.c`)
 

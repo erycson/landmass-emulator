@@ -12,3 +12,6 @@ captures/
 data/
 gui_tmp.png
 .claude/
+
+# Pseudocódigo descompilado: só local, fora do repositório público.
+tools/re/**/*.c
