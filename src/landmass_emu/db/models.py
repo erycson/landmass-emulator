@@ -264,6 +264,7 @@ class BlockRow(Base):
 
 class MatchRow(Base):
     __tablename__ = "matches"
+    __table_args__ = (UniqueConstraint("uuid", name="matches_uuid_unique"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     room_id: Mapped[int] = mapped_column(Integer)
@@ -280,6 +281,8 @@ class MatchRow(Base):
     end_reason: Mapped[str] = mapped_column(String(32))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # Colunas depois de updated_at: a migração 5c1e8a3f7b92 as acrescenta no fim da tabela.
+    uuid: Mapped[str | None] = mapped_column(String(36))
 
 
 class MatchPlayerRow(Base):
@@ -310,6 +313,7 @@ class MatchPlayerRow(Base):
     money: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    played_seconds: Mapped[int | None] = mapped_column(Integer)
 
 
 class ClanRow(Base):

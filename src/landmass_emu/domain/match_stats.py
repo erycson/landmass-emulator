@@ -2,7 +2,7 @@
 
 Métricas `None` quando o jogo não produz o dado (ver 04-persistence, "Histórico de partidas")."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 
@@ -18,6 +18,7 @@ class PlayerMatchStats:
     assists: int | None = None
     ranking: int | None = None
     played_percent: float | None = None  # 0 a 100
+    played_seconds: int | None = None
     won: bool | None = None
     headshots: int | None = None
     bullets: int | None = None
@@ -42,3 +43,22 @@ class MatchRecord:
     ended_at: datetime
     end_reason: str
     players: tuple[PlayerMatchStats, ...]
+    uuid: str | None = None
+
+
+def with_played(
+    record: MatchRecord, left_at: dict[int, datetime], ended_at: datetime
+) -> MatchRecord:
+    """Preenche o tempo jogado de cada jogador: do início até a saída da partida (500, volta à sala
+    ou saída da sala) ou até o fim. Quem não saiu joga até o fim. O percentual é do tempo da
+    partida. Derivado pelo canal; não é o `Played` do bloco `GameEnded`."""
+    duration = (ended_at - record.started_at).total_seconds()
+    players = []
+    for player in record.players:
+        end = min(left_at.get(player.account_id, ended_at), ended_at)
+        played = max((end - record.started_at).total_seconds(), 0.0)
+        percent = round(played * 100 / duration, 2) if duration > 0 else 0.0
+        players.append(
+            replace(player, played_seconds=int(played), played_percent=min(percent, 100.0))
+        )
+    return replace(record, ended_at=ended_at, players=tuple(players))
