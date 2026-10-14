@@ -34,6 +34,7 @@ from landmass_emu.protocol.channel import (
     CsRoomPlayerInfoOut,
 )
 from landmass_emu.protocol.progression import CsProgressionOp
+from landmass_emu.shutdown import Shutdown
 
 
 class _HostFalso:
@@ -557,4 +558,36 @@ async def test_desligamento_encerra_partida_e_grava_com_server_shutdown() -> Non
     [gravado] = historico.salvos
     assert gravado.end_reason == END_SHUTDOWN
     assert host.encerrados == [sala.room_id]  # só `end`: `finish` seria abandono sem gravação
+    assert sala.state == ROOM_WAITING
+
+
+class _PortaDoCanal:
+    """Ponte mínima do desligamento para o canal, sem avisos: o teste só olha o prazo."""
+
+    def __init__(self, lobby: Lobby, handlers: RoomHandlers) -> None:
+        self._lobby = lobby
+        self._handlers = handlers
+
+    def notify(self, text: str) -> None:
+        pass
+
+    def players(self) -> int:
+        return self._lobby.size()
+
+    async def end_matches(self) -> None:
+        await self._handlers.end_matches()
+
+
+async def test_prazo_com_partida_que_nao_termina_encerra_e_grava_no_canal() -> None:
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(_HostParada(), historico)
+    _ana, _bia, sala = await _partida(handlers, lobby, rooms)  # os dois seguem em jogo
+    desliga = Shutdown()
+    desliga.attach(_PortaDoCanal(lobby, handlers))
+
+    desliga.begin(0.1)
+    await asyncio.wait_for(desliga.run(poll=0.02), timeout=5)
+
+    [gravado] = historico.salvos
+    assert gravado.end_reason == END_SHUTDOWN
     assert sala.state == ROOM_WAITING

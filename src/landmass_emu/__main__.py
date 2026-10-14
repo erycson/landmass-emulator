@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import contextlib
+import sys
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -299,7 +300,9 @@ def main() -> None:
     except ValueError as e:  # ValidationError do pydantic também é ValueError
         raise SystemExit(f"configuração inválida: {e}") from None
 
-    LogSetup(settings.log_level, settings.log_json).apply()
+    # O serve loga no stdout (D205); a CLI loga no stderr, para o resultado sair limpo no stdout.
+    fluxo = sys.stdout if args.cmd == "serve" else sys.stderr
+    LogSetup(settings.log_level, settings.log_json, fluxo).apply()
     cli = Cli(settings)
     with contextlib.suppress(KeyboardInterrupt):
         if args.cmd == "sniff":

@@ -93,7 +93,7 @@ class Settings(BaseSettings):
         default_factory=lambda: [300, 60, 10]
     )
     control_file: Path = Path("data/control/shutdown.json")
-    # Logs no stdout (D205): nível e formato JSON opcional.
+    # Log do processo (D205): nível e formato JSON opcional. O serve loga no stdout.
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     log_json: bool = False
 

@@ -1,10 +1,10 @@
 """Desligamento gracioso (D202).
 
-O pedido vem de SIGINT ou SIGTERM, ou do arquivo de controle (D203). Desde o pedido, o
-servidor não aceita conexões novas e não cria salas nem partidas. Quem está conectado recebe
-avisos nos instantes de `shutdown_notice_seconds` antes do prazo. No prazo, as partidas em
-andamento são encerradas e gravadas com `server_shutdown`. O processo sai antes do prazo só
-quando o lobby esvazia. Um pedido seguinte encurta o prazo; nunca o estende.
+O pedido vem de SIGINT ou SIGTERM, ou do arquivo de controle (D203). Quem está conectado recebe
+avisos nos instantes de `shutdown_notice_seconds` antes do prazo. Na janela de recusa, que é o
+maior aviso antes do prazo, o servidor não aceita conexões novas nem cria salas e partidas. No
+prazo, as partidas em andamento são encerradas e gravadas com `server_shutdown`. O processo sai
+antes do prazo só quando o lobby esvazia. Um pedido seguinte encurta o prazo; nunca o estende.
 """
 
 import asyncio
@@ -58,8 +58,11 @@ class Shutdown:
         self._requested = asyncio.Event()
 
     def accepting(self) -> bool:
-        """Falso desde o primeiro pedido: novas conexões, salas e partidas são recusadas."""
-        return self._deadline is None
+        """Verdadeiro até a janela de recusa, que é o maior aviso antes do prazo. Sem avisos, a
+        janela é o próprio pedido. Dentro dela, conexões novas, salas e partidas são recusadas."""
+        if self._deadline is None:
+            return True
+        return bool(self._leads) and self._restante() > max(self._leads)
 
     def attach(self, port: ShutdownPort) -> None:
         self._port = port

@@ -3,6 +3,7 @@
 # Antes de subir:
 #   printf '%s' 'sqlite+aiosqlite:////app/data/landmass.db' | docker secret create landmass_database_url -
 #   export LANDMASS_PUBLIC_HOST=<IP que os clientes alcançam>
+#   export LANDMASS_GAME_HOST=<IP ou nome do host Windows com o LandMass.exe>
 #   docker stack deploy -c deploy/stack.yml landmass
 #
 # Um réplica só: as salas e o lobby ficam na memória do processo. Não escale.
@@ -19,8 +20,9 @@ services:
       # partida + margem); se mudar aqui, mude lá.
       LANDMASS_SHUTDOWN_GRACE_SECONDS: "300"
       # Sem LANDMASS_MATCH_SERVER_DIR: a partida é o endereço fixo do LandMass.exe, que roda em
-      # Windows fora deste container (docs/operations/production.md).
-      LANDMASS_GAME_HOST: ${LANDMASS_GAME_HOST:-127.0.0.1}
+      # Windows fora deste container. Os clientes recebem este endereço no 403
+      # (docs/operations/production.md).
+      LANDMASS_GAME_HOST: ${LANDMASS_GAME_HOST:?defina o endereço do host Windows com o LandMass.exe}
       LANDMASS_GAME_PORT: "7777"
     secrets:
       - landmass_database_url

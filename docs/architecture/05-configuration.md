@@ -34,8 +34,8 @@ Segredos com `_FILE` (padrão do Docker secrets, `/run/secrets/...`): `LANDMASS_
 | `LANDMASS_SHUTDOWN_GRACE_SECONDS` | `300` | Prazo do desligamento (SIGINT, SIGTERM ou `landmass-emu shutdown`): segundos até as partidas serem encerradas e o processo sair. Entre 0 e 3600. O `stop_grace_period` do Swarm precisa passar disso (D202). | prod |
 | `LANDMASS_SHUTDOWN_NOTICE_SECONDS` | `[300, 60, 10]` | Instantes de aviso antes do prazo, em segundos. Lista; no ambiente, em JSON (`[300, 60, 10]`). Cada valor entre 1 e 3600, sem repetir; a lista sai em ordem decrescente. Os avisos vão a quem está no lobby (D201, D202). | prod |
 | `LANDMASS_CONTROL_FILE` | `data/control/shutdown.json` | Arquivo do pedido de `landmass-emu shutdown`. O processo em execução lê a cada segundo; pedido pendente de execução anterior é apagado na subida (D203). | prod |
-| `LANDMASS_LOG_LEVEL` | `INFO` | Nível do log no stdout: `DEBUG`, `INFO`, `WARNING` ou `ERROR`. Cada conexão da sonda do HEALTHCHECK gera `conectou` e `desconectou` em INFO; com `WARNING` esses registros somem (D205). | prod |
-| `LANDMASS_LOG_JSON` | `false` | Uma linha JSON por registro no stdout (`ts`, `level`, `logger`, `msg`, e `exc` quando há erro), para o parser do operador (D205). | prod |
+| `LANDMASS_LOG_LEVEL` | `INFO` | Nível do log (o `serve` loga no stdout; a CLI, no stderr): `DEBUG`, `INFO`, `WARNING` ou `ERROR`. Cada conexão da sonda do HEALTHCHECK gera `conectou` e `desconectou` em INFO; com `WARNING` esses registros somem (D205). | prod |
+| `LANDMASS_LOG_JSON` | `false` | Uma linha JSON por registro do `serve` (`ts`, `level`, `logger`, `msg`, e `exc` quando há erro), para o parser do operador (D205). | prod |
 
 Regras:
 

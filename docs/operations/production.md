@@ -34,11 +34,13 @@ printf '%s' 'sqlite+aiosqlite:////app/data/landmass.db' | docker secret create l
 ```
 
 - `LANDMASS_PUBLIC_HOST` com o IP que os clientes alcançam. É obrigatório: o stack recusa a subida sem ele.
+- `LANDMASS_GAME_HOST` com o IP ou o nome do host Windows que roda o `LandMass.exe`. Também obrigatório: é o endereço que os clientes recebem no 403 para entrar na partida.
 
 ## Subir
 
 ```bash
 export LANDMASS_PUBLIC_HOST=203.0.113.10
+export LANDMASS_GAME_HOST=192.0.2.20  # host Windows com o LandMass.exe
 docker stack deploy -c deploy/stack.yml landmass
 docker service ps landmass_landmass
 docker service logs -f landmass_landmass
@@ -69,7 +71,7 @@ Ctrl+C e Ctrl+Break pedem o mesmo desligamento num processo local. No Windows, f
 ### O que acontece (D202)
 
 1. O pedido começa o prazo, `LANDMASS_SHUTDOWN_GRACE_SECONDS` (300 s por padrão).
-2. Desde o pedido, conexão nova é fechada no accept. Criar sala e iniciar partida são recusados com os erros 211000201 e 241000201. Quem já está conectado continua.
+2. Na janela de recusa, conexão nova é fechada no accept, e criar sala e iniciar partida são recusados com os erros 211000201 e 241000201. A janela é o maior aviso antes do prazo, 300 s por padrão. Com SIGTERM e prazo de 300 s, ela começa no próprio pedido. Com `shutdown --in 3600`, o lobby segue aberto até faltarem 300 s. Quem já está conectado continua.
 3. O lobby do Channel recebe avisos em 300, 60 e 10 s antes do prazo (`LANDMASS_SHUTDOWN_NOTICE_SECONDS`). O aviso aparece no HUD e no chat, pelo opcode 251 (D201), com a mensagem do comando e o tempo que falta.
 4. No prazo, as partidas em andamento são encerradas com a parada graciosa do servidor de partida. Cada uma é gravada com `end_reason` igual a `server_shutdown`.
 5. O processo sai com código 0. Sai antes do prazo se o lobby esvaziar.
@@ -91,7 +93,7 @@ docker service update --force landmass_landmass
 
 - O HEALTHCHECK roda `landmass-emu health` a cada 30 s. A sonda conecta nas portas 7313 e 7314 (3 s por porta). Se qualquer uma recusar, a saída é 1 e o Swarm troca a tarefa.
 - Durante o desligamento a sonda segue verde, porque os listeners continuam abertos (D204). Sem isso, o Swarm reiniciaria a tarefa no meio do prazo.
-- Os logs saem no stdout. Com `LANDMASS_LOG_JSON=true` (padrão do stack), cada linha é um objeto JSON com `ts`, `level`, `logger` e `msg`.
+- Os logs do `serve` saem no stdout; os comandos de CLI saem no stderr, então o resultado do comando sai limpo no stdout. Com `LANDMASS_LOG_JSON=true` (padrão do stack), cada linha do `serve` é um objeto JSON com `ts`, `level`, `logger` e `msg`.
 - Cada conexão da sonda gera `conectou` e `desconectou` em INFO, por porta, a cada 30 s. Para cortar esse ruído, use `LANDMASS_LOG_LEVEL=WARNING`, mas os registros de conexão dos jogadores também somem.
 
 ```bash
@@ -107,6 +109,7 @@ docker exec "$(docker ps -q -f name=landmass_landmass)" \
   /app/.venv/bin/landmass-emu account ban --user ana --days 3
 ```
 
+- `docker ps` só enxerga os containers do nó onde estão. Descubra o nó com `docker service ps landmass_landmass` e rode o comando nele.
 - Os comandos de conta, clã e loja gravam direto no banco. O servidor em execução não é avisado (ver `--help` de cada comando).
 - `account grant`, `account create`, `account item add`, `account morat add`, `account kit apply` e `shop sync` leem o catálogo `landmass.wdb` de `LANDMASS_CLIENT_DIR`. A imagem não tem o cliente. `account create` e `account token` gravam o `.bat` lá. Rode esses comandos no host com a mesma `LANDMASS_DATABASE_URL`, ou monte a pasta `system` do cliente em somente leitura e aponte `LANDMASS_CLIENT_DIR` para ela.
 - `ban`, `unban` e os comandos de clã não precisam do cliente.

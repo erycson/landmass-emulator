@@ -123,6 +123,15 @@ async def test_aceite_fecha_no_primeiro_pedido() -> None:
     assert not desliga.accepting()
 
 
+async def test_janela_de_recusa_e_o_maior_aviso_antes_do_prazo() -> None:
+    relogio = _Relogio()
+    desliga = Shutdown([300, 60, 10], clock=relogio)
+    desliga.begin(3600)
+    assert desliga.accepting()  # longe do prazo: o lobby segue aberto
+    relogio.agora = 3300.0
+    assert not desliga.accepting()  # a 300 s do prazo, a recusa começa
+
+
 async def test_run_sem_porta_e_erro() -> None:
     desliga = Shutdown()
     desliga.begin(0)
