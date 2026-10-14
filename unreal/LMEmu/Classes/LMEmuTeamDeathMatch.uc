@@ -9,6 +9,14 @@ event InitGame(string Options, out string Error)
     Loadout = class'LMEmuLoadout'.static.Open(ParseOption(Options, "lmemu"));
 }
 
+// O cliente carrega a classe do jogo pelo nome no GRI e compara com a original (xBombingRun no HUD);
+// ele não tem o pacote LMEmu.
+function InitGameReplicationInfo()
+{
+    Super.InitGameReplicationInfo();
+    GameReplicationInfo.GameClass = "XGame.LM_TeamDeathMatch";
+}
+
 event PlayerController Login(string Portal, string Options, out string Error)
 {
     if (Loadout != None)
