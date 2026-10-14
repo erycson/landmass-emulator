@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from landmass_emu.audit import EconomyAudit
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
 from landmass_emu.db.clans import SqlClanRepository
@@ -154,6 +155,7 @@ async def channel_server(
     shop: ShopService,
     matches: MatchRepository,
     equipment: EquipmentHandlers,
+    audit: EconomyAudit,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
@@ -172,6 +174,7 @@ async def channel_server(
         inventory,
         shop,
         equipment=equipment,
+        audit=audit,
     )
     server = await Service(
         net_code=CHANNEL_NET_CODE,
@@ -201,7 +204,7 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         social = SqlSocialRepository(db)
         clans = SqlClanRepository(db)
         ranking = SqlRankingRepository(db)
-        shop, equipment = _game_services(settings, db, accounts, progression, inventory)
+        shop, equipment, audit = _game_services(settings, db, accounts, progression, inventory)
         matches = SqlMatchRepository(db)
         async with (
             message_server(
@@ -217,6 +220,7 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
                 shop,
                 matches,
                 equipment,
+                audit,
             ) as channel,
         ):
             yield message, channel
@@ -228,7 +232,7 @@ def _game_services(
     accounts: AccountRepository,
     progression: ProgressionRepository,
     inventory: InventoryRepository,
-) -> tuple[ShopService, EquipmentHandlers]:
+) -> tuple[ShopService, EquipmentHandlers, EconomyAudit]:
     """Compra e F6/F7 com o mesmo catálogo (LazyItemCatalog, o canal sobe sem o wdb) e a mesma trava
     por conta: uma conta não compra e equipa ao mesmo tempo."""
     wdb = settings.client_dir / "landmass.wdb"
@@ -236,6 +240,7 @@ def _game_services(
     levels = WdbCatalog(wdb)
     locks = AccountLocks()
     equipment = SqlEquipmentRepository(db)
+    audit = EconomyAudit.open(settings.audit_log, catalog)
     shop = ShopService(
         catalog=catalog,
         levels=levels,
@@ -264,5 +269,6 @@ def _game_services(
             progression=progression,
             locks=locks,
         ),
+        audit=audit,
     )
-    return shop, handlers
+    return shop, handlers, audit

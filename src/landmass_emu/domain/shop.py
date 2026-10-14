@@ -121,8 +121,11 @@ class ShopRefusal(Exception):
 @dataclass(frozen=True, slots=True)
 class Purchase:
     unit: ItemUnit | MoratUnit
-    cash: int
+    cash: int  # saldos depois do débito
     ld: int
+    currency: Currency = Currency.LD
+    price: int = 0
+    days: int = 0
 
 
 def _shortage(currency: Currency) -> BuyResult:
@@ -200,7 +203,14 @@ class ShopService:
             # O saldo mudou entre a leitura e o débito condicional: nada foi gravado.
             raise ShopRefusal(_shortage(currency), morat=sale.is_morat, reason="saldo mudou")
         after = await self._progression.get(account_id)
-        return Purchase(unit=unit, cash=after.cash, ld=after.ld)
+        return Purchase(
+            unit=unit,
+            cash=after.cash,
+            ld=after.ld,
+            currency=currency,
+            price=offer.price,
+            days=offer.days,
+        )
 
     def _level_of(self, total_exp: int) -> int:
         return RankTable(self._levels.level_list()).level_for(total_exp).level

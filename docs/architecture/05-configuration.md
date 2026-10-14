@@ -22,6 +22,7 @@ Carregue com `pydantic-settings` (`settings.py`), prefixo `LANDMASS_`, de variá
 | `LANDMASS_MATCH_PORT_MAX` | `7899` | Última porta UDP da faixa das partidas. Entre 1024 e 65535. | 4 |
 | `LANDMASS_MATCH_READY_TIMEOUT` | `30` | Segundos até a porta da partida aparecer em `netstat`. Entre 0 e 300 (exclusivo em 0). Vencido o prazo, a sala volta à espera e o dono recebe o erro 241000201 (D47). | 4 |
 | `LANDMASS_MATCH_LOGIN_NUM` | não definida | `login_num` que o servidor de partida recebe na linha de comando. Obrigatório junto com `LANDMASS_MATCH_SERVER_DIR`. Use o valor do `jogar_teste.bat`; não o versione (D54). | 4 |
+| `LANDMASS_AUDIT_LOG` | `data/audit/economy.jsonl` | Arquivo do log de economia: uma linha JSON por compra (550), destruição (555) e extensão (580), aprovada ou recusada. Relativo à pasta de onde o servidor roda; use caminho absoluto quando rodar de outro checkout (D120). | F8 |
 
 Regras:
 

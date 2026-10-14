@@ -1,9 +1,13 @@
 """Handlers da loja no canal: 550 chama a loja e responde 551 ou 552, com registro, saldos e
 resultado. Recusa vai com o código e sem registro."""
 
+import json
+import logging
 import struct
 from datetime import UTC, datetime
+from pathlib import Path
 
+from landmass_emu.audit import EconomyAudit
 from landmass_emu.domain.account import Account
 from landmass_emu.domain.currency import Currency
 from landmass_emu.domain.inventory import ApplyFlag, ItemUnit, MoratUnit
@@ -115,3 +119,72 @@ async def test_recusa_de_morat_responde_552_com_codigo_de_sem_gate() -> None:
     assert len(respostas) == 1
     assert isinstance(respostas[0], CsMoratsBuyOut)
     assert struct.unpack_from("<i", respostas[0].pack(), 0x64)[0] == -1
+
+
+# Log de economia (D120).
+PEER = "('10.0.0.5', 50831)"
+
+
+class Nomes:
+    def name(self, catalog_id: int) -> str | None:
+        return {1000100: "Wood"}.get(catalog_id)
+
+
+def _linhas(caminho: Path) -> list[dict[str, object]]:
+    for handler in logging.getLogger("landmass_emu.audit.economy").handlers:
+        handler.flush()
+    return [json.loads(ln) for ln in caminho.read_text(encoding="utf-8").splitlines()]
+
+
+def _fechar() -> None:
+    logger = logging.getLogger("landmass_emu.audit.economy")
+    for handler in list(logger.handlers):
+        handler.close()
+        logger.removeHandler(handler)
+
+
+async def test_compra_aprovada_grava_saldo_antes_e_depois(tmp_path: Path) -> None:
+    caminho = tmp_path / "audit" / "economy.jsonl"
+    audit = EconomyAudit.open(caminho, Nomes())
+    compra = Purchase(
+        unit=_unidade_item(), cash=50, ld=700, currency=Currency.LD, price=300, days=7
+    )
+    try:
+        await ShopHandlers(LojaFalsa(compra), audit).item_buy(
+            Session(peer=PEER, account=ANA), CsItemBuyIn(1000100, True, 1).pack()
+        )
+        [linha] = _linhas(caminho)
+    finally:
+        _fechar()
+    assert linha["event"] == "buy"
+    assert (linha["username"], linha["nickname"], linha["ip"], linha["port"]) == (
+        "ana",
+        "Ana",
+        "10.0.0.5",
+        50831,
+    )
+    assert (linha["catalog_id"], linha["name"], linha["price"], linha["days"]) == (
+        1000100,
+        "Wood",
+        300,
+        7,
+    )
+    assert (linha["ld_before"], linha["ld_after"]) == (1000, 700)
+    assert (linha["cash_before"], linha["cash_after"]) == (50, 50)
+    assert linha["result"] == 0
+    assert linha["expires_at"] == "2026-11-01T00:00:00+00:00"
+
+
+async def test_compra_recusada_grava_codigo_e_motivo(tmp_path: Path) -> None:
+    caminho = tmp_path / "economy.jsonl"
+    audit = EconomyAudit.open(caminho)
+    recusa = ShopRefusal(BuyResult.CASH_SHORTAGE, morat=False, reason="saldo 10 < 30")
+    try:
+        await ShopHandlers(LojaFalsa(recusa), audit).item_buy(
+            Session(peer=PEER, account=ANA), CsItemBuyIn(1000100, False, 1).pack()
+        )
+        [linha] = _linhas(caminho)
+    finally:
+        _fechar()
+    assert (linha["result"], linha["reason"], linha["currency"]) == (-4055, "saldo 10 < 30", "CASH")
+    assert "price" not in linha

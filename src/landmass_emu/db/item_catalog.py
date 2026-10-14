@@ -54,12 +54,14 @@ class ItemCatalog:
         sales: dict[int, SaleInfo],
         equip: dict[int, EquipSpec],
         morat_stats: dict[int, MoratStats],
+        names: dict[int, str] | None = None,
     ) -> None:
         self._inventory_items = inventory_items
         self._morats = morats
         self._sales = sales
         self._equip = equip
         self._morat_stats = morat_stats
+        self._names = names or {}
 
     @classmethod
     def open(cls, path: Path) -> ItemCatalog:
@@ -76,6 +78,7 @@ class ItemCatalog:
                 sales.update(_sale_infos(conn, table, prefix, is_morat))
             equip_fields = _attributes(conn, "Item_Equip", "item_", _EQUIP_NAMES)
             morat_fields = _attributes(conn, "Morats", "", _MORAT_NAMES)
+            names = _names(conn)
         # Equipar não depende de venda: um equipamento sem preço ainda monta.
         equip = {
             cid: _equip_spec(fields, sales[cid].requirements if cid in sales else Requirements())
@@ -87,7 +90,7 @@ class ItemCatalog:
             for cid, fields in morat_fields.items()
             if "required_class" in fields
         }
-        return cls(frozenset(items), frozenset(morats), sales, equip, stats)
+        return cls(frozenset(items), frozenset(morats), sales, equip, stats, names)
 
     def is_inventory_item(self, catalog_id: int) -> bool:
         return catalog_id in self._inventory_items
@@ -103,6 +106,9 @@ class ItemCatalog:
 
     def morat_stats(self, catalog_id: int) -> MoratStats | None:
         return self._morat_stats.get(catalog_id)
+
+    def name(self, catalog_id: int) -> str | None:
+        return self._names.get(catalog_id)
 
 
 class LazyItemCatalog:
@@ -133,9 +139,23 @@ class LazyItemCatalog:
     def morat_stats(self, catalog_id: int) -> MoratStats | None:
         return self._catalog().morat_stats(catalog_id)
 
+    def name(self, catalog_id: int) -> str | None:
+        return self._catalog().name(catalog_id)
+
 
 def _decode(raw: bytes) -> str:
     return raw.decode("cp1252", errors="replace")
+
+
+def _names(conn: sqlite3.Connection) -> dict[int, str]:
+    """Nome exibido: `item_name` (item e Item_Equip) e `alias` (Morats), linhas `localize`."""
+    names: dict[int, str] = {}
+    for table, key in (("item", "item_name"), ("Item_Equip", "item_name"), ("Morats", "alias")):
+        # `table` e `key` são constantes deste módulo.
+        for tipo, valor in conn.execute(f'SELECT type, value FROM {table} WHERE "key" = ?', (key,)):
+            if str(tipo).isdigit() and valor:
+                names[int(tipo)] = str(valor)
+    return names
 
 
 def _type_ids(conn: sqlite3.Connection, table: str) -> set[int]:

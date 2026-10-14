@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 
+from landmass_emu.audit import EconomyAudit
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.progression import ProgressionService
 from landmass_emu.domain.regular import RegularService
@@ -50,6 +51,7 @@ class ChannelHandlers:
         inventory: InventoryRepository,
         shop: ShopService,
         equipment: EquipmentHandlers | None = None,
+        audit: EconomyAudit | None = None,
     ) -> None:
         records = ChannelRecords(lobby)
         room_handlers = RoomHandlers(lobby, rooms, records, match, maps, matches)
@@ -63,7 +65,7 @@ class ChannelHandlers:
         self._lists = ListHandlers(lobby, rooms, records)
         self._options = OptionHandlers(player_options)
         self._rooms = room_handlers
-        self._shop = ShopHandlers(shop)
+        self._shop = ShopHandlers(shop, audit)
         routes: dict[int, Handler] = {
             CsShopOp.ITEM_BUY_IN: self._shop.item_buy,
             CsOp.HEARTBEAT: self.heartbeat,

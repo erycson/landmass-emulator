@@ -5,7 +5,7 @@ Fontes: docs/architecture/07-progression.md §5.5 (R-DEST-*, R-EXT-*) e re/proto
 """
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from landmass_emu.domain.currency import Currency
@@ -27,6 +27,8 @@ class Destroyed:
     morat: bool
     gate: int | None
     system_slot: int | None
+    # Unidade como estava antes do DELETE, para o log de economia.
+    unit: ItemUnit | MoratUnit | None = field(default=None, compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,8 +37,12 @@ class Extended:
 
     index: int
     expires_at: datetime
-    cash: int
+    cash: int  # saldos depois do débito
     ld: int
+    currency: Currency = field(default=Currency.LD, compare=False)
+    price: int = field(default=0, compare=False)
+    days: int = field(default=0, compare=False)
+    previous_expires_at: datetime | None = field(default=None, compare=False)
 
 
 def _find_unit(units: list[ItemUnit], index: int, catalog_id: int) -> ItemUnit:
@@ -80,7 +86,7 @@ class DestroyService:
             raise ItemRefusal(UseResult.DENIED, "morat sem registro")
         await self._equipment.destroy_morat(account_id, morat.id)
         return Destroyed(
-            index=morat.gate_index, morat=True, gate=morat.gate_index, system_slot=None
+            index=morat.gate_index, morat=True, gate=morat.gate_index, system_slot=None, unit=morat
         )
 
     async def _destroy_item(
@@ -93,7 +99,9 @@ class DestroyService:
             owner = next((m for m in morats if m.id == unit.account_morat_id), None)
             gate = owner.gate_index if owner is not None else None
         await self._equipment.destroy_item(account_id, index)
-        return Destroyed(index=index, morat=False, gate=gate, system_slot=unit.system_slot)
+        return Destroyed(
+            index=index, morat=False, gate=gate, system_slot=unit.system_slot, unit=unit
+        )
 
 
 class ExtendService:
@@ -142,4 +150,13 @@ class ExtendService:
                 )
                 raise ItemRefusal(shortage, f"saldo abaixo de {offer.price}")
             after = await self._progression.get(account_id)
-            return Extended(index=index, expires_at=expires_at, cash=after.cash, ld=after.ld)
+            return Extended(
+                index=index,
+                expires_at=expires_at,
+                cash=after.cash,
+                ld=after.ld,
+                currency=currency,
+                price=offer.price,
+                days=offer.days,
+                previous_expires_at=unit.expires_at,
+            )

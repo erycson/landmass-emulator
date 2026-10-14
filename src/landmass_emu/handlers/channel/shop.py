@@ -7,6 +7,7 @@ Sucesso responde 551 (item) ou 552 (morat), seguido do 102 ou 103 da unidade nov
 import logging
 from collections.abc import Sequence
 
+from landmass_emu.audit import EconomyAudit, balances, unit_fields
 from landmass_emu.domain.currency import Currency
 from landmass_emu.domain.inventory import MoratUnit
 from landmass_emu.domain.shop import BuyResult, Purchase, ShopRefusal, ShopService
@@ -20,8 +21,9 @@ log = logging.getLogger(__name__)
 
 
 class ShopHandlers:
-    def __init__(self, shop: ShopService) -> None:
+    def __init__(self, shop: ShopService, audit: EconomyAudit | None = None) -> None:
         self._shop = shop
+        self._audit = audit or EconomyAudit()
 
     async def item_buy(self, session: Session, payload: bytes) -> Sequence[Reply]:
         if session.account is None:
@@ -35,8 +37,29 @@ class ShopHandlers:
             )
         except ShopRefusal as refusal:
             log.info("[%s] compra de %d recusada: %s", session.peer, req.catalog_id, refusal)
+            self._audit.record(
+                session,
+                "buy",
+                catalog_id=req.catalog_id,
+                currency=currency.name,
+                option=req.option,
+                result=int(refusal.result),
+                reason=str(refusal),
+            )
             return _refused(refusal.morat, refusal.result)
         log.info("[%s] compra de %d (%s) aprovada", session.peer, req.catalog_id, currency.name)
+        self._audit.record(
+            session,
+            "buy",
+            catalog_id=req.catalog_id,
+            currency=currency.name,
+            option=req.option,
+            price=purchase.price,
+            days=purchase.days,
+            **balances(purchase.currency, purchase.price, cash=purchase.cash, ld=purchase.ld),
+            **unit_fields(purchase.unit),
+            result=0,
+        )
         return _bought(purchase)
 
 

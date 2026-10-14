@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     match_ready_timeout: Annotated[float, Field(gt=0, le=300)] = 30.0
     # login_num do servidor de partida: o mesmo do cliente de teste (re/game_server_host.md §5).
     match_login_num: Annotated[str | None, Field(max_length=36)] = None
+    # Log de economia (compra, destruição, extensão), uma linha JSON por evento (D120).
+    audit_log: Path = Path("data/audit/economy.jsonl")
 
     @model_validator(mode="after")
     def _check_match(self) -> Settings:
