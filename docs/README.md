@@ -48,7 +48,7 @@ flowchart LR
 | [running-client.md](operations/running-client.md) | Como iniciar o cliente contra o emulador, parâmetros obrigatórios, modo janela. |
 | [game-server.md](operations/game-server.md) | Cópia do servidor de partida (`servidor-partida`), patches, `servidor.bat` (porta 7777), partida lançada pelo emulador (modo por processo), roteiro de teste de uma partida com dois clientes e casos que devem falhar. |
 | [production.md](operations/production.md) | Produção em Windows: configuração, subida, desligamento gracioso com aviso, saúde e logs, administração e backup (D206). |
-| [`../tools/`](../tools/) | Ferramentas versionadas: `server-patch` e `client-patch` (cada um com `aplicar.ps1` e `LEIA-ME.md`), `unreal` (`LMEmu`, `build_lmemu.py`, `transplant_texture.py`, `LMTexImport`) e `scripts` (`launch.ps1`, `gui.py`). |
+| [`../tools/`](../tools/) | Ferramentas versionadas: `server-patch` e `client-patch` (cada um com `aplicar.ps1` e `README.md`), `unreal` (`LMEmu`, `build_lmemu.py`, `transplant_texture.py`, `LMTexImport`) e `scripts` (`launch.ps1`, `gui.py`). |
 | [textures.md](operations/textures.md) | Troca de textura num pacote `.lm`: limites, alfa, import pelo UCC do LandMass e transplante para o pacote do jogo. |
 | [testing.md](operations/testing.md) | Níveis de teste, fixtures de captura e gates de qualidade. |
 | [reverse-engineering.md](operations/reverse-engineering.md) | Ferramentas (REA, Ghidra), fontes de verdade e como registrar achados. |

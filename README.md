@@ -28,10 +28,10 @@ O que falta e o que não foi verificado no jogo está em [`docs/roadmap.md`](doc
 
 ### 1. Prepare o cliente
 
-Instale o LandMass e aplique o **Client Patch**. Ele deixa o jogo em janela sem borda, com widescreen, FOV ajustado e texturas na qualidade máxima:
+Instale o LandMass, baixe o [dgVoodoo2](https://github.com/dege-diosg/dgVoodoo2/releases) (zip da versão 2.87.5 ou mais nova, extraído numa pasta) e aplique o **Client Patch**. Ele deixa o jogo em janela sem borda, com widescreen, FOV ajustado e texturas na qualidade máxima:
 
 ```
-powershell -ExecutionPolicy Bypass -File tools\client-patch\aplicar.ps1 -Cliente "C:\LandMass"
+powershell -ExecutionPolicy Bypass -File tools\client-patch\aplicar.ps1 -Cliente "C:\LandMass" -DgVoodoo "C:\Downloads\dgVoodoo2_87_5"
 ```
 
 | Opção | Efeito |
@@ -39,7 +39,7 @@ powershell -ExecutionPolicy Bypass -File tools\client-patch\aplicar.ps1 -Cliente
 | `-Largura 2560 -Altura 1080` | Resolução da partida. Sem ela, usa a do monitor principal. |
 | `-IniciarSozinho` | Ativa o botão de iniciar sem outro jogador pronto, para jogar contra bots. |
 
-Detalhes e como desfazer: [`tools/client-patch/LEIA-ME.md`](tools/client-patch/LEIA-ME.md).
+Detalhes e como desfazer: [`tools/client-patch/README.md`](tools/client-patch/README.md).
 
 ### 2. Peça uma conta
 
@@ -74,7 +74,7 @@ Monte uma cópia do cliente com o **Server Patch**. Ele aplica dois patches de b
 powershell -ExecutionPolicy Bypass -File tools\server-patch\aplicar.ps1 -Cliente "C:\LandMass" -Destino "D:\servidor-partida"
 ```
 
-Detalhes: [`tools/server-patch/LEIA-ME.md`](tools/server-patch/LEIA-ME.md).
+Detalhes: [`tools/server-patch/README.md`](tools/server-patch/README.md).
 
 ### 2. Configuração
 
@@ -157,7 +157,7 @@ O usuário (`--user`) tem de 1 a 12 caracteres: minúsculas, dígitos ou `_`. O 
 | `tools/server-patch/` | Montagem do servidor de partida, com `LMEmu.u` e rotas dos bots. |
 | `tools/unreal/` | Fontes do pacote `LMEmu` (UnrealScript), build e troca de textura. |
 | `tools/routes/` | Geração das rotas dos bots a partir do log do bake. |
-| `tools/re/` | Notas de engenharia reversa. |
+| `tools/re/` | Notas de engenharia reversa (só `.md`). |
 | `tools/scripts/` | Automação de teste com o cliente. |
 
 ## Desenvolvimento

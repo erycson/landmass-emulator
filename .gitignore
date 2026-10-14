@@ -13,5 +13,9 @@ data/
 gui_tmp.png
 .claude/
 
-# Pseudocódigo descompilado: só local, fora do repositório público.
-tools/re/**/*.c
+# tools/re: só as notas .md vão ao repositório; pseudocódigo, índices e logs ficam locais.
+tools/re/**
+!tools/re/**/
+!tools/re/**/*.md
+# dgVoodoo2: cada um baixa do site oficial (tools/client-patch/README.md).
+tools/client-patch/system/D3D8.dll

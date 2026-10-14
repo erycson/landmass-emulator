@@ -4,7 +4,7 @@ Status: cópia montada, patches aplicados, partidas testadas com clientes reais.
 
 ## Montagem da cópia
 
-Use o [`tools/server-patch`](../../tools/server-patch/LEIA-ME.md). O `aplicar.ps1` copia o cliente sem o que o servidor não usa, aplica os dois patches abaixo conferindo os bytes originais e instala o `LMEmu.u`:
+Use o [`tools/server-patch`](../../tools/server-patch/README.md). O `aplicar.ps1` copia o cliente sem o que o servidor não usa, aplica os dois patches abaixo conferindo os bytes originais e instala o `LMEmu.u`:
 
 ```
 powershell -ExecutionPolicy Bypass -File tools\server-patch\aplicar.ps1 -Cliente D:\landmass\cliente -Destino D:\landmass\servidor-partida

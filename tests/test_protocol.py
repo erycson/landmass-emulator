@@ -1,6 +1,5 @@
 import asyncio
 import struct
-from pathlib import Path
 
 import pytest
 
@@ -18,7 +17,19 @@ from landmass_emu.protocol.message import (
     MsResult,
 )
 
-FIXTURES = Path(__file__).parent / "fixtures"
+# Capturas reais do cliente: o MS_LOGIN (14 bytes de cabeçalho e GUID, mais lixo de pilha que o
+# cliente manda no buffer) seguido de heartbeats (`02 00 4d 00`).
+_HEARTBEAT = "02004d00"
+CAPTURAS = {
+    "guid_1": bytes.fromhex(
+        "2e008d0c0000000000000000310000001ca71a0060246a76d16f8adafeffffff"
+        "74a11a007f9569766400000000010000" + _HEARTBEAT * 6
+    ),
+    "guid_developerguid": bytes.fromhex(
+        "2e008d0c0000000000000000646576656c6f7065726775696400aea0feffffff"
+        "74a11a007f9569766400000000010000" + _HEARTBEAT * 24
+    ),
+}
 
 
 def _reader(data: bytes) -> asyncio.StreamReader:
@@ -36,7 +47,7 @@ async def _frames(data: bytes) -> list[bytes]:
 
 
 async def test_captura_real_login_e_heartbeats() -> None:
-    frames = await _frames((FIXTURES / "ms_login_guid_1.bin").read_bytes())
+    frames = await _frames(CAPTURAS["guid_1"])
     headers = [unpack_header(f)[0] for f in frames]
     assert headers[0] == Header(MsOp.LOGIN, MESSAGE_NET_CODE)
     assert all(h == Header(MsOp.HEARTBEAT, MESSAGE_NET_CODE) for h in headers[1:])
@@ -45,10 +56,10 @@ async def test_captura_real_login_e_heartbeats() -> None:
 
 @pytest.mark.parametrize(
     ("fixture", "guid"),
-    [("ms_login_guid_1.bin", "1"), ("ms_login_guid_developerguid.bin", "developerguid")],
+    [("guid_1", "1"), ("guid_developerguid", "developerguid")],
 )
 async def test_ms_login_in_da_captura(fixture: str, guid: str) -> None:
-    [login, *_] = await _frames((FIXTURES / fixture).read_bytes())
+    [login, *_] = await _frames(CAPTURAS[fixture])
     _, payload = unpack_header(login)
     msg = MsLoginIn.unpack(payload)
     assert msg == MsLoginIn(login_num=guid)

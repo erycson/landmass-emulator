@@ -6,7 +6,7 @@ Instalação, subida, desligamento gracioso, saúde, logs, administração e bac
 
 - Windows 10 ou 11, ou Windows Server, de 64 bits.
 - Python e `uv`, como no desenvolvimento ([README](../../README.md)).
-- Servidor de partida montado com o **Server Patch** ([`tools/server-patch/LEIA-ME.md`](../../tools/server-patch/LEIA-ME.md)): uma cópia do cliente com os patches de `Core.dll` e `LandMass.exe` e o `LMEmu.u`.
+- Servidor de partida montado com o **Server Patch** ([`tools/server-patch/README.md`](../../tools/server-patch/README.md)): uma cópia do cliente com os patches de `Core.dll` e `LandMass.exe` e o `LMEmu.u`.
 - Firewall:
   - TCP 7313 e 7314, para o emulador.
   - UDP 7800 a 7899, para as partidas (`LandMass.exe`).

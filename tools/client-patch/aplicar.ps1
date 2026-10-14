@@ -1,7 +1,7 @@
 # Aplica o Client Patch numa instalação do LandMass.
-# Uso: powershell -ExecutionPolicy Bypass -File aplicar.ps1 -Cliente "C:\caminho\LandMass" [-Largura 2560 -Altura 1080] [-IniciarSozinho]
+# Uso: powershell -ExecutionPolicy Bypass -File aplicar.ps1 -Cliente "C:\caminho\LandMass" -DgVoodoo "C:\Downloads\dgVoodoo2_87_5" [-Largura 2560 -Altura 1080] [-IniciarSozinho]
 # O que faz:
-#   - Copia D3D8.dll e dgVoodoo.conf (janela sem borda; VRAM 1024).
+#   - Copia o D3D8.dll do dgVoodoo2 (MS\x86 da pasta -DgVoodoo, baixada à parte) e o dgVoodoo.conf.
 #   - No system\LandMass.ini: Use16bit=False, Use16bitTextures=False e TextureDetail*=UltraHigh.
 #   - Widescreen: partida na resolução da tela (padrão: monitor principal), menus em 4:3 da mesma
 #     altura e FOV com a mesma visão vertical do 4:3 (Hor+) no User.ini.
@@ -9,6 +9,7 @@
 #   - Guarda os arquivos originais como *.antes-patch na primeira aplicação.
 param(
     [Parameter(Mandatory)][string]$Cliente,
+    [string]$DgVoodoo = '',
     [int]$Largura = 0,
     [int]$Altura = 0,
     [switch]$IniciarSozinho
@@ -20,6 +21,10 @@ $ini = Join-Path $sys 'LandMass.ini'
 $user = Join-Path $sys 'User.ini'
 $conf = Join-Path $sys 'dgVoodoo.conf'
 if (-not (Test-Path $ini)) { throw "LandMass.ini não encontrado em $sys" }
+
+# O dgVoodoo2 não vem no repositório: pasta extraída do zip oficial, ou o D3D8.dll copiado para system\ deste patch.
+$dll = if ($DgVoodoo) { Join-Path $DgVoodoo 'MS\x86\D3D8.dll' } else { Join-Path $PSScriptRoot 'system\D3D8.dll' }
+if (-not (Test-Path $dll)) { throw "D3D8.dll do dgVoodoo2 não encontrado em $dll. Baixe o dgVoodoo2 e passe -DgVoodoo <pasta extraída> (veja o README.md)." }
 
 if ($Largura -le 0 -or $Altura -le 0) {
     # Tamanho lógico (com a escala do Windows), o mesmo que o jogo vê por não ser DPI-aware.
@@ -38,7 +43,7 @@ foreach ($f in 'LandMass.ini', 'User.ini', 'D3D8.dll', 'dgVoodoo.conf') {
     if ((Test-Path $p) -and -not (Test-Path "$p.antes-patch")) { Copy-Item $p "$p.antes-patch" }
 }
 
-Copy-Item (Join-Path $PSScriptRoot 'system\D3D8.dll'), (Join-Path $PSScriptRoot 'system\dgVoodoo.conf') $sys -Force
+Copy-Item $dll, (Join-Path $PSScriptRoot 'system\dgVoodoo.conf') $sys -Force
 
 $t = [IO.File]::ReadAllText($conf)
 $t = [regex]::Replace($t, '(?m)^(ExtraEnumeratedResolutions\s*=).*$', "`$1 ${Largura}x${Altura}, ${menuX}x${Altura}")
