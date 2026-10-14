@@ -24,11 +24,11 @@ Uma partida por sala. O canal lança um servidor próprio para cada sala que ini
 - **Por processo** (`ProcessMatchHost`): com `LANDMASS_MATCH_SERVER_DIR` (pasta `system\` do servidor-partida):
   1. Escolhe a primeira porta UDP livre em `LANDMASS_MATCH_PORT_MIN..MAX`. O teste é um bind e fechamento, feito antes do lançamento.
   2. Grava a seção `[m<8 hex> LMEmuLoadout]` no `LMEmu.ini` da pasta de sistema, com uma linha `Players=` por jogador (`hosting/loadout.py`, D190). Falha de escrita é falha de início.
-  3. Lança `LandMass.exe <mapa>?listen?game=<classe>?MaxPlayers=<n>?TimeLimit=<t>?GoalScore=<g>?lmemu=<chave> -server PORT=<porta> -log login_server=<msg>?version=<v>?login_num=<l>`. `login_server` é `LANDMASS_PUBLIC_HOST:LANDMASS_MESSAGE_PORT`. A classe é `LMEmu.*` (D190).
+  3. Lança `LandMass.exe <mapa>?listen?game=<classe>?MaxPlayers=<n>?MaxSpectators=<s>?TimeLimit=<t>?GoalScore=<g>?lmemu=<chave> -server PORT=<porta> -log login_server=<msg>?version=<v>?login_num=<l>`. `login_server` é `LANDMASS_PUBLIC_HOST:LANDMASS_MESSAGE_PORT`. A classe é `LMEmu.*` (D190).
   4. Espera a porta aparecer em `netstat -ano -p UDP` com o PID do próprio processo, até `LANDMASS_MATCH_READY_TIMEOUT` segundos. Não há bind de teste depois do lançamento: disputaria a porta com o servidor.
   5. Se o processo cai antes de abrir a porta, ou o prazo vence, o processo é encerrado, a seção sai do `LMEmu.ini` e a partida falha.
 - `PORT=` abre uma única tentativa, sem fallback (re/game_server_host.md, §10). Porta ocupada é falha, não troca.
-- Plano da partida (`domain/match.py`, puro): mapa de `maps` (`RecordIndex` = `map_num`), classe pelo modo e pelo `OPType` do mapa (D53, D170, D192), `MaxPlayers` limitado pelo mapa e no mínimo 2.
+- Plano da partida (`domain/match.py`, puro): mapa de `maps` (`RecordIndex` = `map_num`), classe pelo modo e pelo `OPType` do mapa (D53, D170, D192), `MaxPlayers` limitado pelo mapa e no mínimo 2. `MaxSpectators` vem de `MatchPlan.max_spectators` (`MAX_SPECTATORS` = 2, D197, D198).
 - Equipamento (`domain/loadout.py`, puro, com as portas de inventário e conta): para cada jogador, o morat do gate escolhido no 401, com peças e pinturas montadas, senão o `DefaultSet` do wdb. Ver D190.
 
 ### Fim da partida

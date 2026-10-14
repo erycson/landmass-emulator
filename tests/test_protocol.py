@@ -162,6 +162,20 @@ def test_server_info_tamanho_e_offsets() -> None:
     assert raw[0x24 : 0x24 + 7] == b"Canal 1" and raw[0x24 + 7] == 0
 
 
+def test_server_info_leva_o_channel_mode_no_byte_4() -> None:
+    # 6 é CM_CLAN (Core.u): com ele o cliente entra na tela de clã (XInterface L21591).
+    raw = LmServerInfo(
+        server_id=2,
+        service_port=7314,
+        max_client_count=100,
+        server_name="Clã",
+        service_address="127.0.0.1",
+        channel_mode=6,
+    ).pack()
+    assert raw[4] == 6
+    assert LmServerInfo(1, 1, 1, "", "").pack()[4] == 0
+
+
 def test_server_info_trunca_endereco_em_15_e_nome_em_35() -> None:
     raw = LmServerInfo(
         server_id=1,

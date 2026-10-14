@@ -26,7 +26,8 @@ class ChannelRecords:
             state=room.state,
             game_mode=room.game_mode,
             team_count=room.team_count,
-            curr_player=len(room.members),
+            curr_player=len(room.players()),
+            curr_spectator=room.spectator_count(),
             max_player=room.max_player,
             map_num=room.map_num,
             limit_score=room.limit_score,
@@ -39,12 +40,17 @@ class ChannelRecords:
     def lobby_players(self) -> tuple[CsChannelPlayer, ...]:
         """Todos do lobby, na ordem de entrada, cada um com o nick da conta."""
         return tuple(
-            CsChannelPlayer(client_guid=guid, nick=nick, total_exp=self._lobby.exp_of(guid))
+            CsChannelPlayer(
+                client_guid=guid,
+                nick=nick,
+                total_exp=self._lobby.exp_of(guid),
+                access=self._lobby.access_of(guid),
+            )
             for guid, nick in self._lobby.players()
         )
 
     def room_player(self, room: Room, guid: int) -> CsRoomPlayer:
-        """Registro de um jogador da sala (317 e 549): nick e exp vêm do lobby."""
+        """Registro de um jogador da sala (317 e 549): nick, exp e nível vêm do lobby."""
         member = room.members[guid]
         return CsRoomPlayer(
             client_guid=guid,
@@ -53,6 +59,7 @@ class ChannelRecords:
             morats=member.morats,
             nick=self._lobby.nickname_of(guid) or "",
             total_exp=self._lobby.exp_of(guid),
+            access=self._lobby.access_of(guid),
         )
 
     def room_players(self, room: Room) -> CsRoomPlayerInfoOut:

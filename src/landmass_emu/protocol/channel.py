@@ -20,7 +20,7 @@ MAX_LOBBY_ENTRIES = 1600
 
 # Registro de sala (re/rooms.md §1 e §2; offsets relativos ao valor do nó, ver `CsRoom`).
 ROOM_SLOTS = 70  # node+0x60..0x177 (`FUN_10019e90` + `0x18*4`; 421 e 549 usam o mesmo bloco)
-ROOM_SPECTATORS = 60  # node+0x184..0x273
+ROOM_SPECTATORS = 60  # node+0x184..0x273; sem uso confirmado, sempre -1 (espectador é slot 60..69)
 ROOM_RECORD_SIZE = 0x264  # 612: 302 copia 0x99 dwords para o nó (`disp@1312-1347`)
 ROOM_HEAD_SIZE = 0x44  # 68: entrada de 141 (`disp@1039-1081`, passo 0x44)
 ROOM_INFO_SIZE = 0x38  # 56: 314 lê até @0x36 + 2
@@ -93,6 +93,8 @@ class CsOp(IntEnum):
     SAVE_OPTION = 544
     SEND_MESSAGE = 240
     SEND_MESSAGE_OUT = 241
+    SEND_COMMAND = 250  # /NOTIFY e /ALLNOTIFY do console GM (D193)
+    SEND_COMMAND_OUT = 251
     READY_GAME_ERROR = 404
     ERROR = 54  # envelope S→C: u16 opcode real @0, i32 código @4 (NotifyErrorMessage)
 
@@ -294,6 +296,45 @@ class CsSendMessageOut:
         return self._HEAD.pack(self.sender, self.msg_type, len(self.text)) + self.text
 
 
+@dataclass(frozen=True, slots=True)
+class CsSendCommandIn:
+    """SEND_COMMAND (250): `u8 todos` @0 (1 = `/ALLNOTIFY`, 0 = `/NOTIFY`), `u8 len` @1, texto[len]
+    @2. Evidência: `FUN_100173b0` grava 'Y' como 1 e corta o texto em 0x78; `FUN_10001790` copia
+    os 2 bytes de cabeçalho e `len` bytes de texto (`re/layouts_f0.md` §7.6, `protocol_full.md`)."""
+
+    all_server: bool
+    text: bytes
+    _HEAD = struct.Struct("<BB")
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> CsSendCommandIn:
+        if len(payload) < cls._HEAD.size:
+            raise ValueError(f"CS_SEND_COMMAND_IN curto: {len(payload)} bytes")
+        flag, length = cls._HEAD.unpack_from(payload)
+        if length > MAX_CHAT_TEXT or len(payload) < cls._HEAD.size + length:
+            raise ValueError(f"CS_SEND_COMMAND_IN inconsistente: len={length}")
+        return cls(flag != 0, payload[2 : 2 + length])
+
+
+@dataclass(frozen=True, slots=True)
+class CsSendCommandOut:
+    """SEND_COMMAND_OUT (251): `u8 len` @0, texto[len] @1 e NUL logo depois.
+
+    Evidência: o case 0xfb de `re/LM_Engine.dll/channel_dispatch_FUN_1001da60.c` (L1281-1311) lê
+    `*param_2` como tamanho e copia esse número de bytes de `param_2 + 1`; o `NotifySendCommand`
+    recebe o ponteiro do texto, lido como C string. O `re/protocol_full.md` chama @0 de "comando",
+    mas o código o usa como tamanho. O cliente não usa o byte de flag do pedido.
+    """
+
+    text: bytes
+    opcode: ClassVar[int] = CsOp.SEND_COMMAND_OUT
+
+    def pack(self) -> bytes:
+        if len(self.text) > MAX_CHAT_TEXT:
+            raise ValueError(f"aviso longo demais: {len(self.text)} bytes")
+        return bytes((len(self.text),)) + self.text + b"\x00"
+
+
 # ---- Salas (marco 3). Layouts e evidências: re/rooms.md §1-§8 e re/channel_server.md §2-§3. -----
 # Os offsets do registro (`CsRoom`) são do corpo do 302 e relativos ao valor do nó (nó + 0x10),
 # que é o que `FUN_1001d640` devolve. O 314, o 412 e o erro do 312 usam o mesmo mapa.
@@ -390,11 +431,12 @@ class CsChangeRoomSlotIn:
 class CsExpelPlayerIn:
     """EXPEL_PLAYER (700), 18 bytes: `u8 kind` @0 e `char nick[17]` @1 (wrapper `0x10017bb0`).
 
-    `kind`: 0x10 WEB, 0x21 CHANNEL, 0x22 LOBBY. É o `/EXPEL` do console (`XInterface` L21290), não
-    a expulsão do dono da sala (essa é o 451). O servidor não executa: o emulador não tem papel de
-    administrador, e expulsar a pedido de qualquer jogador deixaria tirar qualquer um do canal.
+    `kind`: 0x10 WEB, 0x21 CHANNEL, 0x22 LOBBY (`FUN_10017bb0`). É o `/EXPEL` do console
+    (`XInterface` L21281), não a expulsão do dono da sala (essa é o 451). Quem pede precisa de
+    `ucAccess` 9 ou mais (`domain/access.py`); o servidor confere.
 
-    shortcut: revisar com papel de administrador (`ucAccess`); até lá o 700 é ignorado."""
+    Evidência do cliente: `ExpelPlayer` grava `_DAT_1005aa54 = -1` antes do pedido, e o 701 grava o
+    resultado nessa mesma variável. Por isso o 701 é resposta a quem pediu (D193)."""
 
     kind: int
     nickname: str
@@ -507,8 +549,10 @@ class CsRoom:
       0x3D u8 max_player | 0x3E u8 open | 0x40 i16 map_num | 0x44 i16 limit_score
       0x46 u8 limit_time | 0x47 u8 game_scale | 0x48 u8 team_damage (zero aqui)
       0x4C i32 master
-      0x50 + 4*i, i < 70: guid do slot i, -1 se vazio (`ROOM_SLOTS`)
-      0x174 + 4*j, j < 60: espectadores, -1 se vazio (`ROOM_SPECTATORS`)
+      0x50 + 4*i, i < 70: guid do slot i, -1 se vazio (`ROOM_SLOTS`). Slots 60..69 são de
+          espectador (D197): o cliente lê `MySlot >= 60` nessa lista
+      0x174 + 4*j, j < 60: bloco sem uso confirmado (provável `enemy_player[MAX_ROOM_PLAYER]`);
+          sai sempre -1 (`ROOM_SPECTATORS`)
 
     shortcut: a entrada de 141 tem 0x44 bytes, então a escala (0x47) não chega à lista do lobby:
     a sala aparece com escala 0 até o 302 ou o 314 da sala. Revisar com captura da lista."""
@@ -668,11 +712,15 @@ class CsRoomPlayer:
     morats: int
     nick: str = ""
     total_exp: int = 0
+    access: int = 0
     _TAIL = struct.Struct("<BBBBi")
 
     def pack(self) -> bytes:
         head = CsChannelPlayer(
-            client_guid=self.client_guid, nick=self.nick, total_exp=self.total_exp
+            client_guid=self.client_guid,
+            nick=self.nick,
+            total_exp=self.total_exp,
+            access=self.access,
         ).pack()
         return head + self._TAIL.pack(self.slot, int(self.ready), 0, 0, self.morats)
 

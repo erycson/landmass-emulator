@@ -28,6 +28,7 @@ from landmass_emu.domain.match_stats import (
     with_played,
 )
 from landmass_emu.domain.rooms import (
+    ROOM_PLAYER_SLOTS,
     ROOM_PLAYING,
     ROOM_WAITING,
     Room,
@@ -47,7 +48,6 @@ from landmass_emu.protocol.channel import (
     ROOM_FLAG_LIMIT_TIME,
     ROOM_FLAG_MAP,
     ROOM_FLAG_MODE,
-    ROOM_SLOTS,
     CsChangeRoomMasterOut,
     CsChangeRoomPropertyIn,
     CsChangeRoomPropertyOut,
@@ -132,7 +132,7 @@ def _settings(req: CsChangeRoomPropertyIn) -> dict[str, int]:
         out["game_mode"] = _clamp(req.game_mode, 0, 255)
         out["team_count"] = _clamp(req.team_count, 0, 255)
     if flags & ROOM_FLAG_LIMIT_PLAYER:
-        out["max_player"] = _clamp(req.max_player, 1, ROOM_SLOTS)
+        out["max_player"] = _clamp(req.max_player, 1, ROOM_PLAYER_SLOTS)
     if flags & ROOM_FLAG_LIMIT_TIME:
         out["limit_time"] = _clamp(req.limit_time, 0, 255)
     if flags & ROOM_FLAG_LIMIT_SCORE:
@@ -188,7 +188,7 @@ class RoomHandlers:
                 scale=_clamp(req.scale, 0, 255),
                 game_mode=_clamp(req.game_mode, 0, 255),
                 map_num=_clamp(req.map_num, 0, 32767),
-                max_player=_clamp(req.max_player, 1, ROOM_SLOTS),
+                max_player=_clamp(req.max_player, 1, ROOM_PLAYER_SLOTS),
                 team_count=_clamp(req.team_count, 0, 255),
                 limit_time=_clamp(req.limit_time, 0, 255),
                 limit_score=_clamp(req.limit_score, 0, 32767),
@@ -274,6 +274,9 @@ class RoomHandlers:
             self._match.finish(room_id)
             self._open.pop(room_id, None)
             self._left.pop(room_id, None)
+            # Espectadores que sobraram saem junto: 322 para cada um, como em `room_expel`.
+            for espectador in result.spectators:
+                self._to_lobby(CsOutRoomOut(room_id, espectador))
             self._to_lobby(CsRemoveRoomOut(room_id))
             return
         if result.new_master is not None:
@@ -597,7 +600,13 @@ class RoomHandlers:
         if self._loadout is None:
             return ()
         membros = [
-            LoadoutMember(guid, self._lobby.nickname_of(guid) or "", membro.slot, membro.morats)
+            LoadoutMember(
+                guid,
+                self._lobby.nickname_of(guid) or "",
+                membro.slot,
+                membro.morats,
+                spectator=membro.spectator,
+            )
             for guid, membro in room.members.items()
         ]
         try:
@@ -607,7 +616,8 @@ class RoomHandlers:
             return ()
 
     def _open_record(self, room: Room, plan: MatchPlan) -> MatchRecord:
-        """Histórico no início: quem está na sala agora joga. Resultado e fim vêm em `_save`."""
+        """Histórico no início: quem joga agora está na sala com slot de jogador. Espectador não
+        entra no histórico nem nas recompensas (D197). Resultado e fim vêm em `_save`."""
         now = datetime.now(UTC)
         players = tuple(
             PlayerMatchStats(
@@ -617,7 +627,7 @@ class RoomHandlers:
                 team=None,
                 is_master=guid == room.master,
             )
-            for guid, member in room.members.items()
+            for guid, member in room.players().items()
         )
         return MatchRecord(
             room_id=room.room_id,

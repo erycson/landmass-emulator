@@ -60,7 +60,7 @@ class Service:
         return server
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        session = Session(peer=str(writer.get_extra_info("peername")))
+        session = Session(peer=str(writer.get_extra_info("peername")), closer=writer.close)
         log.info("[%s] conectou", session.peer)
         tasks = [asyncio.create_task(self._pump(session, writer))]
         if self._heartbeat is not None:

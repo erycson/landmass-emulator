@@ -137,8 +137,8 @@ No fluxo por token, `id` e `pw` vêm vazios e são ignorados (senha fica para o 
 | 0x00 | `u16` | `server_id` | 1, 2, ... (ordem na configuração) |
 | 0x02 | `u8` | `server_type` | `0` |
 | 0x03 | `u8` | `server_group` | `0` |
-| 0x04 | `u8` | `channel_mode` | `0` |
-| 0x05 | `u8` | `access_level` | `0` |
+| 0x04 | `u8` | `channel_mode` | `0`; vem de `LANDMASS_CHANNELS[].mode`. 6 é `CM_CLAN` (D199, `docs/protocol/clan-war.md`) |
+| 0x05 | `u8` | `access_level` | `0` (requisito do canal; o cliente não lê, D195) |
 | 0x06..0x07 | `byte[2]` | padding | `0` |
 | 0x08 | `i32` | `access_exp` | `0` |
 | 0x0C | `u16` | `max_client_count` | `LANDMASS_CHANNELS[i].max_clients` |

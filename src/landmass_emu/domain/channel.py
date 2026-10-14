@@ -10,3 +10,5 @@ class Channel:
     address: str
     port: int
     max_clients: int
+    # channel_mode do LM_SERVER_INFO: 0 normal; 6 é CM_CLAN.
+    mode: int = 0

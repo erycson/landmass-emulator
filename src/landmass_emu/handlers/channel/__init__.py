@@ -13,6 +13,7 @@ from landmass_emu.handlers.channel.chat import ChatHandlers
 from landmass_emu.handlers.channel.entry import EntryHandlers
 from landmass_emu.handlers.channel.equipment import EquipmentHandlers
 from landmass_emu.handlers.channel.gift import GiftHandlers
+from landmass_emu.handlers.channel.gm import GmHandlers
 from landmass_emu.handlers.channel.lists import ListHandlers
 from landmass_emu.handlers.channel.login import LoginHandlers
 from landmass_emu.handlers.channel.morat import MoratHandlers
@@ -80,6 +81,7 @@ class ChannelHandlers:
         self._login = LoginHandlers(self._entry, accounts, inventory)
         self._morats = MoratHandlers(accounts, RegularService())
         self._chat = ChatHandlers(lobby, rooms)
+        self._gm = GmHandlers(lobby, audit)
         self._lists = ListHandlers(lobby, rooms, records, profiles)
         self._options = OptionHandlers(player_options)
         self._rooms = room_handlers
@@ -91,6 +93,8 @@ class ChannelHandlers:
             CsOp.IN_CHANNEL: self._entry.in_channel,
             CsOp.OUT_CHANNEL: self._entry.out_channel,
             CsOp.SEND_MESSAGE: self._chat.send_message,
+            CsOp.SEND_COMMAND: self._gm.send_command,
+            CsOp.EXPEL_PLAYER: self._gm.expel_player,
             CsOp.SAVE_OPTION: self._options.save_option,
             CsProgressionOp.TUTORIAL_CLEAR: progression_handlers.tutorial_clear,
             CsOp.CREATE_ROOM: self._rooms.create_room,

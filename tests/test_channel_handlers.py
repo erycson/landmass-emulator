@@ -163,8 +163,8 @@ def test_tabela_do_roteador_cobre_entrada_chat_salas_e_listas() -> None:
         CsShopOp.ITEM_BUY_IN,
     }
     assert esperados <= set(handlers.router)
-    # 700 é o `/EXPEL` do console: não é executado (ver `CsExpelPlayerIn`).
-    assert CsOp.EXPEL_PLAYER not in handlers.router
+    assert CsOp.EXPEL_PLAYER in handlers.router  # `/EXPEL` roteado; só GM executa (D193)
+    assert CsOp.SEND_COMMAND in handlers.router
 
 
 def test_registros_do_lobby_na_ordem_de_entrada_com_nick() -> None:

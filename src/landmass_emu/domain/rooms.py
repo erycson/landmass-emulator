@@ -12,6 +12,14 @@ from enum import Enum
 ROOM_WAITING = 0
 ROOM_PLAYING = 1
 MAX_SLOTS = 70
+# Slots de jogador são 0..59. O cliente trata slot >= 60 como espectador (`MySlot >= 60`, que
+# põe `?SpectatorOnly=1` na URL; XInterface L29597) e 549 conta `idx < 0x3c` como jogador
+# (re/rooms.md §2).
+ROOM_PLAYER_SLOTS = 60
+# Teto de espectadores por sala: o mesmo `?MaxSpectators=` que vai para o servidor de partida.
+# shortcut: valor do LandMass.ini de referência (MaxSpectators=2). O cliente aceita mais slots
+# (70 - 60); o teto é o que o servidor de partida aceita. Confirmar com o servidor de partida real.
+MAX_SPECTATORS = 2
 NAME_MIN_BYTES = 3
 # 301 traz char[51] e char[13] (re/layouts_f0.md §7.1).
 NAME_MAX_BYTES = 50
@@ -37,6 +45,7 @@ class RoomReason(Enum):
     BAD_PASSWORD = "senha longa demais"
     BAD_SETTING = "configuração inválida para a sala"
     NOT_INVITED = "sem convite pendente para esta sala"
+    SPECTATOR = "espectador não entra na partida nem muda de grupo"
 
 
 class RoomError(Exception):
@@ -50,6 +59,10 @@ class RoomMember:
     slot: int
     ready: bool = False
     morats: int = 0
+
+    @property
+    def spectator(self) -> bool:
+        return self.slot >= ROOM_PLAYER_SLOTS
 
 
 @dataclass(slots=True)
@@ -74,9 +87,27 @@ class Room:
     def match_over(self) -> bool:
         return self.state == ROOM_PLAYING and not self.in_game
 
+    def players(self) -> dict[int, RoomMember]:
+        return {guid: m for guid, m in self.members.items() if not m.spectator}
+
+    def spectator_count(self) -> int:
+        return sum(1 for m in self.members.values() if m.spectator)
+
     def free_slot(self) -> int | None:
         taken = {m.slot for m in self.members.values()}
         return next((i for i in range(self.max_player) if i not in taken), None)
+
+    def free_spectator_slot(self) -> int | None:
+        """Slot de espectador (60..69) livre, ou None se o teto de espectadores já foi atingido."""
+        if self.spectator_count() >= MAX_SPECTATORS:
+            return None
+        taken = {m.slot for m in self.members.values()}
+        return next((i for i in range(ROOM_PLAYER_SLOTS, MAX_SLOTS) if i not in taken), None)
+
+    def entry_slot(self) -> int | None:
+        """Vaga de quem entra: jogador se houver seat; senão espectador, se houver teto."""
+        slot = self.free_slot()
+        return self.free_spectator_slot() if slot is None else slot
 
     def slot_guids(self) -> tuple[int, ...]:
         slots = [-1] * MAX_SLOTS
@@ -90,6 +121,8 @@ class LeaveResult:
     room: Room
     removed: bool
     new_master: int | None
+    # Espectadores que saíram junto com a sala quando o último jogador saiu.
+    spectators: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,7 +206,7 @@ class Rooms:
             raise RoomError(RoomReason.STARTED)
         if self.room_of(target) is not None:
             raise RoomError(RoomReason.ALREADY_IN_ROOM)
-        if len(room.members) >= room.max_player:
+        if room.entry_slot() is None:
             raise RoomError(RoomReason.FULL)
         self._invites[target] = room.room_id
         return room
@@ -188,7 +221,9 @@ class Rooms:
         self._invites.pop(guid, None)
 
     def _enter(self, room_id: int, guid: int, password: str | None) -> Room:
-        """Põe `guid` no primeiro slot livre. `password` None pula a conferência (convite)."""
+        """Põe `guid` no primeiro slot livre: de jogador, ou de espectador sem vaga de jogador.
+        `password` None pula a conferência (convite). Sala jogando segue recusada (STARTED):
+        entrar durante a partida fica para depois, sem 403 para quem chega."""
         if self.room_of(guid) is not None:
             raise RoomError(RoomReason.ALREADY_IN_ROOM)
         room = self._rooms.get(room_id)
@@ -198,8 +233,8 @@ class Rooms:
             raise RoomError(RoomReason.STARTED)
         if password is not None and room.password and room.password != password:
             raise RoomError(RoomReason.WRONG_PASSWORD)
-        slot = room.free_slot()
-        if slot is None or len(room.members) >= room.max_player:
+        slot = room.entry_slot()
+        if slot is None:
             raise RoomError(RoomReason.FULL)
         room.members[guid] = RoomMember(slot=slot)
         self._room_of[guid] = room_id
@@ -213,12 +248,18 @@ class Rooms:
         del room.members[guid]
         del self._room_of[guid]
         room.in_game.discard(guid)
-        if not room.members:
+        jogadores = room.players()
+        if not jogadores:
+            # Sem jogador a sala acaba; os espectadores que sobraram saem junto (ficam sem sala).
+            sobra = tuple(room.members)
+            for espectador in sobra:
+                del self._room_of[espectador]
+            room.members.clear()
             del self._rooms[room.room_id]
-            return LeaveResult(room, removed=True, new_master=None)
+            return LeaveResult(room, removed=True, new_master=None, spectators=sobra)
         if room.master != guid:
             return LeaveResult(room, removed=False, new_master=None)
-        room.master = next(iter(room.members))
+        room.master = next(iter(jogadores))  # dono nunca é espectador
         if room.state == ROOM_WAITING:
             room.members[room.master].ready = False  # novo dono sem pronto na espera (D77)
         return LeaveResult(room, removed=False, new_master=room.master)
@@ -232,6 +273,8 @@ class Rooms:
             raise RoomError(RoomReason.NOT_IN_ROOM)
         if room.state != ROOM_WAITING:
             raise RoomError(RoomReason.STARTED)
+        if room.members[guid].spectator:
+            raise RoomError(RoomReason.SPECTATOR)
         grupos = max(room.team_count, 1)
         ocupados = {m.slot for g, m in room.members.items() if g != guid}
         slot = next(
@@ -251,6 +294,8 @@ class Rooms:
         if room.state != ROOM_WAITING:
             raise RoomError(RoomReason.STARTED)
         member = room.members[guid]
+        if member.spectator:
+            raise RoomError(RoomReason.SPECTATOR)  # espectador não tem pronto nem morat (D197)
         member.ready = not member.ready
         member.morats = morats
         return room, member.ready
@@ -264,13 +309,13 @@ class Rooms:
             raise RoomError(RoomReason.NOT_OWNER)
         if room.state != ROOM_WAITING:
             raise RoomError(RoomReason.STARTED)
-        others = [m for guid, m in room.members.items() if guid != owner]
+        others = [m for guid, m in room.players().items() if guid != owner]
         if not others or not all(m.ready for m in others):
             raise RoomError(RoomReason.NOT_READY)
         room.members[owner].morats = morats
         room.members[owner].ready = True  # o cliente exige pronto do dono para entrar (D77)
         room.state = ROOM_PLAYING
-        room.in_game = set(room.members)
+        room.in_game = set(room.players())  # espectador não joga: não conta no fim (D197)
         return room
 
     def exit_play(self, guid: int) -> Room | None:
@@ -304,8 +349,9 @@ class Rooms:
         if not set(changes) <= SETTING_FIELDS:
             raise RoomError(RoomReason.BAD_SETTING)
         if "max_player" in changes:
-            ocupados = max((m.slot + 1 for m in room.members.values()), default=0)
-            if changes["max_player"] < max(len(room.members), ocupados):
+            jogadores = room.players().values()
+            ocupados = max((m.slot + 1 for m in jogadores), default=0)
+            if changes["max_player"] < max(len(jogadores), ocupados):
                 raise RoomError(RoomReason.BAD_SETTING)
         for name, value in changes.items():
             setattr(room, name, value)

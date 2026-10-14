@@ -77,6 +77,7 @@ def channels_from(settings: Settings) -> Sequence[Channel]:
             address=c.address or settings.public_host,
             port=c.port or settings.channel_port,
             max_clients=c.max_clients,
+            mode=c.mode,
         )
         for i, c in enumerate(settings.channels, start=1)
     ]

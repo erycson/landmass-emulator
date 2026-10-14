@@ -12,6 +12,9 @@ class ChannelConfig(BaseModel):
     max_clients: int = 100
     address: Annotated[str | None, Field(max_length=15)] = None
     port: int | None = None
+    # `channel_mode` do LM_SERVER_INFO: 0 normal; 6 é CM_CLAN (Core.u). Com 6, o cliente entra na
+    # tela de clã; os opcodes de clã do canal ainda não são atendidos (docs/protocol/clan-war.md).
+    mode: Annotated[int, Field(ge=0, le=255)] = 0
 
 
 class Settings(BaseSettings):
