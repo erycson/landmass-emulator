@@ -115,7 +115,7 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 462 | S→C | `ROOM_INVITE_OUT` | `i32 result` | implementado |
 | 463 | S→C | `ROOM_INVITE_NOTIFY` | 21 bytes | implementado (shortcut: nick de @4 inferido) |
 | 471 | C→S | `ROOM_INVITE_ANSWER` | `i32 room_id`, `u8 accept` | implementado |
-| 500 | C→S | `EXIT_PLAY` | sem corpo | implementado (shortcut: fim da partida quando todos saem, D48; o cliente real não confirmou). O 311 de quem volta à sala também encerra a partida para o último em jogo (D150) |
+| 500 | C→S | `EXIT_PLAY` | sem corpo | implementado (shortcut: fim da partida quando todos saem, D48; o cliente real não confirmou). O 311 de quem volta à sala também encerra a partida para o último em jogo (D150). Com outros ainda em jogo, zera o pronto de quem saiu e manda o 317 só a ele (D210) |
 | 501 | S→C | `EXIT_PLAY_OUT` | `i32 result` | implementado (shortcut: `result` 0 não confirmado no cliente) |
 | 542 | C→S | `PLAYER_DETAIL_IN` | `char nick[17]` | implementado (D107): responde 543 |
 | 543 | S→C | `PLAYER_DETAIL_OUT` | 77 bytes | implementado (D107): valores do banco; shortcut: tamanho do nick e do clã inferido |
@@ -162,7 +162,7 @@ Estado em `domain/rooms.py`, só em memória (D12, D24). `handlers/channel/rooms
 - **Configurar.** Só o dono, sem pronto e com a sala esperando (D77). Quem não é dono não abre o diálogo no cliente (XInterface 28962). Muda os campos marcados em `flags` (411) e avisa o canal (412). Valores fora da faixa são limitados; `max_player` abaixo de quem já está sentado é ignorado.
 - **Convidar.** Só o dono. O convidado do canal recebe o convite (463) e responde com 471. O convite fica pendente até a resposta e não expira (shortcut). O aceite entra sem senha.
 - **Expulsar.** Só o dono, pelo nick (451). O expulso sai da sala (`322`).
-- **Fim da partida.** Cada jogador em jogo manda `500`; o canal responde `501`. A sala volta à espera quando todos saem, quando o último em jogo sai da sala ou quando o servidor cai depois de pronto (D48). Todos recebem 402 sem pronto, o dono também (D77). Quem entra de novo na sala (`311`) recebe `312`, `314` e `317` só para si (D49).
+- **Fim da partida.** Cada jogador em jogo manda `500`; o canal responde `501`. A sala volta à espera quando todos saem, quando o último em jogo sai da sala ou quando o servidor cai depois de pronto (D48). Todos recebem 402 sem pronto, o dono também (D77). Quem entra de novo na sala (`311`) recebe `312`, `314` e `317` só para si (D49). Quem sai no meio da partida, com outros ainda em jogo, volta sem pronto (D210).
 
 Escopo da difusão:
 

@@ -430,16 +430,22 @@ class RoomHandlers:
         return self._joined(room, guid)
 
     async def exit_play(self, session: Session, payload: bytes) -> Sequence[Reply]:
-        """500: o jogador deixou a partida e fica na sala. Com o último a sair, a partida acaba."""
+        """500: o jogador deixou a partida e fica na sala sem pronto (D210). Com o último a sair, a
+        partida acaba e `_end` manda o estado a todos. Senão, só quem saiu recebe o 317 com o pronto
+        zerado, porque o cliente trava Sair enquanto o pronto estiver ligado."""
         guid = self._lobby.guid_of(session)
         if guid is None:
             return []
         room = self._leave_game(guid)
-        if room is not None and room.match_over():
+        if room is None:
+            return [CsExitPlayOut(0)]
+        log.info("[%s] saiu da partida na sala %d (500)", session.peer, room.room_id)
+        if room.match_over():
             record = self._end(room)
             if record is not None:
                 await self._save(record, END_EXIT_PLAY)
-        return [CsExitPlayOut(0)]
+            return [CsExitPlayOut(0)]
+        return [CsExitPlayOut(0), self._records.room_players(room)]
 
     async def leave_hangar(self, session: Session, payload: bytes) -> Sequence[Reply]:
         """588 (OutHangar, sem corpo): só quem está em sala. Responde 589 com a própria chave e a

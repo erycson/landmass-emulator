@@ -43,6 +43,8 @@ Nos três casos o canal faz o mesmo: encerra o servidor pelo console (`MatchHost
 
 Quem entra de novo na própria sala depois da partida (311) recebe 312, 314 e 317 só para si (D49). Esse 311 também tira o jogador da partida: quando o último em jogo volta assim, a partida acaba sem 500 e grava com `end_reason` `return_to_room` (D150).
 
+Quem sai antes do fim (500 com outros ainda em jogo, ou o 311 de volta nesse caso) fica na sala sem pronto (D210). O canal zera o pronto e manda o 317 só a quem saiu. Sem isso, o cliente trava Sair, Opções e Iniciar, que dependem de sala jogando sem pronto (`LM_RoomPage.RefreshPlayers`).
+
 O bloco `GameEnded` é lido ao fim da partida. O servidor o escreve no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador pede a saída pelo console (`exit`), espera o motor gravar o `LOG=` da partida e só então derruba o processo (D153). `hosting/game_end.py` lê o último bloco completo e os jogadores casam pelo nick (D154). Quem não aparece no bloco fica com métricas nulas e sem recompensa (`re/game_server_host.md`, seções 11.4 e 11.7).
 
 ## Partida em memória
@@ -83,6 +85,8 @@ Este contrato só seria necessário se a validação de jogador fosse feita pelo
 - Estatísticas de partida: o bloco `GameEnded` é lido ao fim da partida (D153, D154). Falta a prova com dois clientes; sem o bloco, as métricas ficam nulas (ver `04-persistence.md`).
 - Matching de `map_num` com `RecordIndex` e unidades de `TimeLimit` são inferidos (D53).
 - Um cliente que nunca manda 500 com o servidor vivo mantém a sala em jogo até o processo cair. Sem prazo próprio de partida (ver `operations/game-server.md`).
+- Entrar de novo numa partida em andamento não tem suporte (D210). O 401 de quem saiu com a sala jogando é recusado sem resposta, e o botão de pronto continua habilitado no cliente.
+- Quem saiu aparece como pronto para os outros jogadores até o fim da partida (D210). Só o próprio cliente recebe o pronto zerado.
 - Modo fixo também precisa do `landmass.wdb` e do mapa da sala: sem eles o 401 devolve 241000201. Antes do marco 4 o 403 saía sem consultar o catálogo, então é uma mudança de comportamento.
 - Equipamento na partida (D190): o cliente não manda o equipamento (`EnterGame` não manda `character`, D141). O emulador monta cada jogador no `LMEmu.ini` a partir do inventário. Não validado no jogo: o pacote `LMEmu` precisa estar em `servidor-partida\system` (ver [game-server](../operations/game-server.md)), e o `selected_morats` do 401 é tratado como gate sem prova (`re/rooms.md` §5).
 - Bombing Run (D192): a classe e o grupo mínimo de dois times vêm do `CServerRoom::Init` nativo. Não testados com clientes.
