@@ -37,7 +37,7 @@ flowchart LR
 | [wire-format.md](protocol/wire-format.md) | Framing TCP, cabeçalho `opcode/net_code`, convenções de structs e strings. |
 | [authentication.md](protocol/authentication.md) | Login por token (`login_num`), chave de sessão entre Message e Channel, geração de credenciais e sequência de login. |
 | [message-server.md](protocol/message-server.md) | Opcodes e mensagens da porta 7313. |
-| [channel-server.md](protocol/channel-server.md) | Opcodes e mensagens da porta 7314, incluindo `GS_*`. |
+| [channel-server.md](protocol/channel-server.md) | Opcodes e mensagens da porta 7314, incluindo loja (550 a 552) e `GS_*`. |
 
 ### Operação — [`operations/`](operations/)
 

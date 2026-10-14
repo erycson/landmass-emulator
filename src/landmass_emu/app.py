@@ -7,16 +7,21 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from landmass_emu.db.accounts import SqlAccountRepository
+from landmass_emu.db.catalog import WdbCatalog
 from landmass_emu.db.engine import Migrator
 from landmass_emu.db.inventory import SqlInventoryRepository
+from landmass_emu.db.item_catalog import LazyItemCatalog
 from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.db.progression import SqlProgressionRepository
+from landmass_emu.db.shop import SqlShopRepository
 from landmass_emu.db.social import SqlSocialRepository
 from landmass_emu.domain.channel import Channel
+from landmass_emu.domain.inventory import InventoryService
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.presence import MessagePresence
 from landmass_emu.domain.rooms import Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
+from landmass_emu.domain.shop import ShopService
 from landmass_emu.handlers.channel import ChannelHandlers
 from landmass_emu.handlers.channel.rooms import GameEndpoint
 from landmass_emu.handlers.message import MessageHandlers
@@ -105,12 +110,13 @@ async def channel_server(
     progression: ProgressionRepository,
     accounts: AccountRepository,
     inventory: InventoryRepository,
+    shop: ShopService,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
     game = GameEndpoint(settings.game_host, settings.game_port)
     handlers = ChannelHandlers(
-        sessions, lobby, rooms, options, progression, game, accounts, inventory
+        sessions, lobby, rooms, options, progression, game, accounts, inventory, shop
     )
     server = await Service(
         net_code=CHANNEL_NET_CODE,
@@ -135,10 +141,32 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         progression = SqlProgressionRepository(db)
         inventory = SqlInventoryRepository(db)
         social = SqlSocialRepository(db)
+        shop = _shop_service(settings, accounts, progression, inventory, SqlShopRepository(db))
         async with (
             message_server(settings, sessions, accounts, options, social) as message,
             channel_server(
-                settings, sessions, options, progression, accounts, inventory
+                settings, sessions, options, progression, accounts, inventory, shop
             ) as channel,
         ):
             yield message, channel
+
+
+def _shop_service(
+    settings: Settings,
+    accounts: AccountRepository,
+    progression: ProgressionRepository,
+    inventory: InventoryRepository,
+    purchases: SqlShopRepository,
+) -> ShopService:
+    """Catálogo lido na primeira compra (LazyItemCatalog): o canal sobe sem o wdb."""
+    wdb = settings.client_dir / "landmass.wdb"
+    catalog = LazyItemCatalog(wdb)
+    return ShopService(
+        catalog=catalog,
+        levels=WdbCatalog(wdb),
+        inventory=InventoryService(catalog),
+        repository=inventory,
+        accounts=accounts,
+        progression=progression,
+        purchases=purchases,
+    )

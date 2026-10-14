@@ -106,6 +106,9 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 471 | C→S | `ROOM_INVITE_ANSWER` | `i32 room_id`, `u8 accept` | implementado |
 | 543 | S→C | `PLAYER_DETAIL_OUT` | 77 bytes | só codec: nenhum handler roteia o 542 |
 | 549 | S→C | `ROOM_ENTRY_OUT` | entrada de jogador, 48 bytes | implementado (shortcut: divisão com 312) |
+| 550 | C→S | `ITEM_BUY_IN` | 12 bytes: `i32 id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 nBuyOption` @5 (0 a 3) | implementado (F8): debita e cria a unidade numa transação; recusa com result ≠ 0 |
+| 551 | S→C | `ITEM_BUY_OUT` | 68 bytes: registro de 102 em @0..0x33, `i32 cash` @0x38, `i32 point` @0x3c, `i32 result` @0x40 | implementado (F8): sucesso manda 551, 102, 900 e 902; recusa vai sem registro e com saldos zero |
+| 552 | S→C | `MORATS_BUY_OUT` | 104 bytes: registro de 103 em @0..0x5b, `i32 cash` @0x5c, `i32 point` @0x60, `i32 result` @0x64 | implementado (F8): sucesso manda 552, 103, 900 e 902 |
 | 700 | C→S | `EXPEL_PLAYER` | `u8 kind`, nick de 17 bytes | só codec: não executado (console) |
 | 701 | S→C | `EXPEL_PLAYER_OUT` | `i32` 0 | só codec: nenhum handler envia |
 | 64, 66, 67, 464 | C→S | pedidos de lista | — | não tratados |
@@ -530,6 +533,7 @@ Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cli
 28. **Configuração (411; D43).** Campos sem bit em `flags` não mudam; o RE manda max, tempo e pontos sempre, e o emulador só os aplica com o bit ligado (`CsChangeRoomPropertyIn`). `max_player` não cai abaixo de quem já está sentado. Revisar na primeira troca de configuração capturada.
 29. **Detalhe do jogador (543).** O codec segue `LM_PLAYER_DETAIL_INFO` (`re/protocol_full.md` §3.2), mas nenhum handler roteia o 542 nem envia o 543. Revisar quando houver tela de detalhe.
 30. **Inventário e morat regular (F4/F5).** 102 e 103 saem no login depois de 900 e 902; 103 só para morat com gate. Peças em -1 e skins em 0 (inferido, D31). Offsets de 102 e 103 além do que o RE dá (GUID, `apply_flag` em `@0x2D`, skins) são inferidos ([re/layouts_f0.md](../../re/layouts_f0.md) §8). Conta sem morat: a sala trava no cliente, e habilitar gate sem morat não corrige (dúvida 24 em [07-progression](../architecture/07-progression.md)). Nada disso foi confirmado no cliente real.
+31. **Loja (F8; D50, D51).** 550 debita `accounts.ld` ou `cash` e cria a unidade na mesma transação. Sucesso manda 551 (ou 552), 102 (ou 103), 900 e 902, e o item aparece sem relogar. Recusa manda o mesmo opcode com o código de `NotifyItemBuy` (-4056 LD, -4055 Cash, -1 sem gate) ou 8000 (sem mensagem). Os códigos de saldo são inferidos iguais aos `CERR_BUY_*`, não vistos em runtime. Morat comprado no meio da sessão pode não ficar habilitado no gate: `bEnable` só é ligado pelo 101, então vale relogar. Catálogo abre na primeira compra (D50). O 102 depois do 551 não duplica: é upsert pela chave no mesmo mapa (`FUN_1001d6b0`, dispatcher L699–700 e L890–891), e `@0x35` = 0 não zera `apply_value`. O 552 e o 103 seguem o mesmo padrão (`FUN_100237d0`, `FUN_1001d7f0`, L727–728 e L916). `FUN_10007830`, chamado de novo pelo 103, é busca e não insere. Revisar no cliente real.
 
 ## Checklist no cliente real
 

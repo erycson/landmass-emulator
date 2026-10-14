@@ -303,17 +303,18 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 | R-CAT-02 | Catálogo em memória: `item` (14 ids: consumíveis e skins), `Item_Equip` (61 ids), `Morats` (9 espécies), `GameRewardConstant` (47 chaves), `LevelList` (101 níveis), `gift` (3 pacotes de sistema). | `landmass.wdb` |
 | R-PRC-01 | Preço por opção `i` de 0 a 3: duração 1, 7, 14 e 30 dias (`BUY_OPTION1/7/14/30`). Preço em LD é `item_buy_point[i]`; em Cash, `item_buy_cash[i]`. Preço zero na moeda escolhida = não vendido nela. | features §2.2; `XInterface` `InternalOnClose` 12160–12232 |
 | R-PRC-02 | Opções 8 e 9 chegam como `nBuyOption = 0`, com `bPoint` igual a true (8, LD) ou false (9, Cash). O pacote não distingue. Tratar como opção 0 (1 dia). | features §2.2 (inferido; dúvida 4) |
-| R-PRC-03 | Morat: a UI envia `ItemBuy(id_especie, true, 1)` fixo, com `FIXME` que mapeia 1→0. A UI exibe e valida `nPoint[0] × 5` (inferido: índice 0). | `XInterface` `LM_SupplyMoratsBuyPopPage` 9188–9258; dúvida 1 |
+| R-PRC-03 | Morat: a UI envia `ItemBuy(id_especie, true, 1)` fixo, com `FIXME` que mapeia 1→0. A UI exibe e valida `nPoint[0] × 5` (inferido: índice 0). O servidor cobra `buy_point[0] × 5` e ignora a opção (D51). | `XInterface` `LM_SupplyMoratsBuyPopPage` 9188–9258; dúvida 1, resolvida |
 
-### 5.3 Compra (550 e 551)
+### 5.3 Compra (550, 551 e 552)
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-BUY-01 | Ordem de validação: conta autenticada; `catalog_id` existe no catálogo; preço > 0 na moeda e opção; saldo suficiente; requisitos atendidos (R-REQ). Qualquer falha responde com código de erro e não grava. | (inferido) |
-| R-REQ-01 | Requisitos: `item_required_level`, `item_required_nest`, `item_required_nest_point`, `item_required_clan`, `item_required_clan_rank`, `item_required_rank`, `item_required_class`, `item_required_strength`, `item_required_agility`, `item_required_precision` e `item_required_power`; para morat, `required_*`. O cliente mostra, mas não bloqueia. O servidor valida. | features §2.2 (lacuna; dúvida 10) |
-| R-BUY-02 | Efeito de item com duração: cria `account_items` com `apply_flag = 2` (REALTIME) e `expires_at = agora + dias`. Grupo 1 cria `account_morats` com `gate_index` nulo. | (inferido; dúvida 5) |
-| R-BUY-03 | Resposta `551` com `result`: 0 ou código de `msg_error`. O cliente chama `RefreshLD` ao receber. | features §2.2 (`NotifyItemBuy(int result)`) |
+| R-BUY-01 | Ordem de validação (`ShopService`): conta autenticada (sem login, não responde); `catalog_id` no catálogo; preço > 0 na moeda e opção; saldo; patente e nest (R-REQ); gate livre (morat). Qualquer falha recusa e não grava. | (inferido; D51) |
+| R-REQ-01 | Requisitos: `item_required_level`, `item_required_nest`, `item_required_nest_point`, `item_required_clan`, `item_required_clan_rank`, `item_required_rank`, `item_required_class`, `item_required_strength`, `item_required_agility`, `item_required_precision` e `item_required_power`; para morat, `required_*`. Conferidos na compra: `required_level` (patente pela LevelList) e `required_nest` (nest regular). Recusam se ≠ 0, sem fonte no servidor: `nest_point`, clã, patente de clã e `rank`. Classe, força, agilidade, precisão e energia são de equipar (F6): a tela de morat não as usa para bloquear a compra. | features §2.2; dúvida 10, resolvida (D51) |
+| R-BUY-02 | Item: `account_items` com `apply_flag = 2` (REALTIME) e `expires_at = agora + dias`, com os dias da opção 0 a 3 (1, 7, 14 ou 30). Morat: `account_morats` no menor gate livre (0 a 7), sem prazo. O cliente não escolhe o gate na compra. | (inferido; dúvidas 5 e 19; D51) |
+| R-BUY-03 | Resposta 551 (item) ou 552 (morat) com `result`. Sucesso: registro (102 ou 103), depois 900 e 902. Só com `result` 0 o cliente aplica registro e saldos. Recusas: -4056 (LD insuficiente, msg 231000602), -4055 (Cash insuficiente, 231000502), -1 (sem gate livre, 231000802) e 8000 (sem mensagem: fora do catálogo, não vendido na moeda ou requisito não atendido). | `NotifyItemBuy` (XInterface, `switch`); `ERRCODE_*` inferidos iguais aos `CERR_BUY_*` (D51) |
 | R-BUY-04 | Cada compra gera `item_guid` novo e `inventory_index` livre da conta. Nenhuma linha parcial sobrevive a falha (transação). | (inferido; D22) |
+| R-BUY-05 | Catálogo abre na primeira compra (`LazyItemCatalog`), então o canal sobe sem o wdb. Enquanto o wdb não abre, a compra é recusada com 8000 e erro no log. Emenda a D19 (D50). | (inferido) |
 
 ### 5.4 Uso, gate e slots de sistema (560, 570, 573)
 
@@ -440,9 +441,9 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 105 | C→S | Morat regular | `accounts` | `u8 nest @0`, `u8 classe @1` | implementado (F5) |
 | 107 / 108 | S→C | Morat de treino / criado | `account_morats` | falta | falta |
 | 544 | C→S | Gravar opções | `account_options` | completo: 37 `u8` na ordem de `LM_REGISTER_INFO` ([channel-server.md](../protocol/channel-server.md)) | implementado (F1) |
-| 550 | C→S | Compra (LD ou Cash) | `account_items`, `account_morats`, `accounts` | parcial: 12 bytes (3 `u32`); ordem `id, bPoint, opção` (features §2.2) | falta |
-| 551 | S→C | Resultado da compra | — | inferido: `i32 @0` | falta |
-| 552 | S→C | Resultado da compra de morat | — | falta (bloco 720–748) | falta |
+| 550 | C→S | Compra (LD ou Cash) | `account_items`, `account_morats`, `accounts` | completo: `i32 @0` id, `u8 @4` bPoint (1 LD, 0 Cash), `u8 @5` opção 0 a 3; corpo de 12 | implementado (F8) |
+| 551 | S→C | Resultado da compra de item | — | registro de 102 em @0..0x33, `i32 @0x38` cash, `@0x3c` LD, `@0x40` result; corpo de 0x44 | implementado (F8) |
+| 552 | S→C | Resultado da compra de morat | — | registro de 103 em @0..0x5b, `@0x5c` cash, `@0x60` LD, `@0x64` result; corpo de 0x68 | implementado (F8) |
 | 555 | C→S | Destruir | `account_items`, `account_morats` | parcial: 8 bytes (2 `u32`) | falta |
 | 556 / 557 / 559 | S→C | Resultados de destruir | — | falta | falta |
 | 560 | C→S | Equipar | `account_items`, `account_morats` | parcial: 8 bytes (2 `u32`) | falta |
@@ -524,7 +525,7 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F5 (implementada) | `account_morats`; 103; 105/104; CLI `account morat add --catalog <id> --gate <n>`. | F0 (103) | Morat aparece no gate indicado; classe regular persiste após reconexão. |
 | F6 | Equipar e desequipar (560, 570, 573); montagem de parte e de item de sistema. | F4, F5 | Equipar arma no gate; reconectar; continua montada. Buff vai para `system_slot`. |
 | F7 | Destruir e estender (555, 556, 580, 582, 585). | F4 | Destruir some do hangar após reconexão. Estender muda o prazo exibido. Vencido abre renovação. |
-| F8 | Compra por LD e Cash (550, 551, 552). | F3, F4; dúvida 1 | Item comprado com LD debita `ld` pelo preço do wdb e cria a linha; saldo 902 atualiza. Saldo insuficiente: resultado ≠ 0 e nada muda. |
+| F8 (implementada, sem teste no cliente real) | Compra por LD e Cash (550, 551, 552). | F3, F4; dúvida 1 (resolvida) | Item comprado com LD debita `ld` pelo preço do wdb e cria a linha; saldo 902 atualiza. Saldo insuficiente: resultado ≠ 0 e nada muda. |
 | F9 | Recompensa de partida DM e OP (R-REW-*), buffs e PC-room. | Marco 4 (resultado GS_*); F0 (512); dúvidas 13, 14, 17 | Partida DM e OP com 2 jogadores: exp e LD do placar batem com a fórmula (tolerância de 1 por arredondamento). Buff de EXP ativo multiplica por 1.5. |
 | F10 | Presente (615, 616, 610, 611). | F8; dúvidas 2, 3 | A envia item a B por nick; B vê na lista paginada de 12; resgate conforme dúvida 3. |
 | F11 | Gacha (591). | F3, F4; dúvida 6 | Usar "Item Surpresa" abre popup com prêmio do servidor; item aparece no inventário. |
@@ -543,18 +544,18 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 
 Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 
-1. **Preço de morat [bloqueia F8].** A UI envia `ItemBuy(id, true, 1)` fixo e exibe e valida `buy_point × 5` (`LM_SupplyMoratsBuyPopPage`). O wdb tem preço em `buy_point[0]` (ex.: 5000 em AssaultA) e `buy_point[1] = 0`. Qual preço vale: `buy_point[0]` ou `buy_point[0] × 5`?
+1. **Preço de morat (resolvida, D51).** A UI envia `ItemBuy(id, true, 1)` fixo e exibe e valida `buy_point × 5` (`LM_SupplyMoratsBuyPopPage`). O wdb tem preço em `buy_point[0]` (ex.: 5000 em AssaultA) e `buy_point[1] = 0`. Decisão do usuário: cobrar `buy_point[0] × 5` e ignorar a opção.
 2. **Presente sem patente efetiva.** `EnableGiftExp = -1` (nível "Sem Patente") faz o bloqueio nunca disparar. Confirmar se é a regra desejada ou se o wdb deveria marcar "Praça".
 3. **Resgate de presente [bloqueia F10].** `GiftItemUsed` (612) não tem chamador na UI. Como o destinatário recebe o presente?
-4. **Opções 8 e 9 [bloqueia F8].** Chegam como opção 0. Duração: 1 dia, sem prazo, ou outra?
-5. **Início da validade [bloqueia F6, F7].** A validade começa na compra ou no uso? Como `apply_value` deve ser preenchido para cada `ITEM_APPLY`? Remoção automática de vencidos?
+4. **Opções 8 e 9 (em aberto).** Chegam como opção 0, então cobram o prazo de 1 dia (R-PRC-02). Duração: 1 dia, sem prazo, ou outra?
+5. **Início da validade [bloqueia F6, F7].** Na F8 a validade começa na compra (inferido). Confirmar: começa na compra ou no uso? Como `apply_value` deve ser preenchido para cada `ITEM_APPLY`? Remoção automática de vencidos?
 6. **Efeito dos itens não-buff.** Não localizados: `308010001` (Queima de Arquivo), `308010002` (Reconstituir), `308010003` (Alistar), `308010004` (Troca de Função), `308010005` (Adicionar Hangar), `308020003` (Ressurreição). Sorteio do gacha também não existe no cliente [bloqueia F11].
 7. **Morat principal.** `ItemUsedByValue` não tem método na DLL. O cliente não envia a troca. Aceitar essa limitação?
 8. **Aridade de 570 e 580.** Medido: 570 tem um `u32` (4 bytes); 580 tem dois `u32` (8 bytes). A UI passa, respectivamente, dois e quatro valores. Confirmar com captura [bloqueia F6, F7].
 9. **Mapa `item_slot` → `slot_name`.** `Item_Equip.item_slot` tem valores 0 a 11. Não há tabela que o relacione aos slots de morat [bloqueia F6].
-10. **Requisitos na compra.** O servidor valida `item_required_*` (proposta) ou não?
+10. **Requisitos na compra (resolvida, D51).** O servidor valida patente e nest e recusa os demais requisitos sem fonte (R-REQ-01).
 11. **Nível para escolher nest.** Exigir "Praça" (`SelectNestExp = 2800`) em `SetRegular`? O cliente não bloqueia.
-12. **Códigos de erro** de compra, uso, extensão e presente: o mapa de `msg_error` não foi identificado para essas ações.
+12. **Códigos de erro** de uso, extensão e presente: o mapa de `msg_error` não foi identificado para essas ações. A compra usa os códigos de `NotifyItemBuy` (R-BUY-03).
 13. **Arredondamento** de exp e LD (float para inteiro): proposta, truncar. Confirmar.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
 15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
@@ -580,3 +581,5 @@ Registradas em [decisions/README.md](../decisions/README.md):
 - **D22** Inventário com uma linha por unidade, `item_guid` e `inventory_index` por conta.
 - **D30** Morat usa o gate como índice de inventário; itens e morats têm namespaces separados.
 - **D31** Morats do kit inicial entram sem itens, com peças em -1 (padrão do cliente); conta sem morat fica sem solução server-side (dúvida 24).
+- **D50** Emenda a D19: catálogo carregado na primeira compra (carga lazy); o canal sobe sem o wdb.
+- **D51** Compra: morat cobra `buy_point[0] × 5` e ignora a opção; gate automático; requisitos conferidos; códigos de resultado de `NotifyItemBuy`.

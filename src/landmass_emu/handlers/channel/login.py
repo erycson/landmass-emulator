@@ -47,12 +47,13 @@ class LoginHandlers:
                 progress=dataclasses.replace(first.progress, nest=nest, morat_gates=gates),
             ),
             *replies[1:],
-            *(_item_record(item) for item in items),
-            *(_morat_record(morat, gate) for morat, gate in placed),
+            *(item_record(item) for item in items),
+            *(morat_record(morat) for morat, _ in placed),
         ]
 
 
-def _item_record(unit: ItemUnit) -> CsGetItemOut:
+def item_record(unit: ItemUnit) -> CsGetItemOut:
+    """Registro 102 de uma unidade do inventário. A loja manda o mesmo registro depois da compra."""
     return CsGetItemOut(
         inventory_index=unit.inventory_index,
         catalog_id=unit.catalog_id,
@@ -62,9 +63,12 @@ def _item_record(unit: ItemUnit) -> CsGetItemOut:
     )
 
 
-def _morat_record(unit: MoratUnit, gate: int) -> CsGetMoratsOut:
+def morat_record(unit: MoratUnit) -> CsGetMoratsOut:
+    """Registro 103 de um morat. Sem gate não há chave no cliente (`sGate`), logo não há 103."""
+    if unit.gate_index is None:
+        raise ValueError(f"morat {unit.item_guid} sem gate: não tem registro 103")
     return CsGetMoratsOut(
-        gate_index=gate,
+        gate_index=unit.gate_index,
         catalog_id=unit.catalog_id,
         item_guid=unit.item_guid,
         apply_flag=int(unit.apply_flag),

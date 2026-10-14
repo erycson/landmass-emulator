@@ -32,6 +32,7 @@ from landmass_emu.protocol.channel import (
 from landmass_emu.protocol.header import unpack_header
 from landmass_emu.protocol.message import cfield, cstr
 from landmass_emu.protocol.progression import CsProgressionOp
+from landmass_emu.protocol.shop import CsShopOp
 
 
 class _Recebedor:
@@ -92,6 +93,7 @@ def test_tabela_do_roteador_cobre_entrada_chat_salas_e_listas() -> None:
         GameEndpoint("127.0.0.1", 7777),
         None,
         None,
+        None,
     )
     esperados = {
         CsOp.HEARTBEAT,
@@ -112,6 +114,7 @@ def test_tabela_do_roteador_cobre_entrada_chat_salas_e_listas() -> None:
         CsOp.REFRESH_PLAYER_LIST,
         CsOp.REFRESH_ROOM_LIST,
         CsProgressionOp.TUTORIAL_CLEAR,
+        CsShopOp.ITEM_BUY_IN,
     }
     assert esperados <= set(handlers.router)
     # 700 é o `/EXPEL` do console: não é executado (ver `CsExpelPlayerIn`).

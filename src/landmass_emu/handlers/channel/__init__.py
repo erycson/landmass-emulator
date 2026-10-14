@@ -6,6 +6,7 @@ from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.progression import ProgressionService
 from landmass_emu.domain.regular import RegularService
 from landmass_emu.domain.rooms import Rooms
+from landmass_emu.domain.shop import ShopService
 from landmass_emu.handlers.channel.chat import ChatHandlers
 from landmass_emu.handlers.channel.entry import EntryHandlers
 from landmass_emu.handlers.channel.lists import ListHandlers
@@ -15,6 +16,7 @@ from landmass_emu.handlers.channel.options import OptionHandlers
 from landmass_emu.handlers.channel.progression import ProgressionHandlers
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.handlers.channel.rooms import GameEndpoint, RoomHandlers
+from landmass_emu.handlers.channel.shop import ShopHandlers
 from landmass_emu.net.server import Reply, Router
 from landmass_emu.net.session import Session
 from landmass_emu.ports.accounts import AccountRepository
@@ -25,6 +27,7 @@ from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.protocol.channel import CsOp
 from landmass_emu.protocol.inventory import CsInventoryOp
 from landmass_emu.protocol.progression import CsProgressionOp
+from landmass_emu.protocol.shop import CsShopOp
 
 
 class ChannelHandlers:
@@ -40,6 +43,7 @@ class ChannelHandlers:
         game: GameEndpoint,
         accounts: AccountRepository,
         inventory: InventoryRepository,
+        shop: ShopService,
     ) -> None:
         records = ChannelRecords(lobby)
         room_handlers = RoomHandlers(lobby, rooms, records, game)
@@ -53,7 +57,9 @@ class ChannelHandlers:
         self._lists = ListHandlers(lobby, rooms, records)
         self._options = OptionHandlers(player_options)
         self._rooms = room_handlers
+        self._shop = ShopHandlers(shop)
         self.router: Router = {
+            CsShopOp.ITEM_BUY_IN: self._shop.item_buy,
             CsOp.HEARTBEAT: self.heartbeat,
             CsOp.IN_CHANNEL_SERVER: self._login.in_channel_server,
             CsOp.IN_CHANNEL: self._entry.in_channel,

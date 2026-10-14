@@ -43,6 +43,35 @@ def _morat(row: AccountMoratRow) -> MoratUnit:
     )
 
 
+def item_row(item: ItemUnit, now: datetime) -> AccountItemRow:
+    return AccountItemRow(
+        account_id=item.account_id,
+        inventory_index=item.inventory_index,
+        catalog_id=item.catalog_id,
+        item_guid=item.item_guid,
+        apply_flag=int(item.apply_flag),
+        apply_value=item.apply_value,
+        expires_at=item.expires_at and item.expires_at.astimezone(UTC),
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def morat_row(morat: MoratUnit, now: datetime) -> AccountMoratRow:
+    return AccountMoratRow(
+        account_id=morat.account_id,
+        inventory_index=morat.inventory_index,
+        catalog_id=morat.catalog_id,
+        item_guid=morat.item_guid,
+        gate_index=morat.gate_index,
+        apply_flag=int(morat.apply_flag),
+        apply_value=morat.apply_value,
+        expires_at=morat.expires_at and morat.expires_at.astimezone(UTC),
+        created_at=now,
+        updated_at=now,
+    )
+
+
 class SqlInventoryRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
@@ -68,34 +97,11 @@ class SqlInventoryRepository:
             return [_morat(row) for row in rows.all()]
 
     async def add_item(self, item: ItemUnit) -> None:
-        now = datetime.now(UTC)
-        row = AccountItemRow(
-            account_id=item.account_id,
-            inventory_index=item.inventory_index,
-            catalog_id=item.catalog_id,
-            item_guid=item.item_guid,
-            apply_flag=int(item.apply_flag),
-            apply_value=item.apply_value,
-            expires_at=item.expires_at and item.expires_at.astimezone(UTC),
-            created_at=now,
-            updated_at=now,
-        )
+        row = item_row(item, datetime.now(UTC))
         await self._insert(row, f"índice {item.inventory_index} já existe na conta")
 
     async def add_morat(self, morat: MoratUnit) -> None:
-        now = datetime.now(UTC)
-        row = AccountMoratRow(
-            account_id=morat.account_id,
-            inventory_index=morat.inventory_index,
-            catalog_id=morat.catalog_id,
-            item_guid=morat.item_guid,
-            gate_index=morat.gate_index,
-            apply_flag=int(morat.apply_flag),
-            apply_value=morat.apply_value,
-            expires_at=morat.expires_at and morat.expires_at.astimezone(UTC),
-            created_at=now,
-            updated_at=now,
-        )
+        row = morat_row(morat, datetime.now(UTC))
         await self._insert(row, f"gate {morat.gate_index} já tem um morat na conta")
 
     async def _insert(self, row: AccountItemRow | AccountMoratRow, conflict: str) -> None:
