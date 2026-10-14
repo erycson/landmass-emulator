@@ -1,4 +1,4 @@
-# Configuração do emulador LandMass (landmass-emu serve --config config.example.toml).
+# Configuração do emulador LandMass (landmass-emu --config config.example.toml serve).
 #
 # Precedência: variável de ambiente LANDMASS_* > arquivo (este) > padrão do código.
 # Segredos vão em arquivo, com LANDMASS_<CAMPO>_FILE, e não aqui (ver docs/operations/production.md).

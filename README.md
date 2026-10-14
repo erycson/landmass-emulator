@@ -28,26 +28,24 @@ O que falta e o que não foi verificado no jogo está em [`docs/roadmap.md`](doc
 
 ### 1. Prepare o cliente
 
-Instale o LandMass, baixe o [dgVoodoo2](https://github.com/dege-diosg/dgVoodoo2/releases) (zip da versão 2.87.5 ou mais nova, extraído numa pasta) e aplique o **Client Patch**. Ele deixa o jogo em janela sem borda, com widescreen, FOV ajustado e texturas na qualidade máxima:
+Instale o LandMass e dê dois cliques em `tools\client-patch\configurar.bat`. Ele pergunta, uma por vez:
 
-```
-powershell -ExecutionPolicy Bypass -File tools\client-patch\aplicar.ps1 -Cliente "C:\LandMass" -DgVoodoo "C:\Downloads\dgVoodoo2_87_5"
-```
-
-| Opção | Efeito |
+| Pergunta | O que muda no jogo |
 |---|---|
-| `-Largura 2560 -Altura 1080` | Resolução da partida. Sem ela, usa a do monitor principal. |
-| `-IniciarSozinho` | Ativa o botão de iniciar sem outro jogador pronto, para jogar contra bots. |
+| IP do servidor | Cria `system\jogar.bat`, que abre a tela de usuário e senha do jogo. |
+| Ativar 4GB? | 1 bit no `LandMass.exe`: o jogo pode usar até 4 GB de memória. |
+| Liberar o botão Iniciar sozinho? | 3 bytes no `XInterface.u`, para jogar sozinho contra bots. Só serve se o servidor tiver os bots ligados. |
+| Configurar o vídeo? | [dgVoodoo2](https://github.com/dege-diosg/dgVoodoo2/releases) (baixe o zip e extraia), janela sem borda, widescreen, FOV e texturas no máximo. |
 
-Detalhes e como desfazer: [`tools/client-patch/README.md`](tools/client-patch/README.md).
+Armas, equipamento e bots não pedem nada no cliente: vêm do servidor. Cada item é opcional. Os originais ficam salvos (`*.orig`, `*.antes-patch`). Linha de comando e como desfazer: [`tools/client-patch/README.md`](tools/client-patch/README.md).
 
 ### 2. Peça uma conta
 
-O administrador do servidor cria a conta e entrega um `jogar_<usuário>.bat`. Copie esse arquivo para a pasta `system` do cliente e execute.
+O administrador do servidor cria a conta com usuário e senha. Abra `system\jogar.bat` e entre pela tela de login do jogo. O administrador também pode entregar um `jogar_<usuário>.bat`, que entra direto: copie-o para a pasta `system` do cliente e execute.
 
-O `Launcher.exe` só serve se o servidor tiver o FTP de atualização ligado: rode `uv run landmass-emu launcher` (D242). Sem isso, use o `.bat`. Também dá para entrar com usuário e senha pelo formulário do jogo ([running-client.md](docs/operations/running-client.md)).
+O `Launcher.exe` só funciona se o administrador ligou o Launcher no servidor e distribuiu o cliente já apontado para ele (D242). Sem isso, use o `.bat`.
 
-O `.bat` contém o seu token de login. Trate-o como senha.
+O `jogar_<usuário>.bat` contém o seu token de login. Trate-o como senha.
 
 ### 3. Dentro do jogo
 
@@ -65,6 +63,20 @@ O `.bat` contém o seu token de login. Trate-o como senha.
 ## Como montar um servidor
 
 Requisitos: Windows 10 ou 11 (ou Windows Server), Python 3.14 e [`uv`](https://docs.astral.sh/uv/). O servidor de partida é o próprio `LandMass.exe`, que só roda em Windows.
+
+### Jeito fácil
+
+Dê dois cliques em `tools\server-patch\configurar.bat`. Ele pergunta, uma por vez:
+
+| Pergunta | Chave do `config.toml` |
+|---|---|
+| IP público, o que os jogadores alcançam | `public_host` e `game_host` |
+| Pasta `system` do cliente instalado | `client_dir` |
+| Ligar as partidas? (armas e equipamento da conta) | `match_server_dir`. Monta o servidor de partida (passo 1 abaixo). |
+| Ligar os bots? e quantos jogadores por partida | `match_bots` (veja [Bots](#bots)) |
+| Ligar o Launcher? | `update_port`. Também aponta o `landmass.wdb` do cliente para este servidor. |
+
+No fim, ele grava o `config.toml` e cria o `iniciar-servidor.bat` na raiz. Para subir o servidor, execute esse `.bat`. Pode rodar o assistente de novo: as respostas atuais aparecem como padrão. Os passos abaixo são o mesmo processo feito à mão.
 
 ### 1. Servidor de partida
 
@@ -97,12 +109,21 @@ Libere no firewall:
 
 ```
 uv sync
-uv run landmass-emu serve --config config.toml
+uv run landmass-emu --config config.toml serve
 ```
 
 O banco SQLite (`data/landmass.db`) é criado e migrado na subida. Para produção (tarefa do Windows, logs e backup), veja [`docs/operations/production.md`](docs/operations/production.md).
 
 Depois da primeira subida, importe a loja do cliente com `uv run landmass-emu shop sync`.
+
+### Bots
+
+Os bots são ligados só no servidor, por `match_bots` (exige `match_server_dir`):
+
+- **`match_bots = 0`: desligados.** A partida só começa com outro jogador pronto, e o `/bot` não faz nada. Mesmo com o cliente alterado (`-IniciarSozinho`), o servidor recusa iniciar a sala com uma pessoa só.
+- **`match_bots = N`: ligados.** A partida já começa completa com bots até N jogadores, humanos incluídos. O dono da sala pode iniciar sozinho. Com o padrão 4, você entra com 3 bots. Em time, o motor põe cada bot no time menor: você e 1 bot de um lado, 2 bots do outro. Quem entra depois toma a vaga de um bot. Na partida, o dono ainda usa `/bot add` e `/bot remove`.
+
+Cada bot sai com um morat e um equipamento sorteados dentro da classe dele, e com o nome `[BOT] Apelido`. Os bots seguem as rotas do mapa (`LMEmuRoutes.ini`). Por enquanto, só o ONS-Airport tem rotas geradas ([`tools/routes`](tools/routes/README.md)).
 
 ## Comandos da CLI
 

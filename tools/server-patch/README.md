@@ -2,12 +2,19 @@
 
 Monta o servidor de partida a partir de uma instalação do cliente. O servidor de partida é o próprio `LandMass.exe` rodando com `-server`. Ele precisa dos mesmos mapas, malhas, morats e sons do cliente; muda só o que vai abaixo. Roda só em Windows.
 
+## Jeito fácil
+
+Dois cliques em `configurar.bat`. Ele pergunta o IP público, a pasta do cliente, se liga as partidas (armas e equipamento), os bots e o Launcher. Depois grava o `config.toml` na raiz do emulador, monta o servidor de partida com o `aplicar.ps1` e cria o `iniciar-servidor.bat`. Rodando de novo, as respostas atuais aparecem como padrão.
+
+Com as partidas ligadas, ele cria a conta `servidor` e guarda o token dela em `data\secrets\match_login_num.txt`: é o `login_num` do `LandMass.exe` servidor. O `iniciar-servidor.bat` passa esse arquivo por `LANDMASS_MATCH_LOGIN_NUM_FILE`.
+
 ## Conteúdo
 
 | Arquivo | Para quê |
 |---|---|
 | `system\LMEmu.u` | Pacote UnrealScript só de servidor do emulador. Põe no jogador o time e o equipamento da conta (morat, armas, booster, gerador, peças, pintura) e escolhe o modo de jogo (DM, TDM, OP, Bombing Run). |
 | `aplicar.ps1` | Copia o cliente, aplica os patches e instala o `LMEmu.u`. |
+| `configurar.bat` e `configurar.ps1` | Assistente: perguntas, `config.toml`, servidor de partida e `iniciar-servidor.bat`. |
 
 ## Patches
 

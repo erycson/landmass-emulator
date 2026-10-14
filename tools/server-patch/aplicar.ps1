@@ -1,4 +1,4 @@
-# Monta o servidor de partida do LandMass a partir de uma instalação do cliente.
+﻿# Monta o servidor de partida do LandMass a partir de uma instalação do cliente.
 # Uso: powershell -ExecutionPolicy Bypass -File aplicar.ps1 -Cliente "C:\LandMass" -Destino "D:\servidor-partida"
 #   -Destino pode ser a própria pasta do cliente (patch no lugar) ou uma pasta nova (cópia).
 # O que faz:

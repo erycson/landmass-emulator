@@ -25,7 +25,7 @@ Segredo em arquivo: use `LANDMASS_<CAMPO>_FILE` (D200). Variável de ambiente ve
 ## Subir
 
 ```
-uv run landmass-emu serve --config config.toml
+uv run landmass-emu --config config.toml serve
 ```
 
 Na subida, o banco é criado e migrado (Alembic, `Migrator`). Para subir junto com o Windows, crie uma tarefa no Agendador de Tarefas:
