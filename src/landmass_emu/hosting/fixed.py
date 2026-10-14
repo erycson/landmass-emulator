@@ -4,6 +4,7 @@ Sem processo e sem espera: o 403 vai logo depois do 412, como antes do marco 4."
 from collections.abc import Awaitable, Callable
 
 from landmass_emu.domain.match import MatchPlan
+from landmass_emu.domain.match_stats import GameEndedPlayer
 from landmass_emu.ports.match_host import GameEndpoint
 
 
@@ -18,6 +19,9 @@ class FixedMatchHost:
 
     def finish(self, room_id: int) -> None:
         return None
+
+    async def end(self, room_id: int) -> tuple[GameEndedPlayer, ...]:
+        return ()
 
     async def close(self) -> None:
         return None

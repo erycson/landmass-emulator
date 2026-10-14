@@ -60,7 +60,9 @@ class ChannelHandlers:
         gifts: GiftHandlers | None = None,
     ) -> None:
         records = ChannelRecords(lobby)
-        room_handlers = RoomHandlers(lobby, rooms, records, match, maps, matches)
+        room_handlers = RoomHandlers(
+            lobby, rooms, records, match, maps, matches, progression=progression, audit=audit
+        )
         progression_handlers = ProgressionHandlers(progression, ProgressionService())
         self._entry = EntryHandlers(
             sessions, lobby, rooms, records, room_handlers, progression_handlers

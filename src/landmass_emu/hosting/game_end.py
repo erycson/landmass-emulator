@@ -7,24 +7,12 @@ cabeçalho `Ended ... Exp/Money =` e da linha de fechamento `=`; só o que está
 """
 
 import re
-from dataclasses import dataclass
+
+from landmass_emu.domain.match_stats import GameEndedPlayer
 
 _HEADER = re.compile(r"^GameEnded: (\S+) Ended (.+?) Exp/Money =+\s*$")
 _FOOTER = re.compile(r"^GameEnded: =+\s*$")
 _FIELD = re.compile(r"^GameEnded:\s+(\w+)\s*=\s?(.*?)\s*$")
-
-
-@dataclass(frozen=True, slots=True)
-class GameEndedPlayer:
-    nickname: str
-    reason: str | None
-    kills: int | None
-    ranking: int | None
-    played_percent: float | None  # 0 a 100, como o log escreve ("100.00%")
-    total_exp: int | None
-    total_money: int | None
-    winner: bool | None  # só OP e time: `Winner` do bloco
-    mission_score: int | None  # só OP: `MissionScore`
 
 
 def parse_game_ended(text: str) -> tuple[GameEndedPlayer, ...]:

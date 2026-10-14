@@ -2,7 +2,13 @@
 
 from datetime import UTC, datetime, timedelta
 
-from landmass_emu.domain.match_stats import MatchRecord, PlayerMatchStats, with_played
+from landmass_emu.domain.match_stats import (
+    GameEndedPlayer,
+    MatchRecord,
+    PlayerMatchStats,
+    with_game_end,
+    with_played,
+)
 
 INICIO = datetime(2026, 10, 13, 22, 0, tzinfo=UTC)
 
@@ -45,3 +51,25 @@ def test_saida_depois_do_fim_nao_passa_do_fim_e_partida_sem_duracao_zera() -> No
 
     assert [p.played_seconds for p in partida.players] == [0, 0]
     assert [p.played_percent for p in partida.players] == [0.0, 0.0]
+
+
+def test_bloco_gameended_leva_kills_colocacao_exp_e_ld_pelo_nick() -> None:
+    bloco = (
+        GameEndedPlayer(
+            nickname="Ana",
+            reason="TimeLimit",
+            kills=12,
+            ranking=1,
+            played_percent=62.5,
+            total_exp=3341,
+            total_money=1710,
+            winner=None,
+            mission_score=None,
+        ),
+    )
+
+    ana, bia = with_game_end(_partida(), bloco).players
+
+    assert (ana.kills, ana.ranking, ana.exp, ana.money) == (12, 1, 3341, 1710)
+    assert ana.won is None  # DM não traz `Winner`: fica sem vencedor
+    assert (bia.kills, bia.exp, bia.money) == (None, None, None)  # sem bloco, sem recompensa

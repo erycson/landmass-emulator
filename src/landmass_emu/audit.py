@@ -48,12 +48,45 @@ class EconomyAudit:
     def record(self, session: Session, event: str, **fields: Any) -> None:
         account = session.account
         ip, port = _split_peer(session.peer)
+        self._write(
+            event,
+            account_id=account.id if account else None,
+            username=account.username if account else None,
+            nickname=account.nickname if account else None,
+            ip=ip,
+            port=port,
+            fields=fields,
+        )
+
+    def record_account(self, account_id: int, nickname: str, event: str, **fields: Any) -> None:
+        """Evento de conta sem sessão, como a recompensa de partida: sem usuário, IP nem porta."""
+        self._write(
+            event,
+            account_id=account_id,
+            username=None,
+            nickname=nickname,
+            ip=None,
+            port=None,
+            fields=fields,
+        )
+
+    def _write(
+        self,
+        event: str,
+        *,
+        account_id: int | None,
+        username: str | None,
+        nickname: str | None,
+        ip: str | None,
+        port: int | None,
+        fields: dict[str, Any],
+    ) -> None:
         line: dict[str, Any] = {
             "ts": datetime.now(UTC).isoformat(timespec="seconds"),
             "event": event,
-            "account_id": account.id if account else None,
-            "username": account.username if account else None,
-            "nickname": account.nickname if account else None,
+            "account_id": account_id,
+            "username": username,
+            "nickname": nickname,
             "ip": ip,
             "port": port,
         }

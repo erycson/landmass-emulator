@@ -5,13 +5,15 @@ import pytest
 from sqlalchemy import Engine, create_engine, func, inspect, select
 from sqlalchemy.exc import IntegrityError
 
-from landmass_emu.app import open_database
+from landmass_emu.app import open_accounts, open_database
 from landmass_emu.db.matches import SqlMatchRepository
-from landmass_emu.db.models import MatchPlayerRow, MatchRow
+from landmass_emu.db.models import AccountRow, MatchPlayerRow, MatchRow
+from landmass_emu.domain.account import hash_token
 from landmass_emu.domain.match_stats import MatchRecord, PlayerMatchStats
 from landmass_emu.settings import Settings
 
 INICIO = datetime(2026, 10, 13, 20, 0, tzinfo=UTC)
+TOKEN = "0123456789abcdef0123456789abcdef"
 FIM = datetime(2026, 10, 13, 20, 12, tzinfo=UTC)
 METRICAS = (
     "kills",
@@ -108,6 +110,25 @@ async def test_save_grava_partida_e_jogadores_com_e_sem_metricas(tmp_path: Path)
     assert gravada_ana.team == 1
     assert all(getattr(gravada_bia, m) is None for m in METRICAS)
     assert gravada_bia.team is None
+
+
+async def test_save_soma_exp_e_ld_do_bloco_na_mesma_transacao(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        ana_id = (await accounts.create("ana", "Ana", hash_token(TOKEN))).id
+    ana = PlayerMatchStats(
+        account_id=ana_id, nickname="Ana", slot=0, team=None, is_master=True, exp=3341, money=1710
+    )
+    # Bia não tem exp nem LD no bloco: não recebe nada, e a conta dela nem existe aqui.
+    bia = PlayerMatchStats(
+        account_id=ana_id + 1, nickname="Bia", slot=1, team=None, is_master=False
+    )
+    async with open_database(settings) as db:
+        await SqlMatchRepository(db).save(_partida(ana, bia))
+        async with db() as session:
+            conta = await session.get(AccountRow, ana_id)
+
+    assert (conta.total_exp, conta.ld) == (3341, 1710)
 
 
 async def test_account_repetido_na_partida_e_recusado_pelo_banco(tmp_path: Path) -> None:

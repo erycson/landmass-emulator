@@ -22,6 +22,17 @@ PLANO = MatchPlan(
     goal_score=20,
 )
 DORME = [sys.executable, "-c", "import time; time.sleep(60)"]
+LOG_PARTIDA = """\
+GameEnded: XGame.LM_TeamGame Ended Deathmatch Exp/Money ==============================
+GameEnded:     Player           = Tester2
+GameEnded:     Reason           = TimeLimit
+GameEnded:     Ranking          = 1
+GameEnded:     Kills            = 0
+GameEnded:     Played           = 100.00%
+GameEnded:     TotalExp         = 0
+GameEnded:     TotalMoney       = 0
+GameEnded: ==============================================================
+"""
 
 
 def _config(
@@ -46,11 +57,13 @@ class _Falso:
     def __init__(self, *, anuncia: bool = True, argv: Sequence[str] = DORME) -> None:
         self.portas: list[int] = []
         self.processos: list[asyncio.subprocess.Process] = []
+        self.logs: list[str] = []
         self._anuncia = anuncia
         self._argv = list(argv)
 
-    def argv(self, plan: MatchPlan, port: int) -> list[str]:
+    def argv(self, plan: MatchPlan, port: int, log_name: str) -> list[str]:
         self.portas.append(port)
+        self.logs.append(log_name)
         return self._argv
 
     async def spawn(self, argv: list[str], cwd: Path) -> asyncio.subprocess.Process:
@@ -161,7 +174,7 @@ async def test_executavel_inexistente_vira_erro_de_inicio(tmp_path: Path) -> Non
     ausente = [str(tmp_path / "nao_existe.exe")]
     host = ProcessMatchHost(
         _config(tmp_path, 48200, 48219),
-        argv=lambda plano, porta: ausente,
+        argv=lambda plano, porta, nome: ausente,
         netstat=_sem_tabela,
     )
 
@@ -171,3 +184,53 @@ async def test_executavel_inexistente_vira_erro_de_inicio(tmp_path: Path) -> Non
 
 async def _sem_tabela() -> str:
     return ""
+
+
+async def test_end_sem_janela_derruba_o_processo_e_le_o_bloco_do_log(tmp_path: Path) -> None:
+    falso = _Falso()
+    host = ProcessMatchHost(
+        _config(tmp_path, 48200, 48219),
+        spawn=falso.spawn,
+        netstat=falso.netstat,
+        argv=falso.argv,
+        exit_sender=lambda pid: False,
+    )
+    await host.start(7, PLANO, _sem_queda)
+    (tmp_path / falso.logs[-1]).write_text(LOG_PARTIDA, encoding="utf-8")
+
+    jogadores = await host.end(7)
+
+    assert [j.nickname for j in jogadores] == ["Tester2"]
+    assert falso.processos[-1].returncode is not None
+
+
+async def test_end_digita_exit_e_espera_o_motor_sair(tmp_path: Path) -> None:
+    falso = _Falso()
+    pedidos: list[int] = []
+
+    def digita_exit(pid: int) -> bool:
+        # No lugar do motor: o processo de teste grava o log e sai ao receber o `exit`.
+        pedidos.append(pid)
+        (tmp_path / falso.logs[-1]).write_text(LOG_PARTIDA, encoding="utf-8")
+        falso.processos[-1].kill()
+        return True
+
+    host = ProcessMatchHost(
+        _config(tmp_path, 48200, 48219),
+        spawn=falso.spawn,
+        netstat=falso.netstat,
+        argv=falso.argv,
+        exit_sender=digita_exit,
+    )
+    await host.start(7, PLANO, _sem_queda)
+
+    jogadores = await host.end(7)
+
+    assert pedidos == [falso.processos[-1].pid]
+    assert [j.nickname for j in jogadores] == ["Tester2"]
+
+
+async def test_end_sem_servidor_devolve_vazio(tmp_path: Path) -> None:
+    host = ProcessMatchHost(_config(tmp_path, 48200, 48219), exit_sender=lambda pid: False)
+
+    assert await host.end(99) == ()

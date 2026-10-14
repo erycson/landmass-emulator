@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from landmass_emu.domain.match import MapRecord, MatchPlan
+from landmass_emu.domain.match_stats import GameEndedPlayer
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +33,13 @@ class MatchHost(Protocol):
         ...
 
     def finish(self, room_id: int) -> None:
-        """Encerra o servidor da sala, se houver. Chamar sem partida é seguro."""
+        """Encerra o servidor da sala na hora, se houver. Chamar sem partida é seguro."""
+        ...
+
+    async def end(self, room_id: int) -> tuple[GameEndedPlayer, ...]:
+        """Encerra o servidor da sala pelo console e devolve os jogadores do bloco `GameEnded`
+        do log da partida. Vazio sem servidor ou sem bloco. Ao contrário de `finish`, deixa o
+        servidor gravar o log."""
         ...
 
     async def close(self) -> None:

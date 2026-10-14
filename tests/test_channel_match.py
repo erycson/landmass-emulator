@@ -10,7 +10,8 @@ from test_channel_handlers import _corpos, _criar_sala, _entra_no_lobby, _Mapas
 
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.match import MapRecord, MatchPlan
-from landmass_emu.domain.match_stats import MatchRecord
+from landmass_emu.domain.match_stats import GameEndedPlayer, MatchRecord
+from landmass_emu.domain.progression import Progression
 from landmass_emu.domain.rooms import ROOM_PLAYING, ROOM_WAITING, Room, Rooms
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.handlers.channel.rooms import ERR_MATCH_START, RoomHandlers
@@ -26,13 +27,15 @@ from landmass_emu.protocol.channel import (
     CsRoomInfoOut,
     CsRoomPlayerInfoOut,
 )
+from landmass_emu.protocol.progression import CsProgressionOp
 
 
 class _HostFalso:
     """Servidor de partida sem processo. `falha` faz o início recusar, como a porta ocupada."""
 
-    def __init__(self, falha: str | None = None) -> None:
+    def __init__(self, falha: str | None = None, bloco: tuple[GameEndedPlayer, ...] = ()) -> None:
         self._falha = falha
+        self._bloco = bloco
         self.iniciados: list[tuple[int, MatchPlan]] = []
         self.encerrados: list[int] = []
         self.on_exit: Callable[[], Awaitable[None]] | None = None
@@ -48,6 +51,10 @@ class _HostFalso:
 
     def finish(self, room_id: int) -> None:
         self.encerrados.append(room_id)
+
+    async def end(self, room_id: int) -> tuple[GameEndedPlayer, ...]:
+        self.encerrados.append(room_id)
+        return self._bloco
 
     async def close(self) -> None:
         return None
@@ -69,10 +76,32 @@ class _SemMapas:
         return None
 
 
+class _Progressao:
+    """Saldos em memória, como o banco fica depois da gravação da partida."""
+
+    def __init__(self, saldos: dict[int, Progression]) -> None:
+        self._saldos = saldos
+
+    async def get(self, account_id: int) -> Progression:
+        return self._saldos[account_id]
+
+
+class _Auditoria:
+    """Guarda (evento, conta, campos) de cada linha de economia."""
+
+    def __init__(self) -> None:
+        self.linhas: list[tuple[str, int, dict[str, object]]] = []
+
+    def record_account(self, account_id: int, nickname: str, event: str, **fields: object) -> None:
+        self.linhas.append((event, account_id, fields))
+
+
 def _montagem(
     host: _HostFalso,
     historico: _Historico | None = None,
     maps: MapCatalog | None = None,
+    progressao: _Progressao | None = None,
+    auditoria: _Auditoria | None = None,
 ) -> tuple[RoomHandlers, Lobby, Rooms]:
     lobby = Lobby()
     rooms = Rooms()
@@ -83,6 +112,8 @@ def _montagem(
         host,
         maps or _Mapas(),
         historico,
+        progression=progressao,
+        audit=auditoria,
     )
     return handlers, lobby, rooms
 
@@ -98,6 +129,40 @@ async def _partida(
     await handlers.ready_game(bia, bytes([0]))
     await handlers.ready_game(ana, bytes([0]))
     return ana, bia, sala
+
+
+async def test_fim_com_bloco_gameended_grava_exp_e_ld_avisa_saldo_e_audita() -> None:
+    bloco = (
+        GameEndedPlayer(
+            nickname="Ana",
+            reason="TimeLimit",
+            kills=12,
+            ranking=1,
+            played_percent=100.0,
+            total_exp=3341,
+            total_money=1710,
+            winner=None,
+            mission_score=None,
+        ),
+    )
+    host = _HostFalso(bloco=bloco)
+    historico = _Historico()
+    progressao = _Progressao({7: Progression(total_exp=3341, ld=1710, cash=50)})
+    auditoria = _Auditoria()
+    handlers, lobby, rooms = _montagem(host, historico, progressao=progressao, auditoria=auditoria)
+    ana, bia, _sala = await _partida(handlers, lobby, rooms)
+
+    await handlers.exit_play(ana, b"")
+    await handlers.exit_play(bia, b"")  # último em jogo: a partida acaba e grava
+
+    [partida] = historico.salvos
+    ana_gravada, bia_gravada = partida.players
+    assert (ana_gravada.kills, ana_gravada.exp, ana_gravada.money) == (12, 3341, 1710)
+    assert (bia_gravada.exp, bia_gravada.money) == (None, None)
+    assert [(evento, conta) for evento, conta, _ in auditoria.linhas] == [("match_reward", 7)]
+    ops = [op for op, _ in _corpos(ana)]
+    assert CsProgressionOp.CHARGE_CASH_OUT in ops
+    assert CsProgressionOp.CHARGE_POINT_OUT in ops
 
 
 async def test_401_do_dono_sobe_a_partida_e_so_depois_manda_403_aos_da_sala() -> None:

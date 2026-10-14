@@ -25,14 +25,18 @@ def build_command(
     message_addr: str,
     version: int,
     login_num: str,
+    log_file: str | None = None,
 ) -> list[str]:
     # shortcut: PORT= validado só pelo código do RE (re/game_server_host.md, seção 10.2), sem
     # teste no jogo; se a porta não abrir, conferir o log de `binding to port` antes de mexer aqui.
+    # LOG= (D87) manda a partida para um arquivo próprio; sem ele o motor usa LandMass.log.
+    log_arg = [f"LOG={log_file}"] if log_file else []
     return [
         str(exe),
         match_url(plan),
         "-server",
         f"PORT={port}",
+        *log_arg,
         "-log",
         f"login_server={message_addr}?version={version}?login_num={login_num}",
     ]

@@ -16,9 +16,16 @@ from datetime import UTC, datetime
 from functools import partial
 from uuid import uuid4
 
+from landmass_emu.audit import EconomyAudit
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.match import MatchPlan, build_plan
-from landmass_emu.domain.match_stats import MatchRecord, PlayerMatchStats, with_played
+from landmass_emu.domain.match_stats import (
+    GameEndedPlayer,
+    MatchRecord,
+    PlayerMatchStats,
+    with_game_end,
+    with_played,
+)
 from landmass_emu.domain.rooms import (
     ROOM_PLAYING,
     ROOM_WAITING,
@@ -32,6 +39,7 @@ from landmass_emu.net.server import Reply, reply_body
 from landmass_emu.net.session import Session
 from landmass_emu.ports.match_host import MapCatalog, MatchHost, MatchStartError
 from landmass_emu.ports.matches import MatchRepository
+from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.protocol.channel import (
     ROOM_FLAG_LIMIT_PLAYER,
     ROOM_FLAG_LIMIT_SCORE,
@@ -68,6 +76,7 @@ from landmass_emu.protocol.channel import (
     CsStartGameOut,
 )
 from landmass_emu.protocol.header import CHANNEL_NET_CODE
+from landmass_emu.protocol.progression import CsChargeCashOut, CsChargePointOut
 from landmass_emu.sniffer import hexdump
 
 log = logging.getLogger(__name__)
@@ -139,6 +148,8 @@ class RoomHandlers:
         match: MatchHost,
         maps: MapCatalog,
         matches: MatchRepository | None,
+        progression: ProgressionRepository | None = None,
+        audit: EconomyAudit | None = None,
     ) -> None:
         self._lobby = lobby
         self._rooms = rooms
@@ -146,10 +157,14 @@ class RoomHandlers:
         self._match = match
         self._maps = maps
         self._matches = matches
+        self._progression = progression
+        self._audit = audit
         # Histórico em curso por sala: quem jogou no início. O fim e o motivo vêm depois.
         self._open: dict[int, MatchRecord] = {}
         # Hora em que cada jogador saiu da partida (500, volta à sala ou saída), por sala.
         self._left: dict[int, dict[int, datetime]] = {}
+        # Parada do servidor de cada sala que acabou, à espera do `_save` que lê o log da partida.
+        self._logs: dict[int, asyncio.Task[tuple[GameEndedPlayer, ...]]] = {}
         # Gravações disparadas por `leave` (síncrono); guardadas para não serem coletadas.
         self._saves: set[asyncio.Task[None]] = set()
 
@@ -485,7 +500,10 @@ class RoomHandlers:
         Devolve o histórico a gravar. Sala que já não existe ou não está jogando não faz nada."""
         if self._rooms.get(room.room_id) is not room or room.state != ROOM_PLAYING:
             return None
-        self._match.finish(room.room_id)
+        # Parada pelo console em segundo plano: o motor grava o log antes do `_save` que o lê.
+        self._logs[room.room_id] = asyncio.get_running_loop().create_task(
+            self._match.end(room.room_id)
+        )
         self._rooms.finish(room.room_id)
         self._to_lobby(CsChangeRoomPropertyOut(room.room_id, state=ROOM_WAITING))
         for guid, member in room.members.items():
@@ -507,14 +525,58 @@ class RoomHandlers:
             task.add_done_callback(self._saves.discard)
 
     async def _save(self, record: MatchRecord, reason: str) -> None:
-        """Grava o histórico. Erro de banco é logado: a sala já voltou à espera."""
+        """Grava o histórico com o bloco `GameEnded` do log (quando houver), e exp e LD na mesma
+        transação. Depois avisa o saldo a quem ganhou. Erro de banco é logado: a sala já voltou à
+        espera."""
+        parada = self._logs.pop(record.room_id, None)
+        jogadores: tuple[GameEndedPlayer, ...] = ()
+        if parada is not None:
+            try:
+                jogadores = await parada
+            except Exception:
+                log.exception("log da partida da sala %d não lido", record.room_id)
+        ended = with_game_end(
+            replace(record, ended_at=datetime.now(UTC), end_reason=reason), jogadores
+        )
         if self._matches is None:
             return
-        ended = replace(record, ended_at=datetime.now(UTC), end_reason=reason)
         try:
             await self._matches.save(ended)
         except Exception:
             log.exception("histórico da sala %d não gravado", record.room_id)
+            return
+        try:
+            await self._avisa_recompensas(ended)
+        except Exception:
+            log.exception("saldo da partida da sala %d não avisado", record.room_id)
+
+    async def _avisa_recompensas(self, match: MatchRecord) -> None:
+        """Saldo novo de quem ganhou exp ou LD: linha de economia e pushes 900 (cash) e 902 (LD)."""
+        if self._progression is None:
+            return
+        for p in match.players:
+            if p.exp is None and p.money is None:
+                continue
+            saldo = await self._progression.get(p.account_id)
+            if self._audit is not None:
+                self._audit.record_account(
+                    p.account_id,
+                    p.nickname,
+                    "match_reward",
+                    match_uuid=match.uuid,
+                    room_id=match.room_id,
+                    exp=p.exp,
+                    ld=p.money,
+                    total_exp_after=saldo.total_exp,
+                    ld_after=saldo.ld,
+                )
+            para = [p.account_id]
+            self._lobby.send_to(
+                para, reply_body(CsChargeCashOut(cash=saldo.cash), CHANNEL_NET_CODE)
+            )
+            self._lobby.send_to(
+                para, reply_body(CsChargePointOut(point=saldo.ld), CHANNEL_NET_CODE)
+            )
 
     def _plan(self, room: Room) -> MatchPlan:
         try:

@@ -3,9 +3,10 @@
 from dataclasses import asdict, fields
 from datetime import UTC, datetime
 
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from landmass_emu.db.models import MatchPlayerRow, MatchRow
+from landmass_emu.db.models import AccountRow, MatchPlayerRow, MatchRow
 from landmass_emu.domain.match_stats import MatchRecord
 
 # Campos de `MatchRecord` que são colunas de `matches`; `players` vai para `match_players`.
@@ -32,4 +33,17 @@ class SqlMatchRepository:
                     for p in match.players
                 ]
             )
+            # Recompensa: só quem tem exp ou LD no bloco GameEnded. Sem dado, saldo fica como está.
+            for p in match.players:
+                if p.exp is None and p.money is None:
+                    continue
+                await session.execute(
+                    update(AccountRow)
+                    .where(AccountRow.id == p.account_id)
+                    .values(
+                        total_exp=AccountRow.total_exp + (p.exp or 0),
+                        ld=AccountRow.ld + (p.money or 0),
+                        updated_at=now,
+                    )
+                )
         return match_id

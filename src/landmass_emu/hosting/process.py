@@ -4,6 +4,9 @@ pela tabela UDP do Windows (`netstat`) e encerramento ao fim da partida.
 Prontidão: a porta aparece na tabela com o PID do próprio processo. Bind de teste depois do
 lançamento disputaria a porta com o servidor, então não é usado. `PORT=` abre uma tentativa só
 (re/game_server_host.md §10): porta ocupada é falha, sem fallback.
+
+Fim: `end` digita `exit` na janela para o motor gravar o `LOG=` da partida e só então derruba o
+processo. `finish` derruba na hora (abandono e reinício de sala).
 """
 
 import asyncio
@@ -15,22 +18,30 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
 from subprocess import DEVNULL, PIPE
+from uuid import uuid4
 
 from landmass_emu.domain.match import MatchPlan
+from landmass_emu.domain.match_stats import GameEndedPlayer
 from landmass_emu.hosting.command import build_command, udp_listeners
+from landmass_emu.hosting.game_end import parse_game_ended
+from landmass_emu.hosting.window import send_exit
 from landmass_emu.ports.match_host import GameEndpoint, MatchStartError
 
 log = logging.getLogger(__name__)
 
 POLL_SECONDS = 0.5
 NETSTAT_TIMEOUT = 5.0
+# shortcut: o motor saiu em ~0,1 s no teste de 13/10/2026; 8 s cobre partida maior. Se o log
+# voltar cortado, subir este prazo antes de mexer no resto.
+EXIT_GRACE_SECONDS = 8.0
 EXE_NAME = "LandMass.exe"
 CREATE_NO_WINDOW = 0x08000000
 
 ExitCallback = Callable[[], Awaitable[None]]
 ProcessFactory = Callable[[list[str], Path], Awaitable[asyncio.subprocess.Process]]
 NetstatReader = Callable[[], Awaitable[str]]
-ArgvBuilder = Callable[[MatchPlan, int], list[str]]
+ArgvBuilder = Callable[[MatchPlan, int, str], list[str]]
+ExitSender = Callable[[int], bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,12 +62,13 @@ class _Running:
     port: int
     process: asyncio.subprocess.Process
     on_exit: ExitCallback
+    log_name: str  # arquivo LOG= da partida, dentro de server_dir
     ready: bool = False
 
 
 class ProcessMatchHost:
-    """`spawn`, `netstat` e `argv` são injetáveis: os testes usam processos de Python no lugar
-    do LandMass.exe."""
+    """`spawn`, `netstat`, `argv` e `exit_sender` são injetáveis: os testes usam processos de Python
+    no lugar do LandMass.exe e não mandam tecla para janela alguma."""
 
     def __init__(
         self,
@@ -65,19 +77,22 @@ class ProcessMatchHost:
         spawn: ProcessFactory | None = None,
         netstat: NetstatReader | None = None,
         argv: ArgvBuilder | None = None,
+        exit_sender: ExitSender | None = None,
     ) -> None:
         self._config = config
         self._spawn = spawn or _spawn_process
         self._netstat = netstat or _netstat_udp
         self._argv = argv or self._default_argv
+        self._exit_sender = exit_sender or send_exit
         self._running: dict[int, _Running] = {}
         self._watchers: set[asyncio.Task[None]] = set()
 
     async def start(self, room_id: int, plan: MatchPlan, on_exit: ExitCallback) -> GameEndpoint:
         self.finish(room_id)
         port = self._pick_port()
-        process = await self._spawn(self._argv(plan, port), self._config.server_dir)
-        match = _Running(room_id, port, process, on_exit)
+        log_name = f"partida-{port}-{uuid4().hex[:8]}.log"
+        process = await self._spawn(self._argv(plan, port, log_name), self._config.server_dir)
+        match = _Running(room_id, port, process, on_exit, log_name)
         self._running[room_id] = match
         watcher = asyncio.create_task(self._watch(match))
         self._watchers.add(watcher)
@@ -101,11 +116,29 @@ class ProcessMatchHost:
                 match.process.terminate()
         log.info("partida da sala %d: servidor encerrado (porta %d)", room_id, match.port)
 
+    async def end(self, room_id: int) -> tuple[GameEndedPlayer, ...]:
+        """Encerra o servidor da sala pelo console (`exit`), espera o motor gravar o log e devolve
+        os jogadores do bloco `GameEnded` do `LOG=`. Sem janela para digitar, ou se o motor não sair
+        no prazo, derruba o processo e o log fica com o que já foi descarregado. Sem servidor ou sem
+        bloco, devolve vazio."""
+        match = self._running.pop(room_id, None)
+        if match is None:
+            return ()
+        if match.process.returncode is None and self._exit_sender(match.process.pid):
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(match.process.wait(), EXIT_GRACE_SECONDS)
+        if match.process.returncode is None:
+            with contextlib.suppress(OSError):
+                match.process.terminate()
+            await match.process.wait()
+        log.info("partida da sala %d: servidor encerrado (porta %d)", room_id, match.port)
+        return parse_game_ended(self._read_log(match.log_name) or "")
+
     async def close(self) -> None:
         for room_id in list(self._running):
             self.finish(room_id)
 
-    def _default_argv(self, plan: MatchPlan, port: int) -> list[str]:
+    def _default_argv(self, plan: MatchPlan, port: int, log_name: str) -> list[str]:
         return build_command(
             self._config.server_dir / EXE_NAME,
             plan,
@@ -113,7 +146,14 @@ class ProcessMatchHost:
             message_addr=self._config.message_addr,
             version=self._config.version,
             login_num=self._config.login_num,
+            log_file=log_name,
         )
+
+    def _read_log(self, name: str) -> str | None:
+        try:
+            return (self._config.server_dir / name).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
 
     def _pick_port(self) -> int:
         busy = {m.port for m in self._running.values()}
@@ -140,7 +180,7 @@ class ProcessMatchHost:
     async def _watch(self, match: _Running) -> None:
         await match.process.wait()
         if self._running.get(match.room_id) is not match:
-            return  # encerrado por finish: não é queda
+            return  # encerrado por finish ou end: não é queda
         del self._running[match.room_id]
         if not match.ready:
             log.warning("servidor da sala %d encerrou antes de ficar pronto", match.room_id)
