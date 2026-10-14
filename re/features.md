@@ -101,7 +101,7 @@ Todos os wrappers de `LM_ServerInterface` (LM_Engine.u). Opcode indicado só qua
 | `/ItemExtend` | CS | `ItemExtend` | 580 | `channel_server.md` seção 2 |
 | `/GetSystemItemState` | CS | sem método na DLL | - | lacuna |
 | `/EnterHanger` | CS | `InHangar` | 586 | `channel_server.md` seção 2 |
-| `/LeaveHanger` | CS | `OutHangar` | 588 | `channel_server.md` seção 2; sem chamador na UI |
+| `/LeaveHanger` | CS | `OutHangar` | 588 | `channel_server.md` seção 2; o emulador responde 589 (D151) |
 | `/TutorialClear` | CS | `ClearTutorial` | 600 | `channel_server.md` seção 2 |
 | `/RegisterGroup` | CS | `RegisterGroup` | 640 | `channel_server.md` seção 2 |
 | `/GetMatchingGroupList` | CS | `GetMatchingGroup` | 642 | `channel_server.md` seção 2 |
@@ -209,7 +209,7 @@ Requisições da DLL sem wrapper no UnrealScript (só pelo nativo): `RequestRoom
 
 - **Servidor:** CS.
 - **Entrada:** `EnterHanger()` (`/EnterHanger` -> `InHangar`, opcode 586). Chamado em `LM_RoomPage` (28986) e `LM_MatchRoomPage` (35522). Resposta `NotifyEnterHanger(bool)` -> `OnEnterHanger`.
-- **Saída:** `LeaveHanger()` (`/LeaveHanger` -> `OutHangar`, opcode 588) tem wrapper, mas **nenhum chamador na UI**. Resposta `NotifyLeaveHanger` -> `OnLeaveHanger` (`LM_RoomPage` 29020, `LM_MatchRoomPage` 35555). Lacuna: o cliente não envia a saída do hangar.
+- **Saída:** `LeaveHanger()` (`/LeaveHanger` -> `OutHangar`, opcode 588) tem wrapper. Resposta `NotifyLeaveHanger` -> `OnLeaveHanger` (`LM_RoomPage` 29020, `LM_MatchRoomPage` 35555). O emulador responde 589 ao 588 (D151); que a UI envie 588 é inferido, sem linha de log citada.
 - **Tela:** `LM_HangerPage` (XInterface 44869-45905), `LM_HangerItemMCL`, `LM_HangerInvenListPanel` (46259-46920), `LM_HangerGateInvenPanel` (46920-47540), `LM_HangerGateInfoPanel` (47540-47775).
 
 ### 3.2 Uso (equipar no gate) e remoção do gate
@@ -386,7 +386,7 @@ O cliente não tem tela de penalidade nem lista de punições. A lista está só
 - **Quest:** inexistente no cliente (seção 1).
 - **Quickslot:** removido (seção 4).
 - **Ranking:** a tela existe, sem pedido (seção 9).
-- **`GiftItemUsed`, `GiftMoratsUsed`, `LeaveHanger`, `GetSystemItemState`, `RefreshMatchRoomList`:** sem chamador na UI ou sem método na DLL. Ver seção 0.2.
+- **`GiftItemUsed`, `GiftMoratsUsed`, `GetSystemItemState`, `RefreshMatchRoomList`:** sem chamador na UI ou sem método na DLL. Ver seção 0.2.
 - **`ItemUsedByValue`:** sem método na DLL (inferido: `ItemUsed`).
 - **`/OutChannelServer` e `/NetDisConnect`:** sem método nomeado na DLL.
 - **Requisito de compra:** não localizei o bloqueio no cliente. O servidor deve validar.
@@ -431,7 +431,7 @@ Sem tabela para: chat, sala, grupo de partida, sorteio de gacha, transações de
 | Loja: presente | CS | `/ItemGift` (615), `/GetGiftItem` (610) | cliente: `item`, `Item_Equip` / `gifts` |
 | Loja: resgate de presente | CS | `/GiftItemUsed` (612): sem chamador | - / `gifts.claimed_at` |
 | Gacha / item surpresa | CS (push) | nenhum no cliente | cliente: `item` (308010006) / `inventory_items`, `accounts` |
-| Inventário e hangar | CS | `/EnterHanger` (586); `/LeaveHanger` (588) sem chamador | - / `inventory_items` |
+| Inventário e hangar | CS | `/EnterHanger` (586); `/LeaveHanger` (588, respondido por 589, D151) | - / `inventory_items` |
 | Equipar no gate | CS | `/ItemUsed` (560), `/ItemUnused` (570) | - / `morat_gates`, `morat_gate_parts` |
 | Destruir / renovar item | CS | `/ItemDestroy` (555), `/ItemExtend` (580) | `Item_Equip.item_life_time` / `inventory_items.expires_at` |
 | Sistema (buffs, slots) | CS | `/ItemUsed` (560); `/GetSystemItemState` (sem método) | - / `system_slots` |

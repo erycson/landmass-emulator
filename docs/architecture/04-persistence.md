@@ -157,7 +157,7 @@ Migração `a3d9e6f1c402` (sobre `a3c7e915d2b4`). Modelo `GiftRow` em `db/models
 
 - Porta: `ports/matches.py` (`MatchRepository.save`). Implementação: `db/matches.py` (`SqlMatchRepository`), que grava a partida e os jogadores numa transação e devolve o id de `matches`.
 - Dados em memória: `domain/match_stats.py` (`MatchRecord`, `PlayerMatchStats`), sem IO.
-- Modelos: `db/models.py` (`MatchRow`, `MatchPlayerRow`). Migração: `db/migrations/versions/887ad86230f6_create_matches_and_match_players_tables.py`.
+- Modelos: `db/models.py` (`MatchRow`, `MatchPlayerRow`). Migração: `db/migrations/versions/887ad86230f6_create_matches_and_match_players_tables.py`. Colunas `uuid` e `played_seconds`: `db/migrations/versions/5c1e8a3f7b92_add_uuid_and_played_seconds_to_matches.py`.
 - Constraints: `match_players_match_id_foreign` (FK) e `match_players_match_id_account_id_unique` (um jogador por partida).
 - Gravação: uma vez, no fim da partida, com `end_reason` (D48, D52). Não há tabela de eventos nem registro durante a partida.
 - Gravado: identidade, sala, `uuid` (D152), tempo jogado do canal e, quando o log traz o bloco `GameEnded`, kills, colocação, exp e LD (D153, D154). Sem o bloco, essas métricas ficam `NULL`. A ficha (D107) lê essas colunas.

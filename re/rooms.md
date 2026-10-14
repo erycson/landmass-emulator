@@ -238,7 +238,7 @@ Config para quem não é dono (D156): o `SettingBtn` não é desabilitado no ram
 3. `OnEnterHanger` (XInterface 28991–29018): com `MoveHanger` verdadeiro, troca a página por `xInterface.LM_HangerPage`; caso contrário, só atualiza a lista de jogadores.
 4. Servidor: 586 de quem está em sala responde 587 com o próprio guid, só ao pedinte (`RoomHandlers.enter_hangar`). Fora de sala não há resposta; o cliente não tem caso para resposta negativa.
 5. Inventário: `LM_HangerPage` usa o cache do login (102/103), e o servidor não reenvia. Não confirmado no cliente real.
-6. 588 (`LeaveHanger`) chega do cliente: o emulador o recebia sem handler (log do emulador, 13/10/2026), e o cliente ficava no depósito. O emulador responde 589 com a chave e `u8 @4 = 0x23` (D151). O 589 só é aplicado com o nó na posição 0x25 (`case 0x24d` do dispatcher, `re/LM_Engine.dll`). Validação no cliente pendente.
+6. Inferido: 588 (`LeaveHanger`) chega do cliente; o emulador não tinha handler para ele, e o cliente ficava no depósito (sem linha de log citada). O emulador responde 589 com a chave e `u8 @4 = 0x23` (D151). O 589 só é aplicado com o nó na posição 0x25 (`case 0x24d` do dispatcher, `re/LM_Engine.dll`). Validação no cliente pendente.
 7. Botão: `MainMenuBtns[4]` fica desativado para o dono com pronto (XInterface 28149–28153). O índice do botão Depósito está no defaultproperties, que não foi extraído do `.u`.
 
 ## 13. Ficha do jogador (543)
