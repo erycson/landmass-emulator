@@ -44,6 +44,10 @@ SLOT_NAMES: tuple[str, ...] = (
     "etc_item_02",
     "etc_item_03",
 )
+# Skins do morat (`siSkinID[3]`, @0x64 de `LM_MORATS_INFO`): a pintura ocupa uma delas (D136).
+# Fora de `SLOT_NAMES`: o `item_slot` das pinturas (13 a 25) não é índice de skin.
+SKIN_SLOTS: tuple[str, ...] = ("skin_00", "skin_01", "skin_02")
+PAINT_SKIN_SLOT = 0  # shortcut: a pintura entra em `skin_00`; `k` do 565 é fixo (inferido).
 # `sEventSlot[10]` (LM_PLAYER_INFO) guarda o índice de inventário em 1 byte por slot.
 SYSTEM_SLOT_COUNT = 10
 SYSTEM_INDEX_MAX = 0xFE
@@ -55,13 +59,12 @@ CLASS_SKIN = 7
 class UseResult(IntEnum):
     """Resultados de uso (561 e 571 têm mensagem pelo valor, em `NotifyItemUsed`).
 
-    OK e NO_GATE e SKIN seguem os casos do `switch` (-1 e -3, com `CITEM_SKIN`). Os demais valores
-    são genéricos e não têm mensagem própria no cliente: inferido, porque os `CERR_*` não têm
-    valor no dump (D68)."""
+    OK e NO_GATE seguem os casos do `switch` (-1, sem morat no gate). Os demais valores são
+    genéricos e não têm mensagem própria no cliente: inferido, porque os `CERR_*` não têm valor no
+    dump (D68). O -3 de skin (`CITEM_SKIN`) saiu: pintura agora se monta (D136)."""
 
     OK = 0
     NO_GATE = -1  # gate sem morat, ou morat de outra conta
-    SKIN = -3  # skin não se monta por este caminho (morat e skin: F6 não cobre)
     DENIED = -4  # genérico: índice inválido, vencido, slot cheio ou item fora do catálogo
     REQUIREMENT = -7  # classe, energia, força, agilidade, precisão, patente ou nest
 
@@ -131,13 +134,19 @@ def class_allows(class_mask: int, morat_class: int) -> bool:
 
 def pieces_of(morat_id: int | None, items: Iterable[ItemUnit]) -> tuple[int, ...]:
     """Índices das peças montadas no morat, na ordem de `SLOT_NAMES`: -1 onde não há peça
-    (o cliente usa o `DefaultSet` da espécie). Skins ficam em 0 (fora do F6)."""
+    (o cliente usa o `DefaultSet` da espécie). Depois, as 3 skins: índice da pintura montada
+    em `skin_00..02` (D136), 0 onde não há pintura."""
     pieces = [-1] * len(SLOT_NAMES)
+    skins = [0] * len(SKIN_SLOTS)
     if morat_id is not None:
         for item in items:
-            if item.account_morat_id == morat_id and item.slot_name in SLOT_NAMES:
+            if item.account_morat_id != morat_id:
+                continue
+            if item.slot_name in SLOT_NAMES:
                 pieces[SLOT_NAMES.index(item.slot_name or "")] = item.inventory_index
-    return (*pieces, 0, 0, 0)
+            elif item.slot_name in SKIN_SLOTS:
+                skins[SKIN_SLOTS.index(item.slot_name or "")] = item.inventory_index
+    return (*pieces, *skins)
 
 
 class EquipCatalog(Protocol):
@@ -161,18 +170,20 @@ class LevelSource(Protocol):
 @dataclass(frozen=True, slots=True)
 class Mounted:
     """Montagem gravada. Peça: `gate` e `slot` (0 a 11), resposta 562. Sistema: `slot` (0 a 9),
-    resposta 554 com o registro do item."""
+    resposta 554 com o registro do item. Pintura (`skin`): `slot` é o `k` da skin, resposta 565."""
 
     unit: ItemUnit
     gate: int | None
     slot: int
     system: bool
+    skin: bool = False
 
 
 @dataclass(frozen=True, slots=True)
 class Unmounted:
     gate: int
-    slot: int  # slot de peça (0 a 15), o mesmo de 572
+    slot: int  # slot de peça (0 a 15), o mesmo de 572; `k` da skin quando `skin`
+    skin: bool = False
 
 
 class EquipService:
@@ -223,15 +234,18 @@ class EquipService:
         if is_system_item(unit.catalog_id):
             return await self._mount_system(account_id, unit, items)
         spec = self._catalog.equip_spec(unit.catalog_id)
-        if spec is None:
-            code = UseResult.SKIN if is_skin(unit.catalog_id) else UseResult.DENIED
-            raise ItemRefusal(code, f"{unit.catalog_id} não é equipamento de morat")
+        if spec is None and not is_skin(unit.catalog_id):
+            raise ItemRefusal(UseResult.DENIED, f"{unit.catalog_id} não é equipamento de morat")
         morats = await self._inventory.morats(account_id)
         morat = _find_gate(morats, gate)
         if morat is None or morat.id is None:
             raise ItemRefusal(UseResult.NO_GATE, f"gate {gate} sem morat")
         if unit.account_morat_id is not None:
             raise ItemRefusal(UseResult.DENIED, f"índice {index} já está montado")
+        if spec is None:
+            # Pintura: ocupa `skin_00`; a que estava lá sai na mesma transação (D136).
+            await self._equipment.mount(account_id, index, morat.id, SKIN_SLOTS[PAINT_SKIN_SLOT])
+            return Mounted(unit=unit, gate=gate, slot=PAINT_SKIN_SLOT, system=False, skin=True)
         stats = self._catalog.morat_stats(morat.catalog_id)
         if stats is None:
             raise ItemRefusal(UseResult.DENIED, f"morat {morat.catalog_id} sem atributos")
@@ -292,6 +306,9 @@ class EquipService:
         morat = next((m for m in morats if m.id == unit.account_morat_id), None)
         if morat is None or morat.gate_index != gate:
             raise ItemRefusal(UseResult.NO_GATE, f"índice {index} não está no gate {gate}")
+        if unit.slot_name in SKIN_SLOTS:
+            await self._equipment.unmount(account_id, index)
+            return Unmounted(gate=gate, slot=SKIN_SLOTS.index(unit.slot_name), skin=True)
         slot = slot_of(unit.slot_name)
         if slot is None:
             raise ItemRefusal(UseResult.DENIED, f"slot {unit.slot_name} desconhecido")

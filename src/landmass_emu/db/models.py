@@ -45,6 +45,9 @@ class AccountRow(Base):
     regular_morat_class: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Bloqueio temporário pela CLI (D106): nulo = sem bloqueio.
     banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Marcos de zerado (D131, D132): a ficha conta só partidas depois. Nulo = nunca zerado.
+    record_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    combat_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AccountMoratRow(Base):

@@ -10,6 +10,7 @@ from landmass_emu.audit import EconomyAudit
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
 from landmass_emu.db.clans import SqlClanRepository
+from landmass_emu.db.consumables import SqlConsumableRepository
 from landmass_emu.db.engine import Migrator
 from landmass_emu.db.equipment import SqlEquipmentRepository
 from landmass_emu.db.inventory import SqlInventoryRepository
@@ -22,6 +23,7 @@ from landmass_emu.db.ranking import SqlRankingRepository
 from landmass_emu.db.shop import SqlShopRepository
 from landmass_emu.db.social import SqlSocialRepository
 from landmass_emu.domain.channel import Channel
+from landmass_emu.domain.consumables import ConsumableService
 from landmass_emu.domain.equipment import EquipService
 from landmass_emu.domain.inventory import InventoryService
 from landmass_emu.domain.lifecycle import DestroyService, ExtendService
@@ -268,6 +270,11 @@ def _game_services(
             locks=locks,
         ),
         destroy=DestroyService(inventory=inventory, equipment=equipment, locks=locks),
+        consumables=ConsumableService(
+            inventory=inventory,
+            repository=SqlConsumableRepository(db),
+            locks=locks,
+        ),
         extend=ExtendService(
             catalog=catalog,
             inventory=inventory,

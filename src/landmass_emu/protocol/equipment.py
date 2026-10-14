@@ -27,8 +27,13 @@ class CsEquipOp(IntEnum):
     ITEM_USED_IN = 560
     ITEM_USED_REFUSED_OUT = 561
     ITEM_USED_PIECE_OUT = 562
+    SKIN_MOUNTED_OUT = 565
+    ITEM_CONSUMED_OUT = 568
+    CHANGE_NEST_OUT = 569
     ITEM_UNUSED_IN = 570
     ITEM_UNUSED_PIECE_OUT = 572
+    SKIN_UNUSED_OUT = 573
+    CHANGE_MORAT_CLASS_OUT = 590
     ITEM_EXTEND_IN = 580
     ITEM_EXTEND_OUT = 582
     ITEM_ENDTIME_OUT = 585
@@ -152,6 +157,83 @@ class CsItemUnusedPieceOut:
 
     def pack(self) -> bytes:
         return self._FORMAT.pack(self.gate, self.slot, self.result)
+
+
+@dataclass(frozen=True, slots=True)
+class CsSkinMountedOut:
+    """565: `u16 gate` @0 (chave do morat); `u16 value` @2 (índice da pintura, vai para `siSkinID`);
+    `u16 slot` @4 (`k` da skin, 0 a 2); `i32 result` @8. Com result 0, o cliente grava `value` em
+    `siSkinID[k]` do morat (inferido: o `k` da pintura é sempre 0, D136)."""
+
+    gate: int
+    value: int
+    slot: int
+    result: int
+    opcode: ClassVar[int] = CsEquipOp.SKIN_MOUNTED_OUT
+    _FORMAT = struct.Struct("<HHHxxi")
+
+    def pack(self) -> bytes:
+        return self._FORMAT.pack(self.gate, self.value, self.slot, self.result)
+
+
+@dataclass(frozen=True, slots=True)
+class CsSkinUnusedOut:
+    """573: `u16 gate` @0; `u16 slot` @4 (`k` da skin); `i32 result` @8. Com result 0, o cliente
+    limpa `siSkinID[k]` do morat (inferido: o 573 grava 0xffff no índice)."""
+
+    gate: int
+    slot: int
+    result: int
+    opcode: ClassVar[int] = CsEquipOp.SKIN_UNUSED_OUT
+    _FORMAT = struct.Struct("<HxxHxxi")
+
+    def pack(self) -> bytes:
+        return self._FORMAT.pack(self.gate, self.slot, self.result)
+
+
+@dataclass(frozen=True, slots=True)
+class CsItemConsumedOut:
+    """568: `u16 index` @0 (o item consumido, que o cliente tira da lista); `i32 result` @4. Com
+    result 0, o cliente remove a unidade e mostra a mensagem 101 (`NotifyItemUsed`)."""
+
+    index: int
+    result: int
+    opcode: ClassVar[int] = CsEquipOp.ITEM_CONSUMED_OUT
+    _FORMAT = struct.Struct("<Hxxi")
+
+    def pack(self) -> bytes:
+        return self._FORMAT.pack(self.index, self.result)
+
+
+@dataclass(frozen=True, slots=True)
+class CsChangeNestOut:
+    """569: `u16 index` @0 (o Alistar, que o cliente remove); `u8 nest` @2 (vai para o nó do jogador
+    +0x30, inferido); `i32 result` @4. Com result 0, o cliente troca o nest regular."""
+
+    index: int
+    nest: int
+    result: int
+    opcode: ClassVar[int] = CsEquipOp.CHANGE_NEST_OUT
+    _FORMAT = struct.Struct("<HBxi")
+
+    def pack(self) -> bytes:
+        return self._FORMAT.pack(self.index, self.nest, self.result)
+
+
+@dataclass(frozen=True, slots=True)
+class CsChangeMoratClassOut:
+    """590: `u16 index` @0 (a Troca de Função, que o cliente remove); `u8 morat_class` @2 (vai para
+    o nó do morat +0x98, inferido); `i32 result` @4. Sem envelope de erro, o cliente aplica: a
+    recusa vai por 561 (o 590 não confere `result`)."""
+
+    index: int
+    morat_class: int
+    result: int
+    opcode: ClassVar[int] = CsEquipOp.CHANGE_MORAT_CLASS_OUT
+    _FORMAT = struct.Struct("<HBxi")
+
+    def pack(self) -> bytes:
+        return self._FORMAT.pack(self.index, self.morat_class, self.result)
 
 
 @dataclass(frozen=True, slots=True)

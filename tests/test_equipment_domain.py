@@ -268,6 +268,11 @@ def test_pieces_of_monta_19_valores_com_skins_em_zero() -> None:
     assert pecas[16:] == (0, 0, 0)
 
 
+def test_pieces_of_leva_o_indice_da_pintura_na_skin() -> None:
+    itens = [_item(7, SKIN, morat=10, slot="skin_00")]
+    assert pieces_of(10, itens)[16:] == (7, 0, 0)
+
+
 # Equipar e desequipar.
 
 
@@ -316,11 +321,18 @@ async def test_peca_ja_montada_recusa() -> None:
     assert recusa.value.result == UseResult.DENIED
 
 
-async def test_skin_recusa_com_skin() -> None:
+async def test_pintura_monta_em_skin_00_sem_pedir_atributos() -> None:
+    estado = Estado(items=[_item(1, SKIN)], morats=[_morat(0, 10)])
+    montado = await _equipar(estado).equip(1, 1, 0)
+    assert (montado.skin, montado.gate, montado.slot) == (True, 0, 0)
+    assert (estado.items[0].account_morat_id, estado.items[0].slot_name) == (10, "skin_00")
+
+
+async def test_pintura_sem_morat_no_gate_recusa_com_no_gate() -> None:
     estado = Estado(items=[_item(1, SKIN)], morats=[_morat(0, 10)])
     with pytest.raises(ItemRefusal) as recusa:
-        await _equipar(estado).equip(1, 1, 0)
-    assert recusa.value.result == UseResult.SKIN
+        await _equipar(estado).equip(1, 1, 3)
+    assert recusa.value.result == UseResult.NO_GATE
 
 
 async def test_sistema_usa_o_primeiro_slot_livre_e_ignora_o_gate() -> None:

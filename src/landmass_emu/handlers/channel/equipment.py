@@ -8,14 +8,19 @@ import logging
 from collections.abc import Sequence
 
 from landmass_emu.audit import EconomyAudit, balances, unit_fields
+from landmass_emu.domain.consumables import ConsumableService, Consumed, Effect, NotConsumable
 from landmass_emu.domain.currency import Currency
-from landmass_emu.domain.equipment import EquipService, ItemRefusal, UseResult
+from landmass_emu.domain.equipment import SKIN_SLOTS, EquipService, ItemRefusal, UseResult
+from landmass_emu.domain.inventory import ItemUnit
 from landmass_emu.domain.lifecycle import DestroyService, ExtendService
 from landmass_emu.handlers.channel.login import item_record
 from landmass_emu.net.server import Reply, Router
 from landmass_emu.net.session import Session
 from landmass_emu.protocol.equipment import (
+    CsChangeMoratClassOut,
+    CsChangeNestOut,
     CsEquipOp,
+    CsItemConsumedOut,
     CsItemDestroyIn,
     CsItemDestroyOut,
     CsItemDestroySystemOut,
@@ -28,6 +33,8 @@ from landmass_emu.protocol.equipment import (
     CsItemUsedRefusedOut,
     CsItemUsedSystemOut,
     CsMoratsDestroyOut,
+    CsSkinMountedOut,
+    CsSkinUnusedOut,
 )
 
 log = logging.getLogger(__name__)
@@ -40,11 +47,13 @@ class EquipmentHandlers:
         equip: EquipService,
         destroy: DestroyService,
         extend: ExtendService,
+        consumables: ConsumableService,
         audit: EconomyAudit | None = None,
     ) -> None:
         self._equip = equip
         self._destroy = destroy
         self._extend = extend
+        self._consumables = consumables
         self._audit = audit or EconomyAudit()
         self.router: Router = {
             CsEquipOp.ITEM_DESTROY_IN: self.item_destroy,
@@ -58,26 +67,45 @@ class EquipmentHandlers:
             log.warning("[%s] ItemUsed antes do login; ignorado", session.peer)
             return []
         req = CsItemUsedIn.unpack(payload)  # payload curto: struct.error, ignorado pelo roteador
-        if req.value:
-            # ItemUsedByValue (morat principal) não entra no F6: recusa.
-            return [CsItemUsedRefusedOut(UseResult.DENIED)]
+        account_id = session.account.id
         try:
-            mounted = await self._equip.equip(session.account.id, req.index, req.gate)
+            done = await self._consumables.use(account_id, req.index, req.value)
+        except NotConsumable:
+            if req.value:
+                # ItemUsedByValue fora dos consumíveis (morat principal): recusa (D75).
+                return [CsItemUsedRefusedOut(UseResult.DENIED)]
+            return await self._equip_item(session, account_id, req.index, req.gate)
         except ItemRefusal as refusal:
-            log.info(
-                "[%s] equipar %d no gate %d recusado: %s",
-                session.peer,
-                req.index,
-                req.gate,
-                refusal,
-            )
+            log.info("[%s] consumir %d recusado: %s", session.peer, req.index, refusal)
             return [CsItemUsedRefusedOut(refusal.result)]
-        log.info(
-            "[%s] equipado %d no gate %d (slot %d)", session.peer, req.index, req.gate, mounted.slot
-        )
+        self._audit_consumed(session, req.index, done)
+        return _consumed_reply(req.index, done)
+
+    async def _equip_item(
+        self, session: Session, account_id: int, index: int, gate: int
+    ) -> Sequence[Reply]:
+        try:
+            mounted = await self._equip.equip(account_id, index, gate)
+        except ItemRefusal as refusal:
+            log.info("[%s] equipar %d no gate %d recusado: %s", session.peer, index, gate, refusal)
+            return [CsItemUsedRefusedOut(refusal.result)]
+        log.info("[%s] equipado %d no gate %d (slot %d)", session.peer, index, gate, mounted.slot)
+        if mounted.skin:
+            return [CsSkinMountedOut(gate, mounted.unit.inventory_index, mounted.slot, 0)]
         if mounted.system:
             return [CsItemUsedSystemOut(item_record(mounted.unit), mounted.slot, 0)]
-        return [CsItemUsedPieceOut(req.gate, req.index, mounted.slot, 0)]
+        return [CsItemUsedPieceOut(gate, index, mounted.slot, 0)]
+
+    def _audit_consumed(self, session: Session, index: int, done: Consumed) -> None:
+        self._audit.record(
+            session,
+            "use",
+            catalog_id=done.unit.catalog_id,
+            inventory_index=index,
+            effect=done.effect.name,
+            value=done.value,
+            result=0,
+        )
 
     async def item_unused(self, session: Session, payload: bytes) -> Sequence[Reply]:
         if session.account is None:
@@ -89,6 +117,8 @@ class EquipmentHandlers:
         except ItemRefusal as refusal:
             log.info("[%s] desequipar %d recusado: %s", session.peer, req.index, refusal)
             return [CsItemUnusedPieceOut(req.gate, 0, refusal.result)]
+        if unmounted.skin:
+            return [CsSkinUnusedOut(unmounted.gate, unmounted.slot, 0)]
         return [CsItemUnusedPieceOut(unmounted.gate, unmounted.slot, 0)]
 
     async def item_destroy(self, session: Session, payload: bytes) -> Sequence[Reply]:
@@ -123,6 +153,14 @@ class EquipmentHandlers:
         if done.system_slot is not None:
             return [CsItemDestroySystemOut(req.index, done.system_slot, 0)]
         gate = done.gate if done.gate is not None else 0
+        unit = done.unit
+        slot = unit.slot_name if isinstance(unit, ItemUnit) else None
+        if slot is not None and slot in SKIN_SLOTS and done.gate is not None:
+            # Pintura montada: 556 só tira o item da lista (sem mounted); 573 limpa a skin.
+            return [
+                CsItemDestroyOut(req.index, gate, False, 0),
+                CsSkinUnusedOut(gate, SKIN_SLOTS.index(slot), 0),
+            ]
         return [CsItemDestroyOut(req.index, gate, done.gate is not None, 0)]
 
     async def item_extend(self, session: Session, payload: bytes) -> Sequence[Reply]:
@@ -165,3 +203,13 @@ class EquipmentHandlers:
         # REALTIME: o cliente lê o fim em segundos Unix no apply_value (R-VAL-01).
         expires = int(done.expires_at.timestamp())
         return [CsItemExtendOut(done.index, expires, done.cash, done.ld, 0)]
+
+
+def _consumed_reply(index: int, done: Consumed) -> Sequence[Reply]:
+    """Resposta de sucesso por efeito. 568, 569 e 590 fazem o cliente tirar o item da lista (a chave
+    é o índice); por isso não se manda 556 junto."""
+    if done.effect is Effect.NEST:
+        return [CsChangeNestOut(index, done.value, 0)]
+    if done.effect is Effect.MORAT_CLASS:
+        return [CsChangeMoratClassOut(index, done.value, 0)]
+    return [CsItemConsumedOut(index, 0)]

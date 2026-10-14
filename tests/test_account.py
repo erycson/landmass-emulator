@@ -112,6 +112,8 @@ async def test_schema_segue_convencao_laravel(tmp_path: Path) -> None:
             "regular_nest_id",
             "regular_morat_class",
             "banned_until",
+            "record_reset_at",
+            "combat_reset_at",
         ]
         unicos = sorted(u["name"] for u in insp.get_unique_constraints("accounts"))
         assert unicos == [

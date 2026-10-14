@@ -10,16 +10,21 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from landmass_emu.app import open_database
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
+from landmass_emu.db.consumables import SqlConsumableRepository
 from landmass_emu.db.equipment import SqlEquipmentRepository
 from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.item_catalog import LazyItemCatalog
+from landmass_emu.db.models import AccountRow
 from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.domain.account import Account, hash_token
+from landmass_emu.domain.buffs import BuffService
+from landmass_emu.domain.consumables import ConsumableService
 from landmass_emu.domain.equipment import EquipService
 from landmass_emu.domain.inventory import ApplyFlag, ItemUnit, MoratUnit
 from landmass_emu.domain.lifecycle import DestroyService, ExtendService
@@ -27,6 +32,9 @@ from landmass_emu.domain.progression import Grant
 from landmass_emu.handlers.channel.equipment import EquipmentHandlers
 from landmass_emu.net.session import Session
 from landmass_emu.protocol.equipment import (
+    CsChangeMoratClassOut,
+    CsChangeNestOut,
+    CsItemConsumedOut,
     CsItemDestroyOut,
     CsItemExtendOut,
     CsItemUnusedPieceOut,
@@ -34,6 +42,8 @@ from landmass_emu.protocol.equipment import (
     CsItemUsedRefusedOut,
     CsItemUsedSystemOut,
     CsMoratsDestroyOut,
+    CsSkinMountedOut,
+    CsSkinUnusedOut,
 )
 from landmass_emu.settings import Settings
 
@@ -104,6 +114,7 @@ async def _cenario(
         ),
         destroy=DestroyService(inventory=inv, equipment=eq),
         extend=ExtendService(catalog=catalogo, inventory=inv, equipment=eq, progression=progresso),
+        consumables=ConsumableService(inventory=inv, repository=SqlConsumableRepository(db)),
     )
     return handlers, Session(peer="t", account=conta), conta
 
@@ -245,3 +256,166 @@ async def test_sem_login_o_pedido_e_ignorado(
 ) -> None:
     handlers, _, _ = await _cenario(db, tmp_path)
     assert await handlers.item_used(Session(peer="t"), struct.pack("<HHi", 1, 0, 0)) == []
+
+
+# Consumíveis (D131 a D136): consumo, valor por valor e pintura.
+
+QUEIMA = 308010001  # ONCE: zera vitórias, derrotas e abandono
+RECONSTITUIR = 308010002  # ONCE: zera abates, mortes e headshots
+ALISTAR = 308010003  # ONCE: nest regular, valor 1 a 3
+TROCA = 308010004  # ONCE: classe do morat regular, valor 1 a 4
+AUMENTO_EXP = 308020001  # BUFF: monta no sEventSlot
+PINTURA = 307010001  # classe 7: monta em skin_00 do morat
+
+
+async def _conta(db: async_sessionmaker[AsyncSession], conta_id: int) -> AccountRow:
+    async with db() as sessao:
+        return await sessao.scalar(select(AccountRow).where(AccountRow.id == conta_id)) or (
+            pytest.fail("conta sumiu")
+        )
+
+
+async def test_queima_consome_responde_568_e_grava_marco_de_zerado(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, QUEIMA))
+
+    respostas = await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 0))
+
+    assert respostas == [CsItemConsumedOut(index=1, result=0)]
+    assert await SqlInventoryRepository(db).items(conta.id) == []
+    linha = await _conta(db, conta.id)
+    assert linha.record_reset_at is not None
+    assert linha.combat_reset_at is None
+
+
+async def test_reconstituir_grava_marco_de_combate_e_nao_o_de_vitorias(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, RECONSTITUIR))
+
+    respostas = await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 0))
+
+    assert respostas == [CsItemConsumedOut(index=1, result=0)]
+    linha = await _conta(db, conta.id)
+    assert linha.combat_reset_at is not None
+    assert linha.record_reset_at is None
+
+
+async def test_alistar_responde_569_com_o_nest_e_grava_o_nest(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, ALISTAR))
+
+    respostas = await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 2))
+
+    assert respostas == [CsChangeNestOut(index=1, nest=2, result=0)]
+    assert (await _conta(db, conta.id)).regular_nest_id == 2
+    assert await SqlInventoryRepository(db).items(conta.id) == []
+
+
+async def test_troca_de_funcao_responde_590_com_a_classe(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, TROCA))
+
+    respostas = await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 3))
+
+    assert respostas == [CsChangeMoratClassOut(index=1, morat_class=3, result=0)]
+    assert (await _conta(db, conta.id)).regular_morat_class == 3
+
+
+async def test_alistar_sem_valor_recusa_e_mantem_o_item(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, ALISTAR))
+
+    respostas = await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 0))
+
+    assert respostas == [CsItemUsedRefusedOut(-4)]
+    assert len(await SqlInventoryRepository(db).items(conta.id)) == 1
+
+
+async def test_nest_fora_da_faixa_recusa_sem_gravar(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, ALISTAR))
+
+    respostas = await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 7))
+
+    assert respostas == [CsItemUsedRefusedOut(-4)]
+    assert (await _conta(db, conta.id)).regular_nest_id is None
+
+
+async def test_consumir_de_novo_recusa_a_segunda_vez(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, QUEIMA))
+    await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 0))
+
+    respostas = await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 0))
+
+    assert respostas == [CsItemUsedRefusedOut(-4)]
+
+
+async def test_pintura_monta_em_skin_e_responde_565(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_morat(_morat(conta.id, 0))
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, PINTURA))
+
+    respostas = await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 0))
+
+    assert respostas == [CsSkinMountedOut(gate=0, value=1, slot=0, result=0)]
+    [pintura] = await SqlInventoryRepository(db).items(conta.id)
+    assert pintura.slot_name == "skin_00"
+    assert pintura.account_morat_id is not None
+
+
+async def test_desequipar_pintura_responde_573(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_morat(_morat(conta.id, 0))
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, PINTURA))
+    await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 0))
+
+    respostas = await handlers.item_unused(sessao, struct.pack("<HH", 1, 0))
+
+    assert respostas == [CsSkinUnusedOut(gate=0, slot=0, result=0)]
+
+
+async def test_buff_montado_responde_554_e_fica_ativo(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, AUMENTO_EXP))
+
+    [resposta] = await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 0))
+
+    assert isinstance(resposta, CsItemUsedSystemOut)
+    assert resposta.slot == 0
+    ativos = await BuffService(SqlInventoryRepository(db)).active_buffs(conta.id)
+    assert ativos.exp is True
+    assert ativos.ld is False
+
+
+async def test_destruir_pintura_montada_tira_da_lista_e_limpa_a_skin(
+    db: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    handlers, sessao, conta = await _cenario(db, tmp_path)
+    await SqlInventoryRepository(db).add_morat(_morat(conta.id, 0))
+    await SqlInventoryRepository(db).add_item(_item(conta.id, 1, PINTURA))
+    await handlers.item_used(sessao, struct.pack("<HHi", 1, 0, 0))
+
+    respostas = await handlers.item_destroy(sessao, struct.pack("<iH", PINTURA, 1))
+
+    assert respostas == [CsItemDestroyOut(1, 0, False, 0), CsSkinUnusedOut(0, 0, 0)]
