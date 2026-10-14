@@ -147,7 +147,13 @@ async def test_compra_aprovada_grava_saldo_antes_e_depois(tmp_path: Path) -> Non
     caminho = tmp_path / "audit" / "economy.jsonl"
     audit = EconomyAudit.open(caminho, Nomes())
     compra = Purchase(
-        unit=_unidade_item(), cash=50, ld=700, currency=Currency.LD, price=300, days=7
+        unit=_unidade_item(),
+        cash=50,
+        ld=700,
+        currency=Currency.LD,
+        price=300,
+        days=7,
+        tier=1,
     )
     try:
         await ShopHandlers(LojaFalsa(compra), audit).item_buy(
@@ -169,6 +175,8 @@ async def test_compra_aprovada_grava_saldo_antes_e_depois(tmp_path: Path) -> Non
         300,
         7,
     )
+    # Nível cobrado (tier), não só o pedido: morat pede 1 e cobra 0 (D191).
+    assert (linha["option"], linha["tier"]) == (1, 1)
     assert (linha["ld_before"], linha["ld_after"]) == (1000, 700)
     assert (linha["cash_before"], linha["cash_after"]) == (50, 50)
     assert linha["result"] == 0

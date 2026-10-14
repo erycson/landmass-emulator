@@ -12,12 +12,13 @@ from landmass_emu.app import open_database
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.progression import SqlProgressionRepository
-from landmass_emu.db.shop import SqlShopRepository
+from landmass_emu.db.shop import SqlShopItemRepository, SqlShopRepository
 from landmass_emu.domain.account import hash_token
 from landmass_emu.domain.currency import Currency
 from landmass_emu.domain.inventory import ApplyFlag, ItemUnit, MoratUnit
 from landmass_emu.domain.progression import Grant
 from landmass_emu.ports.inventory import InventoryConflict
+from landmass_emu.ports.shop import ShopItem
 from landmass_emu.settings import Settings
 
 TOKEN = "0123456789abcdef0123456789abcdef"
@@ -100,3 +101,40 @@ async def test_indice_repetido_desfaz_o_debito(db: async_sessionmaker[AsyncSessi
         )
     assert (await SqlProgressionRepository(db).get(conta)).ld == 1000
     assert len(await SqlInventoryRepository(db).items(conta)) == 1
+
+
+async def test_sync_insere_novos_habilitados_e_mantem_enabled_de_quem_existe(
+    db: async_sessionmaker[AsyncSession],
+) -> None:
+    loja = SqlShopItemRepository(db)
+    assert await loja.count() == 0
+    novo = ShopItem(1000100, "Wood", True, (100, 300, 500, 900), (10, 30, 50, 90))
+    assert await loja.sync([novo]) == (1, 0)
+
+    assert await loja.set_enabled(1000100, False) is True
+    renomeado = ShopItem(1000100, "Madeira", True, (100, 0, 0, 0), (20, 0, 0, 0))
+    assert await loja.sync([renomeado, ShopItem(2, "Bic", True, (0, 0, 0, 0), (5, 0, 0, 0))]) == (
+        1,
+        1,
+    )
+
+    atual = await loja.get(1000100)
+    assert atual == ShopItem(1000100, "Madeira", False, (100, 0, 0, 0), (20, 0, 0, 0))
+    assert await loja.get(2) == ShopItem(2, "Bic", True, (0, 0, 0, 0), (5, 0, 0, 0))
+    assert [i.catalog_id for i in await loja.all_items()] == [2, 1000100]
+
+
+async def test_set_enabled_e_set_prices_recusam_id_ausente(
+    db: async_sessionmaker[AsyncSession],
+) -> None:
+    loja = SqlShopItemRepository(db)
+    assert await loja.set_enabled(9, True) is False
+    assert await loja.set_prices(9, (1, 0, 0, 0), (0, 0, 0, 0)) is False
+    assert await loja.get(9) is None
+
+
+async def test_set_prices_grava_os_quatro_niveis(db: async_sessionmaker[AsyncSession]) -> None:
+    loja = SqlShopItemRepository(db)
+    await loja.sync([ShopItem(1000100, "Wood", True, (0, 0, 0, 0), (0, 0, 0, 0))])
+    assert await loja.set_prices(1000100, (1, 2, 3, 4), (5, 6, 7, 8)) is True
+    assert await loja.get(1000100) == ShopItem(1000100, "Wood", True, (1, 2, 3, 4), (5, 6, 7, 8))

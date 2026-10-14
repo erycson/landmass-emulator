@@ -10,7 +10,7 @@ Carregue com `pydantic-settings` (`settings.py`), prefixo `LANDMASS_`, de variá
 | `LANDMASS_MESSAGE_PORT` | `7313` | Porta do Message Server. Também usada no `.bat` gerado. | 1 |
 | `LANDMASS_CHANNEL_PORT` | `7314` | Porta de escuta do Channel Server e porta anunciada aos canais (`service_port`). | 1, 2 |
 | `LANDMASS_CLIENT_VERSION` | `1245776779` | Versão em `version=` do `.bat` gerado. | 1 |
-| `LANDMASS_CLIENT_DIR` | `../cliente/system` | Pasta onde `account create/token` grava `jogar_<user>.bat`. `account grant`, `account create`, `account item add`, `account morat add` e `account kit apply` leem dela o `landmass.wdb` (catálogo, somente leitura). | 1 |
+| `LANDMASS_CLIENT_DIR` | `../cliente/system` | Pasta onde `account create/token` grava `jogar_<user>.bat`. `account grant`, `account create`, `account item add`, `account morat add` e `account kit apply` e `shop sync` leem dela o `landmass.wdb` (catálogo, somente leitura). | 1 |
 | `LANDMASS_RECV_TIMEOUT` | `300` | Segundos sem tráfego antes de desconectar, em Message e Channel. Mínimo `60`. | 1, 2 |
 | `LANDMASS_CHANNELS` | `[{"name": "Canal 1", "max_clients": 100}]` | Lista JSON de canais. `address` (máx. 15) e `port` são opcionais; ausentes usam `LANDMASS_PUBLIC_HOST` e `LANDMASS_CHANNEL_PORT`. `name` tem no máximo 35 caracteres. Entre 1 e 255 canais. | 1 |
 | `LANDMASS_SERVER_NAME` | `Norian` | Nome do servidor exibido no cliente. | 2 |

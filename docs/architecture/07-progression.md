@@ -293,6 +293,21 @@ Justificativa: o legado mantinha `tbl_ranking` por job (`usp_renew_ranking`), um
 
 Implementado em F14: `domain/ranking.py` (posições) e `db/ranking.py` (consulta, com `outerjoin` em `clan_members` para o id do clã). Ranking por nest não cabe no protocolo: 170 não tem corpo e 171 não tem campo de nest (D56, D108, dúvida 22).
 
+### 4.11 `shop_items`
+
+Venda da loja (D191). Uma linha por id do catálogo que se vende. `landmass-emu shop sync` a preenche a partir do wdb; tabela vazia = nada à venda. A compra lê a linha a cada pedido, sem cache.
+
+| Coluna | Tipo | Nulo | Regra |
+|--------|------|------|-------|
+| `catalog_id` | `Integer` | não | Chave primária. Id do catálogo do cliente. Sem FK (D19). |
+| `name` | `String(64)` | não | Nome exibido: `item_name` (item e Item_Equip) ou `alias` (Morats), em cp1252. |
+| `enabled` | `Boolean` | não | Falso recusa a compra (R-BUY-07). O `sync` não altera o valor de quem já existe. |
+| `point_0` a `point_3` | `Integer` | não | Preço em LD por nível (0 a 3). Zero = não vendido em LD. Morat usa só o nível 0, já com o ×5 de R-PRC-03. |
+| `cash_0` a `cash_3` | `Integer` | não | Preço em Cash por nível. Mesma regra. |
+| `created_at`, `updated_at` | `DateTime(tz)` | não | Convenção do projeto. |
+
+Migração `e8b4d1f6a237` (sobre `5c1e8a3f7b92`). Modelo `ShopItemRow` em `db/models.py`.
+
 ## 5. Regras de negócio
 
 Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte: seção de [features.md](../../re/features.md) ou função/linha do dump.
@@ -313,22 +328,23 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 | Id | Regra | Fonte |
 |----|-------|-------|
 | R-CAT-01 | Grupo = `id / 1e8` (0 nenhum, 1 morat, 2 equipamento, 3 item, 4 efeito). Classe = `(id / 1e6) % 100`. Tipo = `(id / 1e4) % 100`. Índice = `id % 1e4`. | features §0.3 (`GetItemClassify`) |
-| R-CAT-02 | Catálogo em memória: `item` (14 ids: consumíveis e skins), `Item_Equip` (61 ids), `Morats` (9 espécies), `GameRewardConstant` (47 chaves), `LevelList` (101 níveis), `gift` (3 pacotes de sistema). | `landmass.wdb` |
-| R-PRC-01 | Preço por opção `i` de 0 a 3: duração 1, 7, 14 e 30 dias (`BUY_OPTION1/7/14/30`). Preço em LD é `item_buy_point[i]`; em Cash, `item_buy_cash[i]`. Preço zero na moeda escolhida = não vendido nela. | features §2.2; `XInterface` `InternalOnClose` 12160–12232 |
+| R-CAT-02 | Catálogo em memória: `item` (14 ids: consumíveis e skins), `Item_Equip` (61 ids), `Morats` (9 espécies), `GameRewardConstant` (47 chaves), `LevelList` (101 níveis), `gift` (3 pacotes de sistema). O wdb dá nome, requisito e tipo. A venda (habilitado e preço) é de `shop_items` (§4.11, R-BUY-07). | `landmass.wdb`; D191 |
+| R-PRC-01 | Preço por opção `i` de 0 a 3: duração 1, 7, 14 e 30 dias (`BUY_OPTION1/7/14/30`). Preço em LD é `point_i` de `shop_items`; em Cash, `cash_i`. A tabela sai do wdb (`item_buy_point[i]`, `item_buy_cash[i]`) pelo `shop sync` (D191). Preço zero na moeda escolhida = não vendido nela. | features §2.2; `XInterface` `InternalOnClose` 12160–12232; D191 |
 | R-PRC-02 | Opções 8 e 9 chegam como `nBuyOption = 0`, com `bPoint` igual a true (8, LD) ou false (9, Cash). O pacote não distingue. Tratar como opção 0 (1 dia). | features §2.2 (inferido; dúvida 4) |
-| R-PRC-03 | Morat: a UI envia `ItemBuy(id_especie, true, 1)` fixo, com `FIXME` que mapeia 1→0. A UI exibe e valida `nPoint[0] × 5` (inferido: índice 0). O servidor cobra `buy_point[0] × 5` e ignora a opção (D51). | `XInterface` `LM_SupplyMoratsBuyPopPage` 9188–9258; dúvida 1, resolvida |
+| R-PRC-03 | Morat: a UI envia `ItemBuy(id_especie, true, 1)` fixo, com `FIXME` que mapeia 1→0. A UI exibe e valida `nPoint[0] × 5` (inferido: índice 0). O servidor cobra `point_0` de `shop_items`, que o `shop sync` grava como `buy_point[0] × 5`, e ignora a opção (D51, D191). | `XInterface` `LM_SupplyMoratsBuyPopPage` 9188–9258; dúvida 1, resolvida; D191 |
 
 ### 5.3 Compra (550, 551 e 552)
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-BUY-01 | Ordem de validação (`ShopService`): conta autenticada (sem login, não responde); `catalog_id` no catálogo; preço > 0 na moeda e opção; saldo; patente e nest (R-REQ); gate livre (morat). Qualquer falha recusa e não grava. | (inferido; D51) |
+| R-BUY-01 | Ordem de validação (`ShopService`): conta autenticada (sem login, não responde); `catalog_id` no catálogo; linha em `shop_items` habilitada (R-BUY-07); preço > 0 na moeda e opção, da tabela; saldo; patente e nest (R-REQ); gate livre (morat). Qualquer falha recusa e não grava. | (inferido; D51; D191) |
 | R-REQ-01 | Requisitos: `item_required_level`, `item_required_nest`, `item_required_nest_point`, `item_required_clan`, `item_required_clan_rank`, `item_required_rank`, `item_required_class`, `item_required_strength`, `item_required_agility`, `item_required_precision` e `item_required_power`; para morat, `required_*`. Conferidos na compra: `required_level` (patente pela LevelList) e `required_nest` (nest regular). Recusam se ≠ 0, sem fonte no servidor: `nest_point`, clã, patente de clã e `rank`. Classe, força, agilidade, precisão e energia são de equipar (F6): a tela de morat não as usa para bloquear a compra. | features §2.2; dúvida 10, resolvida (D51) |
 | R-BUY-02 | Item: `account_items` com `apply_flag = 2` (REALTIME) e `expires_at = agora + dias`, com os dias da opção 0 a 3 (1, 7, 14 ou 30). Morat: `account_morats` no menor gate livre e habilitado (R-GATE-02), sem prazo. O cliente não escolhe o gate na compra. | (inferido; dúvidas 5 e 19; D51) |
-| R-BUY-03 | Resposta 551 (item) ou 552 (morat) com `result`. Sucesso: registro (102 ou 103), depois 900 e 902. Só com `result` 0 o cliente aplica registro e saldos. Recusas: -4056 (LD insuficiente, msg 231000602), -4055 (Cash insuficiente, 231000502), -1 (sem gate livre habilitado, 231000802) e 8000 (sem mensagem: fora do catálogo, não vendido na moeda ou requisito não atendido). | `NotifyItemBuy` (XInterface, `switch`); `ERRCODE_*` inferidos iguais aos `CERR_BUY_*` (D51) |
+| R-BUY-03 | Resposta 551 (item) ou 552 (morat) com `result`. Sucesso: registro (102 ou 103), depois 900 e 902. Só com `result` 0 o cliente aplica registro e saldos. Recusas: -4056 (LD insuficiente, msg 231000602), -4055 (Cash insuficiente, 231000502), -1 (sem gate livre habilitado, 231000802) e 8000 (sem mensagem: fora do catálogo, sem linha habilitada em `shop_items`, não vendido na moeda ou requisito não atendido). Morat recusado sai com 552 mesmo quando a recusa vem da tabela. | `NotifyItemBuy` (XInterface, `switch`); `ERRCODE_*` inferidos iguais aos `CERR_BUY_*` (D51); D191 |
 | R-BUY-04 | Cada compra gera `item_guid` novo e `inventory_index` livre da conta. Nenhuma linha parcial sobrevive a falha (transação). | (inferido; D22) |
-| R-BUY-05 | Catálogo abre na primeira compra (`LazyItemCatalog`), então o canal sobe sem o wdb. Enquanto o wdb não abre, a compra é recusada com 8000 e erro no log. Emenda a D19 (D50). | (inferido) |
+| R-BUY-05 | Catálogo abre na primeira compra (`LazyItemCatalog`), então o canal sobe sem o wdb. Enquanto o wdb não abre, a compra é recusada com 8000 e erro no log. Emenda a D19 (D50). Tabela `shop_items` vazia: nada à venda (8000 em toda compra); a subida registra aviso para rodar `shop sync` (D191). | (inferido; D191) |
 | R-BUY-06 | Item comprado vai direto ao hangar. A msg 231000104 diz "vá até o Depósito"; o servidor não manda ao Depósito (D96). Risco aberto: o texto da tela não bate com o destino. | `msg_error` 231000104; D96 |
+| R-BUY-07 | Venda: `shop_items` (§4.11) é a única fonte de habilitado e de preço da compra (550). `shop sync` importa do wdb as vendas com preço > 0 em alguma moeda e opção (o que `quote` aceita), com nome e preço; grava nome e preço de quem já existe e mantém `enabled`. `shop enable`, `disable` e `price` mudam a tabela, e a compra lê a linha a cada pedido, sem reiniciar. Presente (615) e extensão (580) ainda cobram o preço do wdb: não passam por `shop_items`, então item desativado segue vendável por esses caminhos (aberto). | D191 |
 
 ### 5.4 Uso, gate e slots de sistema (560, 570, 573)
 
@@ -351,7 +367,7 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 |----|-------|-------|
 | R-DEST-01 | `ItemDestroy(id, index)` (555: `i32 id` @0, `u16 index` @4) remove a linha por `DELETE`, sem histórico (D12). A resposta 556 leva o gate do morat (`u16 gate` @2) e `u8 mounted` @4, para o cliente tirar a peça. Item de sistema responde 559 com o slot. | features §3.3; `re/protocol_full.md` §9 |
 | R-DEST-02 | Destruir morat (557) zera as peças em `account_items` (`account_morat_id` e `slot_name`) e apaga a linha, na mesma transação (D76). Não destrói o último morat da conta (D69): recusa com -4. | (inferido); D69, D76 |
-| R-EXT-01 | `ItemExtend` (580: `i32 id` @0, `u16 index` @4, `u8 point` @6, `u8 option` @7) usa o preço e o prazo da tabela de compra (R-PRC-01). Se `expires_at` está no futuro, soma os dias a partir dele; se é nulo ou vencido, parte de agora (D71). Morat não tem prazo: recusa com -4. Saldo insuficiente recusa com o código de D51 e nada é debitado (D72). | features §3.3; (inferido) |
+| R-EXT-01 | `ItemExtend` (580: `i32 id` @0, `u16 index` @4, `u8 point` @6, `u8 option` @7) usa o preço e o prazo da tabela de compra (R-PRC-01). Se `expires_at` está no futuro, soma os dias a partir dele; se é nulo ou vencido, parte de agora (D71). Morat não tem prazo: recusa com -4. Saldo insuficiente recusa com o código de D51 e nada é debitado (D72). O preço hoje é o do wdb, não o de `shop_items` (aberto, R-BUY-07). | features §3.3; (inferido) |
 | R-EXT-02 | Resposta 582 (`NotifyItemExtend`): `u16 index` @0; `i32 apply_value` @4 (fim do prazo em segundos Unix, REALTIME); `i32 cash` @8; `i32 point` @0xc; `i32 result` @0x10. A extensão de morat (581) não é emitida. | features §3.3; `re/protocol_full.md` §9 |
 | R-EXP-01 | Item REALTIME com `expires_at <= agora` gera o push `585` (`NotifyItemEndtime(nIndex, bItem, premium)`), que abre a tela de renovação. O item fica até renovação ou destruição. No login, item vencido recebe 585 com `bItem` = 1 (F7). Remoção automática não definida (dúvida 5). | features §3.3 (inferido nos detalhes) |
 | R-VAL-01 | `apply_value` por flag: REALTIME usa `expires_at` (inferido: `apply_value` com segundos absolutos, `0` quando `expires_at` é nulo); SIZE, PLAYTIME e ENABLE usam `apply_value` direto. | `LM_Engine.u` `ITEM_APPLY`; `XInterface` 36788–36798 (inferido nos valores) |
@@ -360,7 +376,7 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-GIFT-01 | Envio (615): o remetente paga pela tabela de R-PRC-01 na moeda e opção pedidas. Cria `gifts` pendente e debita o remetente na mesma transação (D20, D97). Nick inexistente responde -2407. Envio a si mesmo, morat, item não vendido na moeda ou opção fora de 0 a 3 responde 8000 (sem mensagem). Saldo insuficiente responde -4056 (LD) ou -4055 (Cash). Resposta 616: `result`, Cash e LD do remetente. | features §2.3; `NotifyItemGift` (XInterface, `switch`); códigos de nick e saldo inferidos de `CERR_*` (D97) |
+| R-GIFT-01 | Envio (615): o remetente paga pela tabela de R-PRC-01 na moeda e opção pedidas. O preço ainda é o do wdb, não o de `shop_items` (aberto, R-BUY-07). Cria `gifts` pendente e debita o remetente na mesma transação (D20, D97). Nick inexistente responde -2407. Envio a si mesmo, morat, item não vendido na moeda ou opção fora de 0 a 3 responde 8000 (sem mensagem). Saldo insuficiente responde -4056 (LD) ou -4055 (Cash). Resposta 616: `result`, Cash e LD do remetente. | features §2.3; `NotifyItemGift` (XInterface, `switch`); códigos de nick e saldo inferidos de `CERR_*` (D97) |
 | R-GIFT-02 | Patente mínima: nenhuma. `LevelList` tem `enable_gift` no nível 0 e `EnableGiftExp = -1`, então a checagem do cliente nunca dispara. O servidor não impõe patente (dúvida 2, resolvida, D97). | `XInterface` 12022, 22970; `LevelList` (wdb) |
 | R-GIFT-03 | Depósito (610): página de 12 presentes pendentes do destinatário, por `slot`; página de 0 a n. Antes de listar, resgata os pendentes (D100): cada um vira 102 no hangar e sai da lista; a página sai vazia, salvo o que não coube. Resposta 611: `i32` página @0, `i32` quantidade @4 e registros de 0x48 a partir de @8 (`u16` chave @0, `i32` catálogo @0x14, `item_guid` `gift-<id>` @0x18, `u8` opção de prazo @0x40). Lista vazia manda um registro zerado, com quantidade 0. | `NotifyGetGiftItem` (L1483–1522); D97 |
 | R-GIFT-04 | Resgate (612 → 613): pede a chave do pendente. O cliente não envia 612 na UI: o 610 faz o mesmo resgate (D100). Na mesma transação o servidor cria a unidade no menor índice livre, grava no hangar e marca `claimed_at`. A 613 leva o registro do item em @0..0x33, `i32` resultado @0x34 e a chave em @0x38, que o cliente usa para tirar a entrada do Depósito. Com resultado diferente de 0, o registro sai zerado. Pendente inexistente ou já resgatado responde 8000. Índice ocupado desfaz tudo: o presente continua pendente. **Sem chamador de UI confirmado:** o XInterface não chama `GiftItemUsed` (só o wrapper de `LM_Engine.src`, L1892), e a classe do painel do Depósito (`LM_HangerSupplyInvenListPanel`) não está no dump. Risco 1 (D97). | `NotifyGiftItemUsed` e dispatcher 0x265 (L1526–1561); `GiftItemUsed` (`LM_Engine.src` L1892); dúvida 3 aberta |
@@ -465,7 +481,7 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 105 | C→S | Morat regular | `accounts` | `u8 nest @0`, `u8 classe @1` | implementado (F5) |
 | 107 / 108 | S→C | Morat de treino / criado | `account_morats` | falta | falta |
 | 544 | C→S | Gravar opções | `account_options` | completo: 37 `u8` na ordem de `LM_REGISTER_INFO` ([channel-server.md](../protocol/channel-server.md)) | implementado (F1) |
-| 550 | C→S | Compra (LD ou Cash) | `account_items`, `account_morats`, `accounts` | completo: `i32 @0` id, `u8 @4` bPoint (1 LD, 0 Cash), `u8 @5` opção 0 a 3; corpo de 12 | implementado (F8) |
+| 550 | C→S | Compra (LD ou Cash) | `shop_items`, `account_items`, `account_morats`, `accounts` | completo: `i32 @0` id, `u8 @4` bPoint (1 LD, 0 Cash), `u8 @5` opção 0 a 3; corpo de 12 | implementado (F8) |
 | 551 | S→C | Resultado da compra de item | — | registro de 102 em @0..0x33, `i32 @0x38` cash, `@0x3c` LD, `@0x40` result; corpo de 0x44 | implementado (F8) |
 | 552 | S→C | Resultado da compra de morat | — | registro de 103 em @0..0x5b, `@0x5c` cash, `@0x60` LD, `@0x64` result; corpo de 0x68 | implementado (F8) |
 | 554 | S→C | Item de sistema montado | `account_items` | registro de 102 (0x34 bytes), `u16 slot` @0x34, `i32 result` @0x38 | implementado (F6) |
@@ -560,7 +576,7 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F5 (implementada) | `account_morats`; 103; 105/104; CLI `account morat add --catalog <id> --gate <n>`. | F0 (103) | Morat aparece no gate indicado; classe regular persiste após reconexão. |
 | F6 (implementada, sem teste no cliente real) | Equipar e desequipar (560, 570; respostas 554, 561, 562, 572); montagem de parte e de item de sistema. | F4, F5 | Equipar arma no gate; reconectar; continua montada. Buff vai para `system_slot`. |
 | F7 (implementada, sem teste no cliente real) | Destruir e estender (555; respostas 556, 557, 559; 580; resposta 582; push 585 no login). | F4 | Destruir some do hangar após reconexão. Estender muda o prazo exibido. Vencido abre renovação. |
-| F8 (implementada, sem teste no cliente real) | Compra por LD e Cash (550, 551, 552). | F3, F4; dúvida 1 (resolvida) | Item comprado com LD debita `ld` pelo preço do wdb e cria a linha; saldo 902 atualiza. Saldo insuficiente: resultado ≠ 0 e nada muda. |
+| F8 (implementada, sem teste no cliente real) | Compra por LD e Cash (550, 551, 552). | F3, F4; dúvida 1 (resolvida) | Item comprado com LD debita `ld` pelo preço de `shop_items` (D191) e cria a linha; saldo 902 atualiza. Saldo insuficiente: resultado ≠ 0 e nada muda. |
 | F9 | Recompensa de partida DM e OP (R-REW-*), buffs e PC-room. | Marco 4 (leitura do `GameEnded`, D86); F0 (512); dúvidas 13, 14, 17 | Partida DM e OP com 2 jogadores: exp e LD do placar batem com a fórmula (tolerância de 1 por arredondamento). Buff de EXP ativo multiplica por 1.5. |
 | F10 (implementada, sem teste no cliente real; resgate automático pelo 610, D100) | Presente (615, 616, 617) e Depósito (610, 611, 612, 613). | F8; dúvida 2 (resolvida, D97) e dúvida 3 (resolvida, D100) | A envia item a B por nick; B vê na lista paginada de 12; resgate pelo Depósito. |
 | F11 (implementada, sem teste no cliente real) | Gacha (560 com 308010006 → 591) e Adicionar Hangar (308010005, gate). | F3, F4; dúvida 6 (resolvida, D98) | Usar "Item Surpresa" abre popup com prêmio do servidor; item aparece no inventário. Adicionar Hangar sobe a contagem e o gate novo aparece após relogar. |
@@ -639,6 +655,7 @@ Registradas em [decisions/README.md](../decisions/README.md):
 - **D106** Banimento de conta pela CLI: `accounts.banned_until`, login recusado com -160 até o prazo vencer (R-PEN-01).
 - **D107** Ficha 542/543 montada no banco, sem tabela; posição como a do 171 (R-FIC-01).
 - **D108** Ranking por nest e penalidades de sala fora desta entrega (R-RNK-01).
+- **D191** Loja: venda em `shop_items` (habilitado e preço por nível); a compra cobra essa tabela, e `shop sync` importa do wdb (R-BUY-07). Presente e extensão ainda usam o wdb.
 - **D130** Tipo do item de sistema (classe 8) pelo id: `(id / 1e4) % 100`, com 1 ONCE e 2 BUFF. O wdb traz `item_type` 0 para esses itens; o tipo está no id. Pinturas (classe 7) não usam esta regra.
 - **D131** Queima de Arquivo consome e grava `accounts.record_reset_at`. Vitórias, derrotas e abandono passam a contar após o marco; o ranking (`total_exp`) não muda. Texto do item no wdb (`item_desc`). O marco é gravado já; a leitura entra quando as métricas forem gravadas (D135).
 - **D132** Reconstituir consome e grava `accounts.combat_reset_at`: zera abates, mortes e headshots. Abandono não zera. O texto do item cita kill, death e headshot, não abandono. Diverge do plano de F15, que citava abandono.

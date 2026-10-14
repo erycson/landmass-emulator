@@ -2,10 +2,11 @@
 `ShopService` que as aplica com saldo e inventário.
 
 Fonte: docs/architecture/07-progression.md §5.2 (preço), §5.3 (compra) e §8 (decisões do usuário).
+O preço cobrado vem da tabela `shop_items` (D191), não do wdb; o wdb dá nome, requisito e tipo.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import IntEnum
 from typing import Protocol
 
@@ -21,13 +22,14 @@ from landmass_emu.domain.progression import Level, RankTable
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.inventory import InventoryConflict, InventoryRepository
 from landmass_emu.ports.progression import ProgressionRepository
-from landmass_emu.ports.shop import ShopRepository
+from landmass_emu.ports.shop import ShopItemRepository, ShopRepository
 
 log = logging.getLogger(__name__)
 
 # Prazos das opções de preço (BUY_OPTION1/7/14/30, features §2.2). O 550 manda o índice, 0 a 3.
 DURATION_DAYS = (1, 7, 14, 30)
-# A tela de morat mostra `buy_point[0] × 5` (LM_SupplyMoratsBuyPopPage, features §2.2).
+# A tela de morat mostra `buy_point[0] × 5` (LM_SupplyMoratsBuyPopPage, features §2.2). O fator
+# entra na gravação da loja (`shop_prices`), para o preço da tabela ser o cobrado (D191).
 MORAT_LD_FACTOR = 5
 
 
@@ -90,18 +92,35 @@ class SaleInfo:
 class Quote:
     price: int  # 0 = não vendido nesta moeda ou opção (R-PRC-01)
     days: int  # prazo em dias; 0 = sem prazo (morat)
+    tier: int  # nível de preço cobrado: a opção (item) ou 0 (morat)
 
 
 def quote(sale: SaleInfo, currency: Currency, option: int) -> Quote:
     """Preço e prazo. Morat ignora a opção: a UI manda 1 e o FIXME mapeia para 0 (features §2.2)."""
-    if sale.is_morat:
-        if currency is Currency.LD:
-            return Quote(sale.ld[0] * MORAT_LD_FACTOR, 0)
-        return Quote(sale.cash[0], 0)
-    if not 0 <= option < len(DURATION_DAYS):
-        return Quote(0, 0)
     prices = sale.ld if currency is Currency.LD else sale.cash
-    return Quote(prices[option], DURATION_DAYS[option])
+    if sale.is_morat:
+        return Quote(prices[0], 0, 0)
+    if not 0 <= option < len(DURATION_DAYS):
+        return Quote(0, 0, 0)
+    return Quote(prices[option], DURATION_DAYS[option], option)
+
+
+def shop_prices(sale: SaleInfo) -> tuple[tuple[int, int, int, int], tuple[int, int, int, int]]:
+    """Preços (LD, Cash) que a loja cobra, gravados em `shop_items`. Morat em LD leva o fator
+    `MORAT_LD_FACTOR` (LM_SupplyMoratsBuyPopPage, D51), então a tabela guarda o valor cobrado."""
+    if not sale.is_morat:
+        return sale.ld, sale.cash
+    ld = (sale.ld[0] * MORAT_LD_FACTOR, sale.ld[1], sale.ld[2], sale.ld[3])
+    return ld, sale.cash
+
+
+def is_sellable(sale: SaleInfo) -> bool:
+    """Venda que `quote` aceitaria em alguma moeda e opção: é o que o `shop sync` importa."""
+    return any(
+        quote(sale, moeda, opcao).price > 0
+        for moeda in Currency
+        for opcao in range(len(DURATION_DAYS))
+    )
 
 
 class SaleCatalog(Protocol):
@@ -133,6 +152,7 @@ class Purchase:
     currency: Currency = Currency.LD
     price: int = 0
     days: int = 0
+    tier: int = 0  # nível cobrado (log de economia; ver `Quote.tier`)
 
 
 def _shortage(currency: Currency) -> BuyResult:
@@ -140,13 +160,15 @@ def _shortage(currency: Currency) -> BuyResult:
 
 
 class ShopService:
-    """Compra por conta, serializada por um `asyncio.Lock` (princípio 6). O preço vem do catálogo; o
-    saldo e a unidade são gravados numa transação só (R-DEB-01)."""
+    """Compra por conta, serializada por um `asyncio.Lock` (princípio 6). A venda (habilitada e
+    preço) vem de `shop_items`; o wdb dá só requisito e tipo. O saldo e a unidade são gravados numa
+    transação só (R-DEB-01)."""
 
     def __init__(
         self,
         *,
         catalog: SaleCatalog,
+        items: ShopItemRepository,
         levels: LevelCatalog,
         inventory: InventoryService,
         repository: InventoryRepository,
@@ -156,6 +178,7 @@ class ShopService:
         locks: AccountLocks | None = None,
     ) -> None:
         self._catalog = catalog
+        self._items = items
         self._levels = levels
         self._inventory = inventory
         self._repository = repository
@@ -183,6 +206,16 @@ class ShopService:
             raise ShopRefusal(
                 BuyResult.SILENT, morat=False, reason=f"id {catalog_id} fora do catálogo"
             )
+        # Sem linha habilitada na loja, nada é vendido. `morat` vem do wdb: morat recebe 552.
+        item = await self._items.get(catalog_id)
+        if item is None or not item.enabled:
+            raise ShopRefusal(
+                BuyResult.SILENT,
+                morat=sale.is_morat,
+                reason=f"{catalog_id} fora da loja ou desativado",
+            )
+        # O preço cobrado é o da tabela (D191), não o do wdb.
+        sale = replace(sale, ld=item.ld, cash=item.cash)
         offer = quote(sale, currency, option)
         if offer.price <= 0:
             raise ShopRefusal(
@@ -217,6 +250,7 @@ class ShopService:
             currency=currency,
             price=offer.price,
             days=offer.days,
+            tier=offer.tier,
         )
 
     def _level_of(self, total_exp: int) -> int:

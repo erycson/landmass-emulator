@@ -1,8 +1,8 @@
 """Modelo SQLAlchemy: `accounts` (marco 1, progressão em F2 e F3, regular em F5), `account_options`
 (F1), `account_morats` (F5), `account_items` (F4), `account_quick_slots` (D73), `friends` e
-`blocks` (F12), `matches` e `match_players` (histórico de partidas), `clans` e `clan_members` (F13).
-Nomes seguem a convenção Laravel (D11). Colunas de `account_options` na ordem de
-`LmRegisterInfo`."""
+`blocks` (F12), `matches` e `match_players` (histórico de partidas), `clans` e `clan_members` (F13),
+`shop_items` (venda da loja, D191). Nomes seguem a convenção Laravel (D11). Colunas de
+`account_options` na ordem de `LmRegisterInfo`."""
 
 from datetime import datetime
 
@@ -352,5 +352,27 @@ class ClanMemberRow(Base):
     clan_id: Mapped[int] = mapped_column(Integer)
     account_id: Mapped[int] = mapped_column(Integer)
     grade: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ShopItemRow(Base):
+    """Venda da loja (D191): um id do catálogo com preço por nível (0 a 3) em cada moeda. Preço
+    zero = não vendido nesta moeda. `enabled` falso recusa a compra. `ld` no ORM é `point` no banco
+    (o nome do wdb e do `landmass-emu shop price --point`)."""
+
+    __tablename__ = "shop_items"
+
+    catalog_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    name: Mapped[str] = mapped_column(String(64))
+    enabled: Mapped[bool] = mapped_column(Boolean)
+    point_0: Mapped[int] = mapped_column(Integer, server_default="0")
+    point_1: Mapped[int] = mapped_column(Integer, server_default="0")
+    point_2: Mapped[int] = mapped_column(Integer, server_default="0")
+    point_3: Mapped[int] = mapped_column(Integer, server_default="0")
+    cash_0: Mapped[int] = mapped_column(Integer, server_default="0")
+    cash_1: Mapped[int] = mapped_column(Integer, server_default="0")
+    cash_2: Mapped[int] = mapped_column(Integer, server_default="0")
+    cash_3: Mapped[int] = mapped_column(Integer, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

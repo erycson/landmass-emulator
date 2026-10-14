@@ -54,6 +54,7 @@ class ShopHandlers:
             catalog_id=req.catalog_id,
             currency=currency.name,
             option=req.option,
+            tier=purchase.tier,
             price=purchase.price,
             days=purchase.days,
             **balances(purchase.currency, purchase.price, cash=purchase.cash, ld=purchase.ld),

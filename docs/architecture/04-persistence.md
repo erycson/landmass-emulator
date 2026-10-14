@@ -115,6 +115,10 @@ Fonte: [07-progression.md §4.8](07-progression.md). Modelos: `db/models.py` (`C
 
 Migração `a3d9e6f1c402` (sobre `a3c7e915d2b4`). Modelo `GiftRow` em `db/models.py`. Colunas, chaves e regras em [07-progression §4.9](07-progression.md). Sem tabela de log: envio, resgate e gacha vão ao log de economia (D99, D120).
 
+## Tabela `shop_items` (venda da loja, D191)
+
+Migração `e8b4d1f6a237` (sobre `5c1e8a3f7b92`). Modelo `ShopItemRow` em `db/models.py`. Uma linha por id do catálogo à venda, com `enabled` e preço por nível (0 a 3) em LD e Cash. Colunas e regras em [07-progression §4.11](07-progression.md). Preenchida por `landmass-emu shop sync` a partir do wdb; sem tabela de log (o log de economia tem o `catalog_id` e o `tier` de cada compra).
+
 ## Repositório
 
 - Contrato: `ports/accounts.py` (`AccountRepository`, Protocol). Handlers e CLI dependem só dele.
@@ -124,6 +128,7 @@ Migração `a3d9e6f1c402` (sobre `a3c7e915d2b4`). Modelo `GiftRow` em `db/models
 - Clãs: `ports/clans.py` (`ClanRepository`) e `db/clans.py` (`SqlClanRepository`). Violação de unicidade vira `ClanConflict`.
 - Ranking: `ports/ranking.py` (`RankingRepository`) e `db/ranking.py` (`SqlRankingRepository`), uma consulta sobre `accounts` sem tabela (D18).
 - Presentes: `ports/gifts.py` (`GiftRepository`) e `db/gifts.py` (`SqlGiftRepository`). O envio debita pelo `debit` de `db/shop.py` na mesma transação que cria a linha; o resgate (612, e o 610 pelo D100) grava a unidade e marca `claimed_at` juntos.
+- Loja: `ports/shop.py` (`ShopItemRepository`, com `ShopItem`) e `db/shop.py` (`SqlShopItemRepository`). A compra lê a venda por id; a CLI `shop` grava. O `ShopItem` não tem tipo de `domain/`, então não há ciclo de importação.
 - Uso de item especial (560): `ports/use.py` (`UseRepository`) e `db/use.py` (`SqlUseRepository`). Consumo, crédito de LD, prêmios e contagem de gates numa transação.
 - Leitura do `landmass.wdb`: `db/catalog.py` (`WdbCatalog`), somente leitura, `mode=ro`, textos em cp1252.
 

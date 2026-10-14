@@ -108,6 +108,11 @@ class ItemCatalog:
     def sale(self, catalog_id: int) -> SaleInfo | None:
         return self._sales.get(catalog_id)
 
+    def sale_ids(self) -> tuple[int, ...]:
+        """Ids com chave de venda ou requisito no wdb (item, peça e morat), em ordem. Quem decide o
+        que se vende é `domain.shop.is_sellable`."""
+        return tuple(sorted(self._sales))
+
     def equip_spec(self, catalog_id: int) -> EquipSpec | None:
         return self._equip.get(catalog_id)
 

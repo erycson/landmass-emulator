@@ -124,7 +124,7 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 587 | S→C | `ENTER_HANGAR_OUT` | `i32 client_guid` @0 | implementado (D78): só ao pedinte |
 | 588 | C→S | `LEAVE_HANGAR` | vazio | implementado (D151): só quem está em sala |
 | 589 | S→C | `LEAVE_HANGAR_OUT` | `i32 client_guid` @0, `u8` 0x23 @4 (8 bytes) | implementado (D151): só ao pedinte |
-| 550 | C→S | `ITEM_BUY_IN` | 12 bytes: `i32 id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 nBuyOption` @5 (0 a 3) | implementado (F8): debita e cria a unidade numa transação; recusa com result ≠ 0 |
+| 550 | C→S | `ITEM_BUY_IN` | 12 bytes: `i32 id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 nBuyOption` @5 (0 a 3) | implementado (F8): debita e cria a unidade numa transação; preço e venda vêm de `shop_items` (D191); recusa com result ≠ 0 |
 | 551 | S→C | `ITEM_BUY_OUT` | 68 bytes: registro de 102 em @0..0x33, `i32 cash` @0x38, `i32 point` @0x3c, `i32 result` @0x40 | implementado (F8): sucesso manda 551, 102, 900 e 902; recusa vai sem registro e com saldos zero |
 | 552 | S→C | `MORATS_BUY_OUT` | 104 bytes: registro de 103 em @0..0x5b, `i32 cash` @0x5c, `i32 point` @0x60, `i32 result` @0x64 | implementado (F8): sucesso manda 552, 103, 900 e 902 |
 | 554 | S→C | `ITEM_USED_SYSTEM_OUT` | 60 bytes: registro de 102 em @0..0x33, `u16 slot` @0x34 (0 a 9), `i32 result` @0x38 | implementado (F6): item de sistema vai ao `sEventSlot` |

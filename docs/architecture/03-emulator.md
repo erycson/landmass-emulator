@@ -32,9 +32,10 @@ Regras de dependência:
 
 | Caminho | Responsabilidade |
 |---------|------------------|
-| `src/landmass_emu/__main__.py` | `Cli` (`serve`, `account`); `main` é o entry point. Comandos: `serve`, `sniff`, `account create`, `account token`, `account grant`, `account ban`, `account unban`. |
+| `src/landmass_emu/__main__.py` | `Cli` (`serve`, `account`); `main` é o entry point. Comandos: `serve`, `sniff`, `account create`, `account token`, `account grant`, `account ban`, `account unban`, `shop sync`, `shop list`, `shop enable`, `shop disable`, `shop price`. |
 | `src/landmass_emu/app.py` | Composição: repositório, registro de chaves, roteador, servidores (`game_servers`, `message_server`, `channel_server`, `open_accounts`). |
 | `src/landmass_emu/admin.py` | `AccountAdmin`: operações de conta da CLI (criar, regenerar token, gravar `.bat`, bloquear e desbloquear, D106). `ProgressionAdmin`: concessão de exp, LD e Cash (`account grant`). |
+| `src/landmass_emu/admin_shop.py` | `ShopAdmin`: loja da CLI (`shop sync` do wdb, listar, habilitar, desativar e mudar preço por nível), D191. |
 | `src/landmass_emu/settings.py` | Configuração (`pydantic-settings`), ver [05-configuration.md](05-configuration.md). |
 | `src/landmass_emu/net/framing.py` | Leitura/escrita de frames `u16 + body`. |
 | `src/landmass_emu/net/session.py` | Estado por conexão: peer, conta autenticada e `outbox` (corpos a enviar). |

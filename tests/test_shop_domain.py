@@ -16,9 +16,12 @@ from landmass_emu.domain.shop import (
     SaleInfo,
     ShopRefusal,
     ShopService,
+    is_sellable,
     quote,
+    shop_prices,
 )
 from landmass_emu.ports.inventory import InventoryConflict
+from landmass_emu.ports.shop import ShopItem
 
 AGORA = datetime(2026, 10, 13, tzinfo=UTC)
 GUID = "b" * 36
@@ -70,6 +73,25 @@ class FakeCatalog:
 
     def sale(self, catalog_id: int) -> SaleInfo | None:
         return self._sales.get(catalog_id)
+
+
+class FakeItems:
+    """Tabela `shop_items` em memória: só leitura, que é o que a compra usa."""
+
+    def __init__(self, itens: dict[int, ShopItem]) -> None:
+        self._itens = itens
+
+    async def get(self, catalog_id: int) -> ShopItem | None:
+        return self._itens.get(catalog_id)
+
+
+def _tabela(sales: dict[int, SaleInfo]) -> dict[int, ShopItem]:
+    """A tabela que o `shop sync` gravaria para essas vendas: todas habilitadas, preço do wdb."""
+    tabela = {}
+    for catalog_id, venda in sales.items():
+        ld, cash = shop_prices(venda)
+        tabela[catalog_id] = ShopItem(catalog_id, f"item {catalog_id}", True, ld, cash)
+    return tabela
 
 
 class CatalogoAusente:
@@ -164,12 +186,14 @@ def _servico(
     conflito: bool = False,
     muda: bool = False,
     gates: int = 4,
+    itens: dict[int, ShopItem] | None = None,
 ) -> tuple[ShopService, FakeProgression, FakePurchases]:
     progresso = FakeProgression(ld=ld, cash=cash, total_exp=exp)
     compras = FakePurchases(progresso, conflito=conflito, muda=muda)
     catalogo = FakeCatalog(sales)
     servico = ShopService(
         catalog=catalogo,
+        items=FakeItems(_tabela(sales) if itens is None else itens),
         levels=FakeLevels(),
         inventory=InventoryService(catalogo, clock=lambda: AGORA, new_guid=lambda: GUID),
         repository=FakeInventory(morats),
@@ -181,22 +205,33 @@ def _servico(
 
 
 def test_item_ld_e_cash_seguem_a_opcao_de_prazo() -> None:
-    assert quote(_item(), Currency.LD, 2) == Quote(500, 14)
-    assert quote(_item(), Currency.CASH, 3) == Quote(90, 30)
+    assert quote(_item(), Currency.LD, 2) == Quote(500, 14, 2)
+    assert quote(_item(), Currency.CASH, 3) == Quote(90, 30, 3)
 
 
 def test_opcao_fora_de_0_a_3_nao_tem_preco() -> None:
-    assert quote(_item(), Currency.LD, 4) == Quote(0, 0)
-    assert quote(_item(), Currency.CASH, -1) == Quote(0, 0)
+    assert quote(_item(), Currency.LD, 4) == Quote(0, 0, 0)
+    assert quote(_item(), Currency.CASH, -1) == Quote(0, 0, 0)
 
 
-def test_morat_ld_e_cinco_vezes_o_buy_point_zero_e_ignora_a_opcao() -> None:
-    assert quote(_morat(), Currency.LD, 1) == Quote(25000, 0)
-    assert quote(_morat(), Currency.LD, 3) == Quote(25000, 0)
+def test_morat_ignora_a_opcao_e_cobra_o_nivel_zero() -> None:
+    assert quote(_morat(), Currency.LD, 1) == Quote(5000, 0, 0)
+    assert quote(_morat(), Currency.LD, 3) == Quote(5000, 0, 0)
+    assert quote(_morat(), Currency.CASH, 1) == Quote(2000, 0, 0)
 
 
-def test_morat_cash_usa_o_buy_cash_zero_sem_fator() -> None:
-    assert quote(_morat(), Currency.CASH, 1) == Quote(2000, 0)
+def test_loja_grava_morat_em_ld_com_o_fator_de_cinco() -> None:
+    assert shop_prices(_morat()) == ((25000, 0, 0, 0), (2000, 0, 0, 0))
+    assert shop_prices(_item()) == ((100, 300, 500, 900), (10, 30, 50, 90))
+
+
+def test_venda_so_conta_se_quote_aceita_alguma_moeda_e_opcao() -> None:
+    assert is_sellable(_item())
+    assert is_sellable(_item(ld=(0, 0, 0, 0)))  # só Cash vende
+    assert not is_sellable(_item(ld=(0, 0, 0, 0), cash=(0, 0, 0, 0)))
+    assert is_sellable(_morat())
+    # Morat só vende pelo nível 0: preço no nível 1 não conta.
+    assert not is_sellable(_morat(ld=(0, 900, 0, 0), cash=(0, 0, 0, 0)))
 
 
 def test_requisito_de_patente_e_nest() -> None:
@@ -362,6 +397,7 @@ async def test_catalogo_ausente_recusa_e_registra_erro(caplog: pytest.LogCapture
     progresso = FakeProgression(ld=1000)
     servico = ShopService(
         catalog=catalogo,
+        items=FakeItems({}),
         levels=FakeLevels(),
         inventory=InventoryService(catalogo),
         repository=FakeInventory(),
@@ -373,3 +409,61 @@ async def test_catalogo_ausente_recusa_e_registra_erro(caplog: pytest.LogCapture
         await servico.buy(1, ITEM, Currency.LD, 1)
     assert recusa.value.result is BuyResult.SILENT
     assert "catálogo do cliente não encontrado" in caplog.text
+
+
+async def test_preco_cobrado_vem_da_tabela_e_nao_do_wdb() -> None:
+    # wdb diz 300 no nível 1; a tabela diz 111. Cobra 111 (D191).
+    tabela = {ITEM: ShopItem(ITEM, "Wood", True, (0, 111, 0, 0), (0, 0, 0, 0))}
+    servico, progresso, compras = _servico({ITEM: _item()}, ld=1000, itens=tabela)
+    compra = await servico.buy(1, ITEM, Currency.LD, 1)
+    assert (compra.price, compra.tier) == (111, 1)
+    assert progresso.progress.ld == 889
+    assert compras.gravadas == [compra.unit]
+
+
+async def test_item_desabilitado_recusa_sem_debitar() -> None:
+    tabela = {ITEM: ShopItem(ITEM, "Wood", False, (100, 300, 500, 900), (0, 0, 0, 0))}
+    servico, progresso, compras = _servico({ITEM: _item()}, ld=1000, itens=tabela)
+    with pytest.raises(ShopRefusal) as recusa:
+        await servico.buy(1, ITEM, Currency.LD, 1)
+    assert recusa.value.result is BuyResult.SILENT
+    assert recusa.value.morat is False
+    assert progresso.progress.ld == 1000
+    assert compras.gravadas == []
+
+
+async def test_morat_desabilitado_recusa_com_552() -> None:
+    # O morat vem do wdb: recusa de morat sai pelo 552, não pelo 551 do item.
+    tabela = {MORAT: ShopItem(MORAT, "Fairy", False, (25000, 0, 0, 0), (3000, 0, 0, 0))}
+    servico, progresso, compras = _servico({MORAT: _morat()}, cash=9999, itens=tabela)
+    with pytest.raises(ShopRefusal) as recusa:
+        await servico.buy(1, MORAT, Currency.CASH, 0)
+    assert recusa.value.result is BuyResult.SILENT
+    assert recusa.value.morat is True
+    assert progresso.progress.cash == 9999
+    assert compras.gravadas == []
+
+
+async def test_item_vendido_no_wdb_e_ausente_da_tabela_recusa() -> None:
+    servico, progresso, compras = _servico({ITEM: _item()}, ld=1000, itens={})
+    with pytest.raises(ShopRefusal) as recusa:
+        await servico.buy(1, ITEM, Currency.LD, 1)
+    assert recusa.value.result is BuyResult.SILENT
+    assert progresso.progress.ld == 1000
+    assert compras.gravadas == []
+
+
+async def test_preco_zero_na_tabela_recusa_mesmo_com_wdb_positivo() -> None:
+    # Preço zero na moeda da tabela é "não vendido" (R-PRC-01), sem crédito por preço negativo.
+    tabela = {ITEM: ShopItem(ITEM, "Wood", True, (0, 0, 0, 0), (10, 30, 50, 90))}
+    servico, progresso, compras = _servico({ITEM: _item()}, ld=1000, itens=tabela)
+    with pytest.raises(ShopRefusal):
+        await servico.buy(1, ITEM, Currency.LD, 1)
+    assert progresso.progress.ld == 1000
+    assert compras.gravadas == []
+
+
+async def test_compra_de_morat_registra_nivel_zero_mesmo_pedindo_outra_opcao() -> None:
+    servico, _, _ = _servico({MORAT: _morat()}, cash=2000)
+    compra = await servico.buy(1, MORAT, Currency.CASH, 2)
+    assert (compra.price, compra.tier) == (2000, 0)

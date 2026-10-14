@@ -39,6 +39,28 @@ uv run landmass-emu account token --user fulano
 
 Jogador: executar `jogar_U.bat` (ou `cliente\system\jogar_local.bat` para teste local, com o token preenchido à mão).
 
+## Loja (`shop`, D191)
+
+```
+uv run landmass-emu shop sync
+uv run landmass-emu shop list --disabled
+uv run landmass-emu shop disable 1000100
+uv run landmass-emu shop price 1000100 1 --cash 50
+```
+
+| Comando | Efeito |
+|---------|--------|
+| `shop sync` | Lê o `landmass.wdb` e importa as vendas (preço > 0 em alguma moeda e opção): ID, nome e preço por nível. Quem já existe tem nome e preço atualizados e mantém `enabled`. Novas entram habilitadas. Imprime quantas são novas e quantas foram atualizadas. Exige o cliente (`LANDMASS_CLIENT_DIR`). |
+| `shop list [--disabled]` | Mostra ID, nome, preços (LD e Cash, níveis 0 a 3) e status. Com `--disabled`, só os desativados. Não lê o wdb. |
+| `shop enable <id>` / `shop disable <id>` | Habilita ou desativa o item. Desativado recusa a compra (8000, sem débito). Id fora da loja responde erro. |
+| `shop price <id> <nível> [--point N] [--cash N]` | Muda o preço de um nível (0 a 3). Preço 0 = não vende naquela moeda. `--point` é LD. Informe pelo menos um. Morat: só o nível 0 conta, e o LD é o valor cobrado (já com o ×5: 5000 no wdb vira 25000). |
+
+- Sem tabela de log: o log de economia (`LANDMASS_AUDIT_LOG`) grava o `catalog_id`, o `tier` cobrado e o preço de cada compra. Junte os dois pelo id.
+- A compra lê `shop_items` a cada pedido: `enable`, `disable` e `price` valem na próxima compra, sem reiniciar o servidor.
+- `shop sync` sobrescreve o preço de quem já existe com o do wdb. Rode o sync antes dos ajustes de `shop price`, não depois.
+- Se a tabela estiver vazia, o servidor sobe com aviso no log: nada está à venda até rodar `shop sync`.
+- Presente (615) e extensão (580) ainda cobram o preço do wdb e não respeitam `disable` (D191, em aberto).
+
 ## Scripts
 
 | Arquivo | Uso |

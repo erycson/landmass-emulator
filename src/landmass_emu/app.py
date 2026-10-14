@@ -1,6 +1,7 @@
 """Composição: liga settings, banco, repositórios, handlers e servidores."""
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
@@ -21,7 +22,7 @@ from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.db.profile import SqlPlayerProfileRepository
 from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.db.ranking import SqlRankingRepository
-from landmass_emu.db.shop import SqlShopRepository
+from landmass_emu.db.shop import SqlShopItemRepository, SqlShopRepository
 from landmass_emu.db.social import SqlSocialRepository
 from landmass_emu.db.use import SqlUseRepository
 from landmass_emu.domain.channel import Channel
@@ -55,10 +56,13 @@ from landmass_emu.ports.profile import PlayerProfileRepository
 from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.ranking import RankingRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
+from landmass_emu.ports.shop import ShopItemRepository
 from landmass_emu.ports.social import SocialRepository
 from landmass_emu.protocol.channel import CsHeartbeat
 from landmass_emu.protocol.header import CHANNEL_NET_CODE, MESSAGE_NET_CODE
 from landmass_emu.settings import Settings
+
+log = logging.getLogger(__name__)
 
 # Heartbeat do servidor no canal. `time_out` do [CHANNEL] no config.ini do cliente é 20000
 # (unidade não confirmada); 10 s deixa margem para o cliente.
@@ -207,12 +211,19 @@ async def channel_server(
         await match.close()
 
 
+async def warn_empty_shop(items: ShopItemRepository) -> None:
+    """Sem linha em `shop_items`, nada está à venda (D191). Só avisa: o servidor sobe mesmo."""
+    if await items.count() == 0:
+        log.warning("loja vazia: nada à venda; rode 'landmass-emu shop sync' com o cliente")
+
+
 @asynccontextmanager
 async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server, asyncio.Server]]:
     """Message e Channel com o mesmo registro de sessão e o mesmo banco: a chave emitida no 111
     vale no 100, e as opções gravadas no 544 voltam no 111 do próximo login."""
     sessions = MemorySessionKeyRegistry()
     async with open_database(settings) as db:
+        await warn_empty_shop(SqlShopItemRepository(db))
         accounts = SqlAccountRepository(db)
         options = SqlOptionsRepository(db)
         progression = SqlProgressionRepository(db)
@@ -266,6 +277,7 @@ def _game_services(
     audit = EconomyAudit.open(settings.audit_log, catalog)
     shop = ShopService(
         catalog=catalog,
+        items=SqlShopItemRepository(db),
         levels=levels,
         inventory=InventoryService(catalog),
         repository=inventory,

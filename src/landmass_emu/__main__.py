@@ -10,6 +10,7 @@ from landmass_emu import sniffer
 from landmass_emu.admin import AccountAdmin, ProgressionAdmin
 from landmass_emu.admin_clan import ClanAdmin
 from landmass_emu.admin_inventory import InventoryAdmin, StarterKitAdmin
+from landmass_emu.admin_shop import ShopAdmin
 from landmass_emu.app import game_servers, open_accounts, open_database
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
@@ -18,6 +19,7 @@ from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.item_catalog import ItemCatalog
 from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.db.quick_slots import SqlQuickSlotRepository
+from landmass_emu.db.shop import SqlShopItemRepository
 from landmass_emu.domain.clan import ClanRules
 from landmass_emu.domain.inventory import InventoryService
 from landmass_emu.domain.progression import Grant, ProgressionService
@@ -87,6 +89,22 @@ class Cli:
             if args.action == "mark":
                 return await admin.mark(args.clan, args.mark)
             return await admin.show(args.clan)
+
+    async def shop(self, args: argparse.Namespace) -> str:
+        if args.action == "sync":
+            # O wdb abre antes do banco: sem o cliente, `shop sync` não migra nem grava nada.
+            catalog = ItemCatalog.open(self._settings.client_dir / "landmass.wdb")
+            async with open_database(self._settings) as db:
+                return await ShopAdmin(SqlShopItemRepository(db)).sync(catalog)
+        async with open_database(self._settings) as db:
+            admin = ShopAdmin(SqlShopItemRepository(db))
+            if args.action == "list":
+                return await admin.list_items(disabled_only=args.disabled)
+            if args.action == "enable":
+                return await admin.enable(args.catalog)
+            if args.action == "disable":
+                return await admin.disable(args.catalog)
+            return await admin.price(args.catalog, args.tier, ld=args.point, cash=args.cash)
 
     def _inventory_service(self) -> InventoryService:
         return InventoryService(ItemCatalog.open(self._settings.client_dir / "landmass.wdb"))
@@ -199,6 +217,24 @@ def _parser() -> argparse.ArgumentParser:
     clan_mark.add_argument("--mark", type=int, required=True)
     clan_show = clan_actions.add_parser("show", help="mostra o clã e os membros")
     clan_show.add_argument("clan")
+    shop = sub.add_parser("shop", help="loja: venda por id, com preço por nível (D191)")
+    shop_actions = shop.add_subparsers(dest="action", required=True)
+    shop_actions.add_parser(
+        "sync", help="importa do cliente as vendas (preço e nome; enabled de quem existe é mantido)"
+    )
+    shop_list = shop_actions.add_parser("list", help="mostra ID, nome, preços e status")
+    shop_list.add_argument("--disabled", action="store_true", help="só os desativados")
+    shop_enable = shop_actions.add_parser("enable", help="habilita o item na loja")
+    shop_enable.add_argument("catalog", type=int, help="id do catálogo")
+    shop_disable = shop_actions.add_parser("disable", help="desativa o item (compra recusada)")
+    shop_disable.add_argument("catalog", type=int, help="id do catálogo")
+    shop_price = shop_actions.add_parser(
+        "price", help="muda o preço de um nível; 0 = não vende na moeda (morat: LD já com o ×5)"
+    )
+    shop_price.add_argument("catalog", type=int, help="id do catálogo")
+    shop_price.add_argument("tier", type=int, choices=(0, 1, 2, 3), help="nível de 0 a 3")
+    shop_price.add_argument("--point", type=int, help="preço em LD")
+    shop_price.add_argument("--cash", type=int, help="preço em Cash")
     return parser
 
 
@@ -216,7 +252,12 @@ def main() -> None:
             asyncio.run(cli.serve())
         else:
             try:
-                saida = asyncio.run(cli.clan(args) if args.cmd == "clan" else cli.account(args))
+                if args.cmd == "clan":
+                    saida = asyncio.run(cli.clan(args))
+                elif args.cmd == "shop":
+                    saida = asyncio.run(cli.shop(args))
+                else:
+                    saida = asyncio.run(cli.account(args))
             except (ValueError, AccountConflict, InventoryConflict, ClanConflict) as e:
                 raise SystemExit(f"erro: {e}") from None
             print(saida)
