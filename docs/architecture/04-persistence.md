@@ -153,7 +153,7 @@ Fonte: [07-progression.md §4.8](07-progression.md). Modelos: `db/models.py` (`C
 - Constraints: `match_players_match_id_foreign` (FK) e `match_players_match_id_account_id_unique` (um jogador por partida).
 - Gravação: uma vez, no fim da partida, com `end_reason` (D48, D52). Não há tabela de eventos nem registro durante a partida.
 - Hoje só a identidade e a sala são gravadas. Métricas de jogador ficam `NULL` até haver o parser do bloco `GameEnded` do log (`re/game_server_host.md`, seção 10.4). A ficha (D107) lê essas colunas: enquanto o parser não existir, jogos, vitórias, derrotas, abates, mortes e headshots saem zero.
-- Contrato de resultado (D105): jogos, vitórias e derrotas contam só partidas com `won` não nulo em alguma linha. Quem não tem `won` nessa partida conta como jogo sem vitória nem derrota. No DM, `won` não existe: a regra só se aplica a OP e time.
+- Contrato de resultado (D105): jogos, vitórias e derrotas contam só partidas com `won` não nulo em alguma linha. Quem não tem `won` nessa partida conta como jogo sem vitória nem derrota. No DM, o log não traz `Winner` (ver a disponibilidade abaixo).
 
 Tabela `matches` (uma linha por partida):
 
