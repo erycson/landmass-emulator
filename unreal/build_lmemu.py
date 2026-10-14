@@ -20,6 +20,9 @@ HERE = Path(__file__).resolve().parent
 PACKAGE = "LMEmu"
 ASSET_DIRS = ("Etc", "Static", "Unit", "Map")
 UCC_PATCH = Path("tools/UT2004-3369/UT2004-Patch/System/UCC.exe")
+PACKAGE_TAG = b"\xc1\x83\x2a\x9e"
+PKG_ALLOW_DOWNLOAD = 0x1
+PKG_SERVER_SIDE_ONLY = 0x4
 
 
 class LMEmuBuilder:
@@ -28,13 +31,26 @@ class LMEmuBuilder:
         self.build = landmass / "build"
         self.system = self.build / "System"
         self.ucc_source = landmass / UCC_PATCH
+        self.clients = (landmass / "cliente" / "system", landmass / "cliente2" / "system")
 
     def run(self) -> Path:
         self._prepare_system()
         self._link_assets()
         self._copy_sources()
         self._make()
+        self._mark_server_only()
         return self._install()
+
+    def _mark_server_only(self) -> None:
+        """Flags do pacote (u32 @8 do cabeçalho): só servidor. Com AllowDownload, o servidor anuncia
+        o LMEmu na lista de pacotes e o cliente, que não o tem, cai antes do login."""
+        built = self.system / f"{PACKAGE}.u"
+        data = bytearray(built.read_bytes())
+        assert data[:4] == PACKAGE_TAG, "cabeçalho de pacote inesperado"
+        flags = int.from_bytes(data[8:12], "little")
+        flags = (flags & ~PKG_ALLOW_DOWNLOAD) | PKG_SERVER_SIDE_ONLY
+        data[8:12] = flags.to_bytes(4, "little")
+        built.write_bytes(data)
 
     def _prepare_system(self) -> None:
         shutil.copytree(self.server / "system", self.system, dirs_exist_ok=True)
@@ -85,6 +101,11 @@ class LMEmuBuilder:
         built = self.system / f"{PACKAGE}.u"
         target = self.server / "system" / built.name
         shutil.copy2(built, target)
+        # Cópia idêntica nos clientes: se o motor anunciar o pacote mesmo com ServerSideOnly, o
+        # cliente o acha com o mesmo GUID e não cai.
+        for client in self.clients:
+            if client.is_dir():
+                shutil.copy2(built, client / built.name)
         return target
 
 
