@@ -1,14 +1,16 @@
 # Servidor de partida (cópia `servidor-partida`)
 
-Status: cópia preparada e patches aplicados. **Não testado** (o jogo não roda no ambiente de agente). A evidência de engenharia reversa e as pendências estão em [`../../re/game_server_host.md`](../../re/game_server_host.md).
+Status: cópia montada, patches aplicados, partidas testadas com clientes reais. A evidência de engenharia reversa e as pendências estão em [`../../re/game_server_host.md`](../../re/game_server_host.md).
 
 ## Montagem da cópia
 
-A cópia é `D:\landmass\servidor-partida`, feita de `D:\landmass\cliente` (1082 MB):
+Use o `D:\landmass\Server Patch`. O `aplicar.ps1` copia o cliente sem o que o servidor não usa, aplica os dois patches abaixo conferindo os bytes originais e instala o `LMEmu.u`:
 
 ```
-robocopy "D:\landmass\cliente" "D:\landmass\servidor-partida" /E
+powershell -ExecutionPolicy Bypass -File "D:\landmass\Server Patch\aplicar.ps1" -Cliente D:\landmass\cliente -Destino D:\landmass\servidor-partida
 ```
+
+O `build_lmemu.py` atualiza o `LMEmu.u` do Server Patch junto com o servidor e os clientes.
 
 `cliente` e `cliente2` não são alterados. O instalador `LandMass_Setup_20090701.exe` não é tocado.
 

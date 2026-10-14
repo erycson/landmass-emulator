@@ -31,7 +31,12 @@ class LMEmuBuilder:
         self.build = landmass / "build"
         self.system = self.build / "System"
         self.ucc_source = landmass / UCC_PATCH
-        self.clients = (landmass / "cliente" / "system", landmass / "cliente2" / "system")
+        # Clientes e o Server Patch (que monta servidores de partida novos) recebem a mesma cópia.
+        self.clients = (
+            landmass / "cliente" / "system",
+            landmass / "cliente2" / "system",
+            landmass / "Server Patch" / "system",
+        )
 
     def run(self) -> Path:
         self._prepare_system()
