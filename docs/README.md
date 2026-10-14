@@ -29,7 +29,7 @@ flowchart LR
 | [05-configuration.md](architecture/05-configuration.md) | Variáveis `LANDMASS_*`, valores padrão e regras de segredos. |
 | [06-game-server-host.md](architecture/06-game-server-host.md) | Host de partida: um `LandMass.exe -server` por sala, com `PORT=` numa porta da faixa, 403 só após a porta abrir, equipamento por `LMEmu.ini` (D190), classe pelo modo e `OPType` (D192), fim de partida e volta à sala. |
 | [07-progression.md](architecture/07-progression.md) | Progressão e economia: modelo de dados (contas, inventário, morats, opções, social, clãs), regras de compra, uso, presente, Depósito, gacha, gates, patente, recompensa e tutorial, mapeamento opcode → tabela e ordem de implementação. |
-| [08-bots.md](architecture/08-bots.md) | Bots nas partidas: configuração LANDMASS_MATCH_BOTS e MinPlayers, linhas Bots= e Owner= no LMEmu.ini, comandos /bot do dono, mecanismo no motor e o que ficou sem verificação no jogo. |
+| [08-bots.md](architecture/08-bots.md) | Bots nas partidas: configuração LANDMASS_MATCH_BOTS e MinPlayers, linhas Bots= e Owner= no LMEmu.ini, sorteio de morat, peças e apelidos `[BOT]`, comandos /bot do dono, mecanismo no motor e o que ficou sem verificação no jogo. |
 
 ### Protocolo — [`protocol/`](protocol/)
 
