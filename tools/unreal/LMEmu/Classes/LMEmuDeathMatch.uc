@@ -79,7 +79,8 @@ function CheckLastMan()
         Super.CheckLastMan();
         return;
     }
-    if (NumPlayers == 0)
+    // bRecordBots (só teste sem humano): a partida segue para medir os bots por mais de 40 s.
+    if (NumPlayers == 0 && !class'LMEmuRecorder'.default.bRecordBots)
     {
         Log("LMEmu: fim sem humano");
         EndGame(None, "LastMan");

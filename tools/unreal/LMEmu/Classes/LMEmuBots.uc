@@ -251,11 +251,76 @@ function Finish(Controller C, string Line)
     if (C == None || C.Pawn == None)
         return;
     X = LM_xPawn(C.Pawn);
+    Rate(C.Pawn, Line);
     if (Bot(C) != None)
+    {
+        Personality(Bot(C));
         Bot(C).SwitchToBestWeapon();
+    }
     if (X != None)
         Speed(X);
     Log("LMEmu: bot" @ Opt(Line, "Name") @ "arma" @ C.Pawn.Weapon);
+    Probe(C, Opt(Line, "Name"));
+}
+
+// Nota de cada arma pelo slot da linha (D246). O LM dá quase tudo 0,4: granada, fumaça e flash empatavam com
+// o fuzil e o bot podia sacá-las para atirar. O corpo a corpo sobe perto do inimigo (LMEmuRoutes.Melee).
+function Rate(Pawn P, string Line)
+{
+    RatePiece(P, Line, "MainWeapon", 0.8);
+    RatePiece(P, Line, "SubWeapon", 0.6);
+    RatePiece(P, Line, "MeleeWeapon", 0.3);
+    RatePiece(P, Line, "EtcWeapon1", 0.05);
+    RatePiece(P, Line, "EtcWeapon2", 0.05);
+    RatePiece(P, Line, "EtcWeapon3", 0.05);
+}
+
+function RatePiece(Pawn P, string Line, string Key, float Nota)
+{
+    local Inventory Inv;
+    local string Cls;
+
+    Cls = Opt(Line, Key);
+    if (Cls == "" || Cls ~= "none")
+        return;
+    Cls = Mid(Cls, InStr(Cls, ".") + 1);
+    for (Inv = P.Inventory; Inv != None; Inv = Inv.Inventory)
+        if (Weapon(Inv) != None && string(Inv.Class.Name) ~= Cls)
+            Weapon(Inv).AIRating = Nota;
+}
+
+// Personalidade (D246): o registro do LM dá Tactics -1 e Jumpiness 0, e o bot ficava parado atirando em
+// cerca de 83% das escolhas (Bot.FightEnemy). Com Tactics alto, ele prefere strafe; com Jumpiness, pula
+// em combate; CombatStyle sorteado deixa uns agressivos e outros cautelosos.
+function Personality(Bot B)
+{
+    B.Tactics = 0.5 + 0.5 * FRand();
+    B.Jumpiness = 0.3 + 0.5 * FRand();
+    B.CombatStyle = -0.2 + 0.8 * FRand();
+}
+
+// Diagnóstico da IA do motor (D246): flags do pawn, personalidade do bot e nota de cada arma. O combate do
+// UT2004 (strafe, esquiva, agachar, troca de arma) depende disso, não da rede de navegação.
+function Probe(Controller C, string Nome)
+{
+    local Bot B;
+    local xPawn X;
+    local Inventory Inv;
+    local string Armas;
+
+    B = Bot(C);
+    X = xPawn(C.Pawn);
+    for (Inv = C.Pawn.Inventory; Inv != None; Inv = Inv.Inventory)
+        if (Weapon(Inv) != None)
+            Armas = Armas @ string(Inv.Class.Name) $ "=" $ string(Weapon(Inv).AIRating) $ Eval(Weapon(Inv).bMeleeWeapon, "/melee", "");
+    Log("LMEmu: ia" @ Nome @ "strafe=" $ C.Pawn.bCanStrafe @ "crouch=" $ C.Pawn.bCanCrouch @ "jump=" $ C.Pawn.bCanJump
+        @ "doublejump=" $ C.Pawn.bCanDoubleJump @ "walldodge=" $ C.Pawn.bCanWallDodge
+        @ "dodge=" $ Eval(X != None, string(X != None && X.bCanDodge), "?") @ "multijump=" $ Eval(X != None, string(X.MaxMultiJump), "?")
+        @ "jumpz=" $ C.Pawn.JumpZ);
+    if (B != None)
+        Log("LMEmu: ia" @ Nome @ "skill=" $ B.Skill @ "tactics=" $ B.Tactics @ "strafing=" $ B.StrafingAbility
+            @ "jumpiness=" $ B.Jumpiness @ "combatstyle=" $ B.CombatStyle @ "accuracy=" $ B.Accuracy
+            @ "reaction=" $ B.ReactionTime @ "armas:" $ Armas);
 }
 
 // Classe de PartsData da linha (Booster= ou Generator=), ou None para `none` e linha sem a chave.
