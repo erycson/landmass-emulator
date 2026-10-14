@@ -62,7 +62,7 @@ Tempos de saída medidos em N, `version_only`, `version+login` e flag inválida:
 
 Teste decisivo pendente (X): a linha exata do `jogar_teste.bat` em `cliente\system`, fora do sandbox, com 10 s de vida e `LandMass.log` com novo horário. Se o exe ficar vivo, a causa é o sandbox e não o exe, e os testes A e 2 processos podem seguir. Se sair em ~20 ms de novo, a conclusão desta seção se mantém.
 
-Servidor validado (2026-10-13): `ONS-Treino?listen -server -log login_server=127.0.0.1:7313?version=*?login_num=*` abre UDP 7777, `Game class is 'LM_DeathMatch'`. Os testes A, V2, V6 e D falharam porque havia tokens depois de `login_num=` ou faltava `login_server=`.
+Servidor validado (2026-10-13): `ONS-Treino?listen -server -log login_server=127.0.0.1:7313?version=*?login_num=*` abre UDP 7777, `Game class is 'LM_DeathMatch'`. Os testes A, V2, V6 e D falharam porque havia tokens depois de `login_num=` ou faltava `login_server=`. Causa das falhas de linha montada: aspas do PowerShell (§11.1); a parte de tokens depois de `login_num=` não foi reverificada.
 
 Execução de cliente anterior: cliente via bat às 16:21 (`Game class is 'LM_EntryGame'`, `Bringing Level Entry.myLevel up for play`). `jogar_teste.bat` foi modificado às 16:56:34, depois dessa execução. O conteúdo atual tem a forma `login_server=...?version=...?login_num=...` e 111 caracteres.
 
@@ -239,13 +239,14 @@ Método: instâncias próprias de `LandMass.exe -server` em `servidor-partida\sy
 
 ### 11.4 Fim da partida e fonte do resultado
 
-- `CheckLastMan` (`LM_DeathMatch`, linha 9763) chama `EndGame` com `NumPlayers` igual a 1 ou 0.
+- `CheckLastMan` (`LM_DeathMatch`, linha 9763) chama `EndGame(..., "LastMan")` com `NumPlayers` igual a 1 ou 0 (linhas 9785 e 9793).
+- Outras saídas de `EndGame` no DM: o `Timer` do estado `MatchInProgress` da base `DeathMatch` (`WPGames.u`, offsets 1283735 e 1284781) chama `EndGame(None,"TimeLimit")` quando `TimeLimit > 0` e o tempo acaba. `CheckScore` (`WPGames.u`, perto do offset 1297017) chama `EndGame(Scorer,"fraglimit")` quando `Score >= GoalScore`. O `LM_DeathMatch` lido não sobrescreve `Timer` nem `CheckScore`. Ele sobrescreve `Killed` (linha 9962), e o caminho de `Killed` até `CheckScore` não foi lido. `TimeLimit` e `GoalScore` vêm da URL (`match_url`).
 - `EndGame` chama `OnRewardGameResult_LMDeathMatch` (linha 10061), que chama `LoadGameRewardConstant`. Essa rotina lê `GameRewardConstant` com `DBCommand` do `landmass.wdb` (SQLite local, sem rede). Depois grava, por jogador, o bloco `Ended Deathmatch Exp/Money` com `Log(..., 'GameEnded')` (linhas 10245 a 10270). As linhas 9530 a 9577 gravam as constantes com a mesma etiqueta.
 - Campos do bloco: `Player`, `Reason`, `NumPlayers`, `MaxPlayers`, `LimitKills`, `Ranking`, `Kills`, `MaxKills`, `Played` (com `%` no valor), `killExp`, `TakeExp`, `WinExp`, `KillMoney`, `TakeMoney`, `WinMoney`, `EventBonusExp`, `EventBonusMoney`, `PCRoom`, `PCRoomBonusExp`, `PCRoomBonusMoney`, `ExpMult`, `MoneyMult`, `TotalExp`, `TotalMoney`.
 - O bloco não traz mortes, headshot, dano, balas nem assistências.
 - `ApplySysItmValue` roda antes dos `Log` (linha 10242). Assim, `TotalExp` e `TotalMoney` já incluem os bônus de evento e de PC-room (linhas 10239 e 10240). `pri.Experience` é o ganho da partida, não o total da conta (inferido pela ordem do script; não confirmado).
-- O emulador encerra a partida quando todos mandam 500 (`handlers/channel/rooms.py`). Pelo código, esse caminho não chama `EndGame` no servidor (inferido: `NumPlayers` conta jogadores conectados, e o 500 não desconecta o cliente; não observado).
-- O UI chama `GetMatchGroupInfoList` depois do 512 (`RefreshGameResult`, `XInterface.u`, linhas 16945 a 16952). O 512 não é o resultado DM.
+- O emulador encerra a partida quando todos mandam 500 (`handlers/channel/rooms.py`). Ele não chama `EndGame` no servidor: encerra o processo com `terminate` (`hosting/process.py`). O bloco só existe se o servidor já tiver chamado `EndGame` antes, e só fica no disco se o log for descarregado.
+- A interface chama `GetMatchGroupInfoList` depois do 512 (`RefreshGameResult`, `XInterface.u`, linhas 16945 a 16952). O 512 não é o resultado DM.
 
 ### 11.5 Log do servidor
 
@@ -253,10 +254,11 @@ Método: instâncias próprias de `LandMass.exe -server` em `servidor-partida\sy
 - `taskkill /PID` sem `/F` envia o sinal, mas o processo não sai em 15 s. Não houve saída limpa. Com `process.terminate()` (`hosting/process.py`), o trecho final do log pode ficar no buffer e não ser gravado.
 - `LOG=<nome>.log` antes de `-log` cria arquivo próprio por partida (verificado com `dmtest-7851.log`). `hosting/command.py` ainda não usa.
 - `LandMass.ini` não suprime `GameEnded` (`[Core.System] Suppress=`, linhas 57 a 75).
+- Não há switch de flush do log: a busca em `Core.dll` e `LandMass.exe` por `FORCELOGFLUSH` e variantes (ASCII e UTF-16LE) não achou nada. Há só símbolos `Flush` do motor (`FOutputDevice::Flush`, `FArchive::Flush`), sem chamada localizada para o log.
 
 ### 11.6 Conclusão
 
 - A partida DM não usa `GS_*` (D85). Os handlers `GS_*` ficariam sem chamador.
-- O resultado não é lido: depende de o servidor chamar `EndGame` e de o log ser descarregado por saída limpa. O emulador não atende nenhuma das duas condições (D86). As métricas ficam `NULL`.
-- Para fechar: testar com dois clientes se a partida chega a `EndGame` (resta um jogador na sala) e se o bloco aparece no `LandMass.log` após uma saída limpa. Sem saída limpa, a mudança exige alterar o processo de partida, fora deste escopo.
+- O resultado não é lido. O servidor escreve o bloco no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador encerra o processo sem saída limpa, e o log pode não ter sido descarregado (D86). As métricas ficam `NULL`.
+- Para fechar: com dois clientes e `TimeLimit` curto (ou `GoalScore` baixo), confirmar se o `EndGame` acontece por tempo ou pontuação e se o bloco `GameEnded` aparece no `LandMass.log` antes de qualquer `kill`. Sem saída limpa nem flush, a mudança exige alterar o processo de partida, fora deste escopo.
 4. Prazo próprio de partida (não há).

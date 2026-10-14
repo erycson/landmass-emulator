@@ -41,7 +41,7 @@ Nos três casos o canal faz o mesmo: encerra o processo (`MatchHost.finish`), vo
 
 Quem entra de novo na própria sala depois da partida (311) recebe 312, 314 e 317 só para si (D49).
 
-O bloco `GameEnded` do log não é lido. O servidor só o escreve no `EndGame` (último jogador ou sala vazia), e o emulador encerra a partida com `terminate`, sem saída limpa. Por isso o log pode não trazer o bloco. Métricas ficam nulas (D86; `re/game_server_host.md`, seções 11.4 e 11.5).
+O bloco `GameEnded` do log não é lido. O servidor o escreve no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador encerra a partida com `terminate` ao receber 500 de todos, sem saída limpa. Por isso o log pode não trazer o bloco. Métricas ficam nulas (D86; `re/game_server_host.md`, seções 11.4 e 11.5).
 
 ## Partida em memória
 
