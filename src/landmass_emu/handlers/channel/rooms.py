@@ -45,6 +45,7 @@ from landmass_emu.protocol.channel import (
     CsChangeRoomSlotOut,
     CsCreateRoomIn,
     CsCreateRoomOut,
+    CsEnterHangarOut,
     CsErrorEnvelope,
     CsExitPlayOut,
     CsInRoomError,
@@ -246,6 +247,9 @@ class RoomHandlers:
         if result.new_master is not None:
             log.info("sala %d: novo dono %d", room_id, result.new_master)
             self._to_lobby(CsChangeRoomMasterOut(room_id, result.new_master))
+            if result.room.state == ROOM_WAITING:
+                novo = result.room.members[result.new_master]
+                self._to_room(result.room, CsReadyGameOut(result.new_master, False, novo.morats))
         self._after_leave(result.room)
 
     async def out_room(self, session: Session, payload: bytes) -> Sequence[Reply]:
@@ -402,6 +406,14 @@ class RoomHandlers:
                 await self._save(record, END_EXIT_PLAY)
         return [CsExitPlayOut(0)]
 
+    async def enter_hangar(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        """586 (InHangar, sem corpo): só quem está em sala. Responde 587 com a própria chave; o
+        cliente abre o hangar quando a chave é a dele (`NotifyEnterHanger`, XInterface 28991)."""
+        guid = self._lobby.guid_of(session)
+        if guid is None or self._rooms.room_of(guid) is None:
+            return []
+        return [CsEnterHangarOut(guid)]
+
     async def _launch(self, peer: str, room: Room) -> Sequence[Reply]:
         """Sobe o servidor da partida e manda o 403 quando ele aceita conexões.
         Falha devolve a sala à espera e avisa o dono com o erro 241000201."""
@@ -419,6 +431,9 @@ class RoomHandlers:
             self._match.finish(room.room_id)
             return []
         self._open[room.room_id] = self._open_record(room, plan)
+        # O 402 do dono pronto dispara a contagem nos clientes e libera a entrada (D77).
+        dono = room.members[room.master]
+        self._to_room(room, CsReadyGameOut(room.master, True, dono.morats))
         self._to_room(room, CsStartGameOut(endpoint.host, endpoint.port))
         return []
 

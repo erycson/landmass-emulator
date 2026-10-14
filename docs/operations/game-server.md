@@ -108,7 +108,7 @@ Pré-requisito: `servidor-partida` com os patches conferidos (ver acima) e duas 
 | 4 | Bia entra na sala 1. | `[...] entrou na sala 1` |
 | 5 | Bia marca pronto; Ana inicia. | `partida iniciada na sala 1`, depois `partida da sala 1: XGame.LM_DeathMatch pronta na porta UDP 7800`. |
 | 6 | Conferir a porta: `netstat -ano -p UDP \| findstr :7800`. | Uma linha `UDP 0.0.0.0:7800` com o PID do `LandMass.exe` lançado. |
-| 7 | Os clientes mostram a contagem e entram em `127.0.0.1:7800`. | (Não confirmado: aceitar o 403 atrasado.) |
+| 7 | Os clientes mostram a contagem (402 pronto do dono, D77) e entram em `127.0.0.1:7800`. | (Não confirmado: aceitar o 403 atrasado.) |
 | 8 | Jogar até o fim. Cada cliente manda 500 ao sair da partida. | `partida da sala 1: servidor encerrado (porta 7800)`. Sala volta à espera e Bia fica sem pronto. |
 | 9 | Conferir o histórico (com o emulador parado): `uv run python -c "import sqlite3; c=sqlite3.connect('data/landmass.db'); print(c.execute('select id, room_id, map_file, game_class, end_reason from matches').fetchall()); print(c.execute('select match_id, account_id, nickname, is_master, kills from match_players').fetchall())"` | Uma linha em `matches` (`ONS-Treino`, `XGame.LM_DeathMatch`, `exit_play`). Duas em `match_players` com `kills` nulo. |
 | 10 | Cada cliente volta à sala e envia 311 para a sala 1. | Só quem entrou recebe 312, 314 e 317; o lobby não recebe nada de novo. |

@@ -106,15 +106,18 @@ async def test_401_do_dono_sobe_a_partida_e_so_depois_manda_403_aos_da_sala() ->
     [(room_id, plano)] = host.iniciados
     assert room_id == sala.room_id
     assert (plano.map_file, plano.game_class) == ("ONS-Treino", "XGame.LM_TeamOperation")
-    # Bia recebe: 402 de Bia pronta, 412 PLAYING ao canal e 403 com o endereço do servidor.
+    # Bia recebe: 402 de Bia pronta, 412 PLAYING ao canal, 402 do dono pronto (D77) e 403 com o
+    # endereço do servidor.
     recebidos = _corpos(bia)
     assert [op for op, _ in recebidos] == [
         CsOp.READY_GAME_OUT,
         CsOp.CHANGE_ROOM_PROPERTY_OUT,
+        CsOp.READY_GAME_OUT,
         CsOp.START_GAME_OUT,
     ]
     assert recebidos[1][1][0xF] == ROOM_PLAYING
-    inicio = recebidos[2][1]
+    assert struct.unpack_from("<iB", recebidos[2][1], 0) == (7, 1)
+    inicio = recebidos[3][1]
     assert inicio.split(b"\0")[0] == b"10.0.0.5"
     assert struct.unpack_from("<H", inicio, 16) == (7800,)
 
@@ -185,7 +188,7 @@ async def test_ultimo_a_sair_da_partida_grava_o_historico_e_devolve_a_sala_a_esp
     assert all(p.kills is None and p.played_percent is None for p in gravado.players)
     assert host.encerrados == [sala.room_id]
     assert sala.state == ROOM_WAITING
-    assert sala.members[9].ready is False and sala.members[7].ready is True
+    assert all(not membro.ready for membro in sala.members.values())  # o dono também (D77)
 
 
 async def test_queda_do_servidor_depois_de_pronto_encerra_a_partida_com_server_exit() -> None:
@@ -263,3 +266,51 @@ async def test_sala_que_esvazia_no_meio_da_partida_nao_grava_e_derruba_o_servido
     assert rooms.get(sala.room_id) is None
     assert host.encerrados == [sala.room_id]
     assert historico.salvos == []
+
+
+async def test_dono_so_fica_pronto_ao_iniciar_e_perde_o_pronto_ao_acabar() -> None:
+    host = _HostFalso()
+    handlers, lobby, rooms = _montagem(host, _Historico())
+    ana = _entra_no_lobby(lobby, 7, "Ana")
+    bia = _entra_no_lobby(lobby, 9, "Bia")
+    sala = _criar_sala(rooms, 7)
+    rooms.join(sala.room_id, 9, "")
+    assert sala.members[7].ready is False  # Config e Mudar grupo do dono exigem não pronto
+
+    await handlers.ready_game(bia, bytes([0]))
+    await handlers.ready_game(ana, bytes([0]))
+    assert sala.members[7].ready is True and sala.state == ROOM_PLAYING
+
+    rooms.finish(sala.room_id)
+    assert all(not membro.ready for membro in sala.members.values())
+
+
+async def test_novo_dono_vindo_pronto_perde_o_pronto_na_espera_e_o_cliente_sabe() -> None:
+    host = _HostFalso()
+    handlers, lobby, rooms = _montagem(host, _Historico())
+    _entra_no_lobby(lobby, 7, "Ana")
+    bia = _entra_no_lobby(lobby, 9, "Bia")
+    sala = _criar_sala(rooms, 7)
+    rooms.join(sala.room_id, 9, "")
+    await handlers.ready_game(bia, bytes([0]))
+    _corpos(bia)
+
+    handlers.leave(7)
+
+    assert sala.master == 9 and sala.members[9].ready is False
+    recebidos = _corpos(bia)
+    assert recebidos[-1][0] == CsOp.READY_GAME_OUT
+    assert struct.unpack_from("<iB", recebidos[-1][1], 0) == (9, 0)
+
+
+async def test_586_responde_587_com_a_propria_chave_so_quem_esta_em_sala() -> None:
+    host = _HostFalso()
+    handlers, lobby, rooms = _montagem(host, _Historico())
+    ana = _entra_no_lobby(lobby, 7, "Ana")
+
+    assert await handlers.enter_hangar(ana, b"") == []  # fora de sala: sem resposta
+    _criar_sala(rooms, 7)
+    [resposta] = await handlers.enter_hangar(ana, b"")
+
+    assert resposta.opcode == CsOp.ENTER_HANGAR_OUT
+    assert resposta.pack() == struct.pack("<i", 7)

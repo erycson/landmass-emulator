@@ -216,3 +216,33 @@ Detalhe completo em `channel_server.md` §4.
 14. Correção aplicada: `channel_server.md` linha 139 (111) e linhas 323 e 329 (layout lido e gap) foram ajustadas a partir deste documento.
 15. Revisão de D40 (549 e 312): não é a causa de o dono ver os botões desabilitados. Na criação, `_joined` roda com `others=[]`, então o criador recebe o 312 e grava o próprio `+0xa4` e `+0xb0 = 0x23`. Confirmado no servidor; no cliente real, não testado.
 16. Lista de salas e de jogadores em sessão: o caso 0x97 (151) põe `+0xb0 = 0x22` em todo nó da lista, inclusive o do próprio jogador (`channel_dispatch_FUN_1001da60.c` L1223-1225). Logo um 464 de quem está numa sala tira a posição 0x23 dele. O servidor não responde a esse caso (D67).
+
+## 11. Dono sem pronto: Config (411) e Mudar grupo (420)
+
+1. Config: `LM_RoomPage.InternalOnClick`, `case SettingBtn` (XInterface 28955–28968), abre `LM_RoomSettingPage` só com `MyRoom.state == 0 && !MyInfo.ready_game && MyRoom.master == MyInfo.client_guid`. Quem não é dono não abre o diálogo (guarda de dono, por design). `LM_MatchRoomPage` (35497–35504) abre sem guarda; é a página da sala de partida (uso de clã não verificado em detalhe).
+2. Mudar grupo: `ChangeTeam` (XInterface 21734–21755) não envia o 420 se `MyInfo.position != 0x23 || MyInfo.ready_game`. O botão (28909) chama sem checar.
+3. Opções e Sair: `OptionBtn` (28893) e `ExitBtn` (28902) também dependem de `!ready_game`.
+4. Causa do bloqueio do dono: o servidor criava o dono com `ready=1`. As três guardas barravam sem pacote. O entrante tem `ready=0` e passa em Mudar grupo.
+5. Início: `EnterGame` (XInterface 29464) aborta se `!MyInfo.ready_game` quando o endereço chega (403). A contagem (29351) só começa com um 402 em estado PLAYING cujo `client_guid` é o do jogador ou o do dono. O servidor manda o 402 do dono pronto junto do 403 e, com ele, a contagem começa em todos os clientes da sala.
+6. Efeito do 402 no nó (`da60.c`, dispatcher do canal, linhas 2835–2845): o bit0 de `+0xac` recebe o flag de forma absoluta (`X ^ ((flag ^ X) & 1)` deixa só o bit0 igual ao flag); `+0xb4` recebe os morats; `+0xb0` vira 0x24 se o estado é PLAYING e o flag é não zero, e 0x23 no caso de flag zero. Na espera, flag zero devolve a posição 0x23.
+7. Iniciar do dono: no ramo do dono (XInterface 28116–28147), o botão fica ativo por `IsReadyToStart` (27164), que conta o dono pelo `client_guid`. O critério de início não depende do pronto do dono.
+
+Status: causa confirmada pelo código do cliente. Não confirmada no cliente real (roteiro em `docs/operations/game-server.md`).
+
+## 12. Depósito (586 e 587)
+
+1. Botão: `OnHanger` (XInterface 28984–28989 na sala e 35520–35524 na sala de partida) chama `EnterHanger()`, que envia 586 (`InHangar`, sem corpo; `protocol_full.md` §3.1).
+2. Resposta 587 `NotifyEnterHanger(bool)` (`protocol_full.md` §3.2): `i32 @0` = chave; o evento recebe `(i32 @0 == DAT_1005ada0)`, ou seja, se a chave é a do próprio jogador.
+3. `OnEnterHanger` (XInterface 28991–29018): com `MoveHanger` verdadeiro, troca a página por `xInterface.LM_HangerPage`; caso contrário, só atualiza a lista de jogadores.
+4. Servidor: 586 de quem está em sala responde 587 com o próprio guid, só ao pedinte (`RoomHandlers.enter_hangar`). Fora de sala não há resposta; o cliente não tem caso para resposta negativa.
+5. Inventário: `LM_HangerPage` usa o cache do login (102/103), e o servidor não reenvia. Não confirmado no cliente real.
+6. Lacunas: 588 (`LeaveHanger`) não tem chamador na UI; 589 traz `u8 @4 = 0x23` como condição e não é enviado.
+7. Botão: `MainMenuBtns[4]` fica desativado para o dono com pronto (XInterface 28149–28153). O índice do botão Depósito está no defaultproperties, que não foi extraído do `.u`.
+
+## 13. Ficha do jogador (543)
+
+1. Layout: `LM_PLAYER_DETAIL_INFO` (`dump_LM_Engine.txt`, 2023–2050): `strNickName`, `nTotalRank`, `nTotalGamecount`, `nTotalWin`, `nTotalLose`, `nTotalKill`, `nTotalDeath`, `nHeadshot`, `nTotalExp`, `ucNest`, `nClanMark`, `strClanName`. O dispatcher passa o corpo direto como `PLAYER_INFO_DETAIL*` (`da60.c`, 531–536).
+2. Rótulos (`LM_PlayerInfoPage`, XInterface 32801–32805): `MilitaryRecordLbl` recebe `%t` = `nTotalGamecount` (Partida), `%w` = `nTotalWin` (V) e `%l` = `nTotalLose` (D).
+3. Offsets (inferidos da ordem da struct, com `char[20]` no nick e `i32` nos inteiros): jogos @0x18, vitórias @0x1C, derrotas @0x20.
+4. Porcentagem de abandono (XInterface 32813): `(jogos − vitórias − derrotas) × 100 / jogos`. Empates entram nessa conta como abandono.
+5. Estado: o emulador envia zero para os três campos. Preencher a partir de `match_players` fica para depois.

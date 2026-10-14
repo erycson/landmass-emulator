@@ -110,7 +110,8 @@ async def test_dois_clientes_na_mesma_sala_ficam_prontos_e_recebem_o_inicio(
                 assert struct.unpack("<iii", await x.expect(CsOp.IN_ROOM_OUT)) == (sala, ana.id, 0)
             # Só A recebe o detalhe da sala (314) e a lista de jogadores (317).
             assert struct.unpack_from("<i", await a.expect(CsOp.ROOM_INFO_OUT), 0x0C) == (sala,)
-            assert _jogadores(await a.expect(CsOp.ROOM_PLAYER_INFO_OUT)) == {ana.id: (0, True)}
+            # Dono sem pronto na espera (D77).
+            assert _jogadores(await a.expect(CsOp.ROOM_PLAYER_INFO_OUT)) == {ana.id: (0, False)}
 
             # B entra: A, que já está na sala, recebe só o 549 (quem chegou); B recebe o 312.
             # 314 e 317 só a B, que vê os dois nos slots.
@@ -121,7 +122,7 @@ async def test_dois_clientes_na_mesma_sala_ficam_prontos_e_recebem_o_inicio(
             assert entrada[0x28] == 1  # slot de B
             await b.expect(CsOp.ROOM_INFO_OUT)
             assert _jogadores(await b.expect(CsOp.ROOM_PLAYER_INFO_OUT)) == {
-                ana.id: (0, True),
+                ana.id: (0, False),
                 bia.id: (1, False),
             }
             await a.assert_silencio()
@@ -136,6 +137,8 @@ async def test_dois_clientes_na_mesma_sala_ficam_prontos_e_recebem_o_inicio(
                 estado = await x.expect(CsOp.CHANGE_ROOM_PROPERTY_OUT)
                 assert struct.unpack_from("<i", estado, 0) == (sala,)
                 assert estado[0xF] == 1  # ROOM_PLAYING (RS_PLAYING = 1)
+                dono = await x.expect(CsOp.READY_GAME_OUT)  # dono pronto dispara a contagem (D77)
+                assert struct.unpack_from("<iB", dono, 0) == (ana.id, 1)
                 inicio = await x.expect(CsOp.START_GAME_OUT)
                 assert cstr(inicio[:16]) == "127.0.0.1"
                 assert struct.unpack_from("<H", inicio, 16) == (7777,)
@@ -181,6 +184,9 @@ async def test_sair_passa_o_dono_e_a_sala_vazia_some_da_lista(tmp_path: Path) ->
                     sala,
                     bia.id,
                 )
+
+            # Bia, agora dona, perde o pronto na espera: 402 só para a sala (D77).
+            assert struct.unpack_from("<iB", await b.expect(CsOp.READY_GAME_OUT), 0) == (bia.id, 0)
 
             # B sai e a sala esvazia: 322 e depois 342 (remoção) chegam a todo o canal.
             await b.send(CsOp.OUT_ROOM)

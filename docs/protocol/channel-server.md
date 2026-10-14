@@ -29,15 +29,16 @@ Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151
 | `122` OutChannel | `123` (próprio id) | Sai da sala, se estiver em uma (322, e 332 ou 342), e do lobby. Os demais jogadores recebem `123`. |
 | `240` SendMsg, `u8 msg_type`, `u8 len`, texto | `241` a todos do lobby, remetente incluído; se o remetente está em sala, só aos membros da sala | Chat. Sem login ou fora do lobby: ignorado. |
 | `600` TutorialClear, `u8 passo` (0 a 2) | `601` (máscara e LD) | Liga o bit do passo em `accounts.tutorial_clear` com um `UPDATE` (pedidos concorrentes não perdem bit). Passo fora da faixa: `ValueError` logado, nada gravado, conexão mantida. Sem login: ignorado. |
-| `301` CreateRoom, 74 bytes | `302` ao lobby (registro da sala), `312` ao lobby (criador no slot 0), `314` e `317` ao criador | Cria a sala em memória; o criador é o dono e fica pronto. Nome curto: envelope `54` com `302` e código 211000202. Outro erro: código 211000201. |
+| `301` CreateRoom, 74 bytes | `302` ao lobby (registro da sala), `312` ao lobby (criador no slot 0), `314` e `317` ao criador | Cria a sala em memória; o criador é o dono e fica sem pronto (D77). Nome curto: envelope `54` com `302` e código 211000202. Outro erro: código 211000201. |
 | `311` InRoom, 20 bytes | `312` ao canal, menos quem já está na sala; `549` a quem já está na sala; `314` e `317` ao entrante | Entra no primeiro slot livre. Recusa: `312` com código negativo só ao entrante, com 1001 (sala não existe), 1202 (cheia), 1701 (senha) ou 200 (partida já iniciada). Estar em sala já: sem resposta. |
 | `321` OutRoom, vazio | `322` ao lobby; `332` se trocou o dono; `342` se a sala esvaziou | Sai da sala. |
 | `401` ReadyGame, `u8 morats`, de jogador não dono | `402` aos membros da sala | Alterna o estado de pronto. |
-| `401` ReadyGame, do dono | `412` ao lobby; depois `403` aos membros da sala (endereço e porta da partida) | Inicia a partida se houver outro jogador e todos os outros estiverem prontos. Se não, envelope `54` com `404` e código 241002702 (condições não atendidas). Se o servidor da partida não abre a porta, a sala volta à espera (`412` ao lobby, `402` aos não-donos) e o dono recebe envelope `54` com `404` e código 241000201. |
+| `401` ReadyGame, do dono | `412` ao lobby; depois `402` do dono pronto e `403` aos membros da sala (endereço e porta da partida) | Inicia a partida se houver outro jogador e todos os outros estiverem prontos. Se não, envelope `54` com `404` e código 241002702 (condições não atendidas). Se o servidor da partida não abre a porta, a sala volta à espera (`412` ao lobby, `402` aos não-donos) e o dono recebe envelope `54` com `404` e código 241000201. |
 | `420` ChangeRoomSlot (mudar grupo), `u8 grupo` | `421` aos membros da sala, com o slot escolhido | Vai ao primeiro slot livre do grupo (D66). Sem vaga ou grupo inválido: sem resposta. |
+| `586` InHangar, vazio | `587` só a quem pediu, com a própria chave | Abre o hangar no cliente. Quem não está em sala: sem resposta (D78). |
 | `464` GetChannelPlayerInfo, vazio | `151` a quem pediu | Lista de jogadores do lobby. Quem não está no lobby ou está numa sala: sem resposta (D67). |
 | `542` PlayerDetail, `char nick[17]` | `543` a quem pediu | Ficha com nick e exp do lobby; o resto sai zero (D67). Nick fora do canal: envelope 54 com 543. |
-| `411` ChangeRoomProperty, 10 bytes, do dono | `412` ao lobby | Muda só os campos marcados em `flags`, com os limites da criação. Sala jogando, quem não é dono ou configuração inválida: sem resposta. |
+| `411` ChangeRoomProperty, 10 bytes, do dono | `412` ao lobby | Muda só os campos marcados em `flags`, com os limites da criação. Sala jogando, dono com pronto, quem não é dono ou configuração inválida: sem resposta (D77). |
 | `451` RoomExpel, 18 bytes, do dono | `322` ao lobby | Expulsa pelo nick. Sem resposta a quem pediu; quem não é dono é ignorado. Sem caminho de UI confirmado (item 20). |
 | `461` RoomInvite, nick de 17 bytes, do dono | `462` ao dono (`i32`); `463` ao convidado | Convite pendente até o 471. Resultado: 0 enviado; -2460 nick fora do canal; -2411 já em sala; -2406 sala cheia; -2412 partida iniciada. Quem não é dono: envelope `54` com 462 e -4061 (o cliente não mostra nada). |
 | `471` RoomInviteAnswer, `i32 room_id`, `u8 accept` | aceite: `549` a quem está na sala, `312` ao canal, `314` e `317` ao entrante | Aceite entra sem senha, e só com convite pendente para a sala. Recusa ou sem convite: sem resposta. |
@@ -111,6 +112,8 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 542 | C→S | `PLAYER_DETAIL_IN` | `char nick[17]` | implementado (D67): responde 543 |
 | 543 | S→C | `PLAYER_DETAIL_OUT` | 77 bytes | implementado (shortcut: nick e exp; o resto zero) |
 | 549 | S→C | `ROOM_ENTRY_OUT` | entrada de jogador, 48 bytes | implementado (shortcut: divisão com 312) |
+| 586 | C→S | `ENTER_HANGAR` | vazio | implementado (D78): só quem está em sala |
+| 587 | S→C | `ENTER_HANGAR_OUT` | `i32 client_guid` @0 | implementado (D78): só ao pedinte |
 | 550 | C→S | `ITEM_BUY_IN` | 12 bytes: `i32 id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 nBuyOption` @5 (0 a 3) | implementado (F8): debita e cria a unidade numa transação; recusa com result ≠ 0 |
 | 551 | S→C | `ITEM_BUY_OUT` | 68 bytes: registro de 102 em @0..0x33, `i32 cash` @0x38, `i32 point` @0x3c, `i32 result` @0x40 | implementado (F8): sucesso manda 551, 102, 900 e 902; recusa vai sem registro e com saldos zero |
 | 552 | S→C | `MORATS_BUY_OUT` | 104 bytes: registro de 103 em @0..0x5b, `i32 cash` @0x5c, `i32 point` @0x60, `i32 result` @0x64 | implementado (F8): sucesso manda 552, 103, 900 e 902 |
@@ -136,15 +139,15 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 
 Estado em `domain/rooms.py`, só em memória (D12, D24). `handlers/channel/rooms.py` monta as respostas. Regras:
 
-- **Criar.** O criador entra no slot 0, já pronto, e é o dono. Nome de 3 a 50 bytes; senha de até 12 bytes (shortcut). Valores numéricos fora da faixa são limitados e logados, não recusados: `scale`, `game_mode`, `team_count` e `limit_time` em 0..255; `map_num` e `limit_score` em 0..32767; `max_player` em 1..70.
+- **Criar.** O criador entra no slot 0, sem pronto, e é o dono (D77). Nome de 3 a 50 bytes; senha de até 12 bytes (shortcut). Valores numéricos fora da faixa são limitados e logados, não recusados: `scale`, `game_mode`, `team_count` e `limit_time` em 0..255; `map_num` e `limit_score` em 0..32767; `max_player` em 1..70.
 - **Entrar.** A sala precisa existir, não ter começado, ter slot livre e, se tiver senha, a senha certa. Entra no primeiro slot livre. Quem entra não sai do lobby: continua recebendo a lista e o chat do canal.
-- **Pronto.** Jogador que não é dono alterna o estado com `401`. O dono não marca pronto: o `401` dele inicia a partida.
-- **Iniciar.** Só o dono. Exige ao menos um outro membro e todos os outros prontos. A sala passa a jogando (estado 1, D65) e não aceita novas entradas. O `403` leva `LANDMASS_GAME_HOST` com a porta fixa `LANDMASS_GAME_PORT`, ou com a porta da partida lançada pelo emulador (`LANDMASS_MATCH_SERVER_DIR`). Ver [05-configuration](../architecture/05-configuration.md) e [game-server](../operations/game-server.md).
+- **Pronto.** Jogador que não é dono alterna o estado com `401`. O dono fica sem pronto na espera (D77): o `401` dele inicia a partida, e ele fica pronto só ao iniciar.
+- **Iniciar.** Só o dono. Exige ao menos um outro membro e todos os outros prontos. A sala passa a jogando (estado 1, D65) e não aceita novas entradas. O dono fica pronto e o 402 dele sai antes do 403 (D77). O `403` leva `LANDMASS_GAME_HOST` com a porta fixa `LANDMASS_GAME_PORT`, ou com a porta da partida lançada pelo emulador (`LANDMASS_MATCH_SERVER_DIR`). Ver [05-configuration](../architecture/05-configuration.md) e [game-server](../operations/game-server.md).
 - **Sair.** Se o dono sai e ainda há membros, o dono passa ao primeiro membro na ordem de entrada (`332`). Sala sem membros é removida (`342`).
-- **Configurar.** Só o dono, com a sala esperando. Muda os campos marcados em `flags` (411) e avisa o canal (412). Valores fora da faixa são limitados; `max_player` abaixo de quem já está sentado é ignorado.
+- **Configurar.** Só o dono, sem pronto e com a sala esperando (D77). Quem não é dono não abre o diálogo no cliente (XInterface 28962). Muda os campos marcados em `flags` (411) e avisa o canal (412). Valores fora da faixa são limitados; `max_player` abaixo de quem já está sentado é ignorado.
 - **Convidar.** Só o dono. O convidado do canal recebe o convite (463) e responde com 471. O convite fica pendente até a resposta e não expira (shortcut). O aceite entra sem senha.
 - **Expulsar.** Só o dono, pelo nick (451). O expulso sai da sala (`322`).
-- **Fim da partida.** Cada jogador em jogo manda `500`; o canal responde `501`. A sala volta à espera quando todos saem, quando o último em jogo sai da sala ou quando o servidor cai depois de pronto (D48). Quem entra de novo na sala (`311`) recebe `312`, `314` e `317` só para si (D49).
+- **Fim da partida.** Cada jogador em jogo manda `500`; o canal responde `501`. A sala volta à espera quando todos saem, quando o último em jogo sai da sala ou quando o servidor cai depois de pronto (D48). Todos recebem 402 sem pronto, o dono também (D77). Quem entra de novo na sala (`311`) recebe `312`, `314` e `317` só para si (D49).
 
 Escopo da difusão:
 
@@ -468,7 +471,7 @@ Campo sem bit fica de fora e não muda no cliente. MODE exige `game_mode` e `tea
 
 **471 ROOM_INVITE_ANSWER (C→S), mínimo 5 bytes**: `i32 room_id` @0, `u8 accept` @4 (1 aceita); @5 em diante não é lido. O aceite só entra com convite pendente para a sala.
 
-**543 PLAYER_DETAIL_OUT (S→C), 77 bytes**: resposta a 542 com nick e exp do lobby; o resto sai zero (D67). `char nick[20]` @0; oito `i32` a partir de @0x14 (rank, jogos, vitórias, derrotas, abates, mortes, headshots, exp); `u8 nest` @0x34; `i32 clan_mark` @0x38; `char clan[17]` @0x3C.
+**543 PLAYER_DETAIL_OUT (S→C), 77 bytes**: resposta a 542 com nick e exp do lobby; o resto sai zero (D67). `char nick[20]` @0; oito `i32` a partir de @0x14 (rank, jogos, vitórias, derrotas, abates, mortes, headshots, exp). Rótulos da ficha (`LM_PlayerInfoPage`, XInterface 32801–32805): "Partida" = jogos @0x18 (`%t`), vitórias @0x1C (`%w`), derrotas @0x20 (`%l`) (`re/rooms.md` §13); `u8 nest` @0x34; `i32 clan_mark` @0x38; `char clan[17]` @0x3C.
 
 **549 ROOM_ENTRY_OUT (S→C), 48 bytes**: a entrada de jogador de 317 (tabela acima) de quem entrou. Vai só a quem já está na sala.
 

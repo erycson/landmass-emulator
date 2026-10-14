@@ -153,7 +153,8 @@ class Rooms:
             limit_score=limit_score,
             master=owner,
         )
-        room.members[owner] = RoomMember(slot=0, ready=True)
+        # Dono sem pronto na espera: Config (411) e Mudar grupo (420) exigem não pronto (D77).
+        room.members[owner] = RoomMember(slot=0)
         self._rooms[room.room_id] = room
         self._room_of[owner] = room.room_id
         return room
@@ -218,6 +219,8 @@ class Rooms:
         if room.master != guid:
             return LeaveResult(room, removed=False, new_master=None)
         room.master = next(iter(room.members))
+        if room.state == ROOM_WAITING:
+            room.members[room.master].ready = False  # novo dono sem pronto na espera (D77)
         return LeaveResult(room, removed=False, new_master=room.master)
 
     def change_slot(self, guid: int, team: int) -> Room:
@@ -265,6 +268,7 @@ class Rooms:
         if not others or not all(m.ready for m in others):
             raise RoomError(RoomReason.NOT_READY)
         room.members[owner].morats = morats
+        room.members[owner].ready = True  # o cliente exige pronto do dono para entrar (D77)
         room.state = ROOM_PLAYING
         room.in_game = set(room.members)
         return room
@@ -277,15 +281,14 @@ class Rooms:
         return room
 
     def finish(self, room_id: int) -> Room | None:
-        """Partida acabou: a sala volta à espera e os não-donos perdem o pronto."""
+        """Partida acabou: a sala volta à espera e todos perdem o pronto, o dono também (D77)."""
         room = self._rooms.get(room_id)
         if room is None or room.state != ROOM_PLAYING:
             return room
         room.state = ROOM_WAITING
         room.in_game.clear()
-        for guid, member in room.members.items():
-            if guid != room.master:
-                member.ready = False
+        for member in room.members.values():
+            member.ready = False
         return room
 
     def configure(self, owner: int, changes: dict[str, int]) -> Room:

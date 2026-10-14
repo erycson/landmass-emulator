@@ -82,6 +82,8 @@ class CsOp(IntEnum):
     ROOM_INVITE_ANSWER = 471
     PLAYER_DETAIL_OUT = 543
     ROOM_ENTRY_OUT = 549
+    ENTER_HANGAR = 586
+    ENTER_HANGAR_OUT = 587
     EXPEL_PLAYER = 700
     EXPEL_PLAYER_OUT = 701
     EXIT_PLAY = 500
@@ -747,6 +749,19 @@ class CsReadyGameOut:
 
     def pack(self) -> bytes:
         return self._FIXED.pack(self.client_guid, int(self.ready), self.morats)
+
+
+@dataclass(frozen=True, slots=True)
+class CsEnterHangarOut:
+    """ENTER_HANGAR_OUT (587), 4 bytes: `i32 client_guid` @0, a chave de quem entrou no hangar.
+    O cliente abre o hangar só quando a chave é a própria (`NotifyEnterHanger`, XInterface 28991).
+    Não há corpo na entrada (586)."""
+
+    client_guid: int
+    opcode: ClassVar[int] = CsOp.ENTER_HANGAR_OUT
+
+    def pack(self) -> bytes:
+        return _I32.pack(self.client_guid)
 
 
 @dataclass(frozen=True, slots=True)

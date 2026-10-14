@@ -28,7 +28,7 @@ Implementação: `protocol/message.py` (layouts), `handlers/message/` (comportam
 | 177 | C→S | SendClanMessage | `u16 len` + texto (máx. 0x78) | implementado: exige clã; entrega 178 aos membros online |
 | 178 | S→C | Chat de clã | `MS_CLAN_MESSAGE_OUT` (0x14 + texto) | implementado |
 | 180 | C→S | GetFriendList | — | implementado: exige login; responde 183 e 188 |
-| 181 | C→S | AddFriend | `MS_NICK_IN` (17 bytes) | implementado: responde 183 |
+| 181 | C→S | AddFriend | `MS_NICK_IN` (17 bytes) | implementado: responde 183. Sem confirmação do alvo: grava na hora (D33 e D79). Recusa: 183 com id 0 e `result` -11, que o cliente não insere |
 | 182 | C→S | DelFriend | `MS_ACCOUNT_ID_IN` (4 bytes) | implementado: responde 184 |
 | 183 | S→C | Registro de amigo | `MS_CONTACT_RECORD` (0x2C bytes) | implementado |
 | 184 | S→C | Amigo removido | `MS_DEL_FRIEND_OUT` (8 bytes) | implementado |

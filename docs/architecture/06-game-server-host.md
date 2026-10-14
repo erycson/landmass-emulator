@@ -37,7 +37,7 @@ A partida acaba em um de três casos (D48):
 2. O último jogador em jogo sai da sala sem ter mandado 500.
 3. O processo do servidor cai depois de pronto (`on_exit`).
 
-Nos três casos o canal faz o mesmo: encerra o processo (`MatchHost.finish`), volta a sala à espera (412 WAITING ao lobby, 402 sem pronto para cada não-dono, 317 à sala) e grava o histórico uma vez (D52). Sala que esvazia no meio da partida é encerrada sem gravar.
+Nos três casos o canal faz o mesmo: encerra o processo (`MatchHost.finish`), volta a sala à espera (412 WAITING ao lobby, 402 sem pronto para cada membro, o dono incluído (D77), 317 à sala) e grava o histórico uma vez (D52). Sala que esvazia no meio da partida é encerrada sem gravar.
 
 Quem entra de novo na própria sala depois da partida (311) recebe 312, 314 e 317 só para si (D49).
 

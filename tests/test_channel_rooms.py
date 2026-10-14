@@ -439,7 +439,7 @@ def test_dominio_criar_entrar_e_slots() -> None:
     rooms = Rooms()
     sala = _criar(rooms, 1)
     assert sala.room_id == 1 and sala.master == 1
-    assert sala.members[1].slot == 0 and sala.members[1].ready
+    assert sala.members[1].slot == 0 and not sala.members[1].ready  # dono sem pronto (D77)
     rooms.join(1, 2, "")
     assert rooms.room_of(2) is sala and sala.members[2].slot == 1
 
