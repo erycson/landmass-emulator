@@ -1,18 +1,19 @@
 import asyncio
-from dataclasses import fields
+from dataclasses import fields, replace
 from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import Engine, create_engine, inspect, text
 
 from landmass_emu.app import open_accounts, open_database
-from landmass_emu.db.options import SqlOptionsRepository
+from landmass_emu.db.options import KeyBindDefaults, SqlOptionsRepository
 from landmass_emu.domain.account import hash_token
 from landmass_emu.protocol.message import LmRegisterInfo
 from landmass_emu.settings import Settings
 
 TOKEN_ANA = "0123456789abcdef0123456789abcdef"
 TOKEN_BIA = "fedcba9876543210fedcba9876543210"
+PADRAO = LmRegisterInfo(**KeyBindDefaults.VALUES)
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -32,7 +33,7 @@ async def test_conta_sem_registro_devolve_padrao(tmp_path: Path) -> None:
     async with open_accounts(settings) as accounts:
         ana = await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
     async with open_database(settings) as db:
-        assert await SqlOptionsRepository(db).get(ana.id) == LmRegisterInfo()
+        assert await SqlOptionsRepository(db).get(ana.id) == PADRAO
 
 
 async def test_save_insere_e_depois_substitui_as_37_opcoes(tmp_path: Path) -> None:
@@ -42,10 +43,10 @@ async def test_save_insere_e_depois_substitui_as_37_opcoes(tmp_path: Path) -> No
     async with open_database(settings) as db:
         repo = SqlOptionsRepository(db)
         await repo.save(ana.id, LmRegisterInfo(background=1, weapon_1=2, screenshot=9))
-        assert await repo.get(ana.id) == LmRegisterInfo(background=1, weapon_1=2, screenshot=9)
-        # Save substitui a linha inteira: campos fora do novo registro voltam a zero.
+        assert await repo.get(ana.id) == replace(PADRAO, background=1, weapon_1=2, screenshot=9)
+        # Save substitui a linha inteira: campos fora do novo registro voltam ao padrão.
         await repo.save(ana.id, LmRegisterInfo(mouse_sensitivity=4))
-        assert await repo.get(ana.id) == LmRegisterInfo(mouse_sensitivity=4)
+        assert await repo.get(ana.id) == replace(PADRAO, mouse_sensitivity=4)
 
     engine = _sync_engine(tmp_path)
     try:
@@ -85,8 +86,21 @@ async def test_opcoes_sao_por_conta_e_sobrevivem_a_reabertura(tmp_path: Path) ->
         await SqlOptionsRepository(db).save(ana.id, LmRegisterInfo(jump=3))
     async with open_database(settings) as db:
         repo = SqlOptionsRepository(db)
-        assert await repo.get(ana.id) == LmRegisterInfo(jump=3)
-        assert await repo.get(bia.id) == LmRegisterInfo()
+        assert await repo.get(ana.id) == replace(PADRAO, jump=3)
+        assert await repo.get(bia.id) == PADRAO
+
+
+async def test_tecla_gravada_em_zero_recebe_padrao_e_valor_gravado_fica(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        ana = await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+    async with open_database(settings) as db:
+        repo = SqlOptionsRepository(db)
+        await repo.save(ana.id, LmRegisterInfo(move_forward=65))  # A no lugar de W
+        opcoes = await repo.get(ana.id)
+        assert opcoes.move_forward == 65
+        assert opcoes.move_backward == KeyBindDefaults.VALUES["move_backward"]
+        assert opcoes == replace(PADRAO, move_forward=65)
 
 
 async def test_schema_account_options_segue_lm_register_info(tmp_path: Path) -> None:

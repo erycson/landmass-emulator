@@ -80,3 +80,4 @@ Este contrato só seria necessário se a validação de jogador fosse feita pelo
 - Matching de `map_num` com `RecordIndex` e unidades de `TimeLimit` são inferidos (D53).
 - Um cliente que nunca manda 500 com o servidor vivo mantém a sala em jogo até o processo cair. Sem prazo próprio de partida (ver `operations/game-server.md`).
 - Modo fixo também precisa do `landmass.wdb` e do mapa da sala: sem eles o 401 devolve 241000201. Antes do marco 4 o 403 saía sem consultar o catálogo, então é uma mudança de comportamento.
+- Pawn sem personagem e sem booster ou gerador: o loadout não sai do cliente (`EnterGame` não manda `character`), então o emulador não tem como montá-lo na partida. Ver D141 e `re/game_server_host.md`, §12.

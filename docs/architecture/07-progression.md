@@ -427,8 +427,8 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 | Id | Regra | Fonte |
 |----|-------|-------|
 | R-OPT-01 | `SaveOption` (544) grava as 37 opções de `account_options` (corpo de 37 bytes). Sem resposta conhecida. | `channel_server.md` §2 (544) |
-| R-OPT-02 | `Register` (110 → 111) devolve as 37 opções gravadas em `@0x00..0x24`. Conta sem registro recebe zeros. Implementado (F1). | `message_server.md` §4 (111) |
-| R-OPT-03 | Valor padrão de conta nova: 0 (inferido). A tela do cliente define o que é apresentado. | (inferido) |
+| R-OPT-02 | `Register` (110 → 111) devolve as 37 opções gravadas em `@0x00..0x24`. Conta sem registro recebe as teclas padrão (D140). Implementado (F1). | `message_server.md` §4 (111) |
+| R-OPT-03 | Valor padrão de conta nova: teclas do `[Engine.Input]` do `User.ini` do cliente (`KeyBindDefaults`, D140); as demais opções ficam em 0, sem fonte. | re/game_server_host.md §12 (inferido) |
 
 ### 5.13 Social, clã e abandono
 

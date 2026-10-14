@@ -262,3 +262,19 @@ Método: instâncias próprias de `LandMass.exe -server` em `servidor-partida\sy
 - O resultado não é lido. O servidor escreve o bloco no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador encerra o processo sem saída limpa, e o log pode não ter sido descarregado (D86). As métricas ficam `NULL`.
 - Para fechar: com dois clientes e `TimeLimit` curto (ou `GoalScore` baixo), confirmar se o `EndGame` acontece por tempo ou pontuação e se o bloco `GameEnded` aparece no `LandMass.log` antes de qualquer `kill`. Sem saída limpa nem flush, a mudança exige alterar o processo de partida, fora deste escopo.
 4. Prazo próprio de partida (não há).
+
+## 12. Teclas e movimento na partida (verificação de 2026-10-13)
+
+- **H2, teclas (corrigido no emulador, D140).** O 111 devolvia zeros para conta sem registro. O cliente aplica as opções com `Controller.RemoveAllBindings()` (`xinterface_strings.txt` 42235) e liga cada alias com `Controller.SetAliasToKey(Options.<campo>, "<alias>")` (42356; `weapon1` em 42157). A tecla 0 é `IK_None` (`dump_Engine.txt` 40148). Tiro e roda do mouse funcionavam porque o cliente os liga por código (42364, 42397-42420).
+- Os códigos de `EInputKey` são códigos VK (`dump_Engine.txt` 40146-40187): `IK_Shift` 16, `IK_Ctrl` 17, `IK_Escape` 27. Letras e dígitos seguem o ASCII.
+- Padrões usados (`cliente\system\User.ini`, `[Engine.Input]`): `SwitchWeapon 0..9` (linhas 50-59), `W/A/S/D` (84-106), `E=NewUse`, `F=Duck`, `Q=ChaffFire`, `R=ChangeMagazine`, `C/X/Z=SpeechMenuOpen 2/4/5`, `I=ToggleMirror`, `P=ToggleMinimap`, `Ctrl=Walking`, `Shift=BoosterInput`, `LeftMouse=Fire`, `RightMouse=AltFire`. A ordem dos três `SpeechMenuOpen` para `speech_menu_1..3` é inferida.
+- Sem padrão, ficam em 0: `jump` (o `User.ini` tem `Space=CancelStatus`, sem alias de pulo), `object` e `screenshot` (`F11=shot` existe, mas não há confirmação de que o cliente aplique `screenshot`). `background`, `effect`, `voice_*` e `mouse_acc` não têm fonte.
+- O `defaultproperties` de `Bindings` no `XInterface.u` não está nos dumps extraídos (`xi.txt`, `xinterface_strings.txt`). Upgrade: lê-lo e trocar a fonte do `User.ini`.
+- **H3, lentidão (não vem de mouse nem de netspeed).** O cliente aplica `SetSensitivity(FClamp(mousesence*0.1+0.25, 0.25, 10.25))` (42328). `mousesence` 0 dá 0.25, o mesmo `MouseSensitivity=0.250000` do `User.ini` (linha 461). O `netspeed 9636` do log não foi ligado ao movimento (inferido).
+- **H1, pawn sem personagem e sem itens (não corrigido).**
+  - `EnterGame` manda `?name=`, `?key=`, `?team=` e `?voice=`. `?character=` está comentado (`xinterface_strings.txt` 56334-56348).
+  - O `GameInfo.Login` lê `Character` (`dump_Engine.txt` 51160) e `generator`/`booster` (51502-51521). Sem eles, a consulta de `Item_Equip` não acha item e o booster e o gerador ficam nulos (inferido).
+  - `LandMass.log` (sessão 22:51-22:55): `xPawn.Setup` acessa `Species` nulo, e `CalcPawnSpeedValues` tem `BoosterData` e `GeneratorData` nulos. A velocidade usa `Pawn.BoosterData.item_weight`, `Pawn.GeneratorData.item_weight` e `Pawn.Species` (`dump_XGame.txt` 32551-32583).
+  - `MORATS.upl` cita `SPECIES_AssaultC/D/E`, sem classe nos pacotes (aviso ao carregar o nível).
+  - Não confirmado: se o LOGIN leva `Character` da `[URL]` do cliente (`LandMass.ini`: `Character=M_Sniper01_0`). A linha `Joseph: GameInfo::Login() -> Options` não aparece no log, o que sugere opções vazias, mas o `Login` pode não ter rodado. É pista, não prova.
+  - O emulador não tem canal para entregar loadout por jogador ao servidor de partida (`GS_*` não é usado, §11.6). Corrigir exige o cliente enviar `character` e o loadout, ou um default no servidor de partida. Ver D141.

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from landmass_emu.app import game_servers, open_accounts, open_database
+from landmass_emu.db.options import KeyBindDefaults
 from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.domain.account import hash_token
 from landmass_emu.domain.progression import Grant
@@ -20,7 +21,7 @@ from landmass_emu.protocol.header import (
     pack_header,
     unpack_header,
 )
-from landmass_emu.protocol.message import MsLoginIn, MsOp, cstr
+from landmass_emu.protocol.message import LmRegisterInfo, MsLoginIn, MsOp, cstr
 from landmass_emu.protocol.progression import CsProgressionOp
 from landmass_emu.settings import Settings
 
@@ -257,7 +258,8 @@ async def test_opcoes_do_canal_voltam_no_111_do_proximo_login(tmp_path: Path) ->
 
     async with game_servers(settings) as (msg, ch):
         corpo = await _register_body(msg, TOKEN_ANA)
-        assert corpo[0x00:0x25] == bytes(0x25)  # conta sem registro: zeros
+        padrao = LmRegisterInfo(**KeyBindDefaults.VALUES).pack()
+        assert corpo[0x00:0x25] == padrao[:0x25]  # conta sem registro: teclas padrão
 
         chave = cstr(corpo[0x25:0x46])
         async with _connect(ch, CHANNEL_NET_CODE) as c:
@@ -300,7 +302,7 @@ async def test_save_option_sem_login_ou_curto_e_ignorado(tmp_path: Path) -> None
             await _saldos_do_login(c)
 
         corpo = await _register_body(msg, TOKEN_ANA)
-        assert corpo[0x00:0x25] == bytes(0x25)
+        assert corpo[0x00:0x25] == LmRegisterInfo(**KeyBindDefaults.VALUES).pack()[:0x25]
 
 
 async def test_lobby_lista_todos_com_nick_e_546_responde_so_a_quem_esta_no_lobby(
