@@ -2,7 +2,8 @@
 
 Mapa: `RecordIndex` da tabela `maps` do `landmass.wdb` é o `map_num` da sala. Modo: a UI do cliente
 (`XInterface`, `nModeIndex`) lê `game_mode == 1` como OP, `game_mode == 0` com dois times como time
-e o resto como DM. As classes estão em `re/game_server_host.md`, seção 10.
+e o resto como DM. As classes estão em `re/game_server_host.md`, seção 10. O time é
+`XGame.LM_TeamDeathMatch` (D170).
 """
 
 from dataclasses import dataclass
@@ -10,7 +11,8 @@ from dataclasses import dataclass
 from landmass_emu.domain.rooms import Room
 
 GAME_DEATHMATCH = "XGame.LM_DeathMatch"
-GAME_TEAM = "XGame.LM_TeamGame"
+# LM_TeamGame herda BecomeSpectator=false de LM_DeathMatch e trava o respawn em TDM (D170).
+GAME_TEAM = "XGame.LM_TeamDeathMatch"
 GAME_OPERATION = "XGame.LM_TeamOperation"
 TEAM_COUNT_FOR_TEAM_GAME = 2
 MIN_PLAYERS = 2

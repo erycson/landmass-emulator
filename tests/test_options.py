@@ -6,14 +6,14 @@ from pathlib import Path
 from sqlalchemy import Engine, create_engine, inspect, text
 
 from landmass_emu.app import open_accounts, open_database
-from landmass_emu.db.options import KeyBindDefaults, SqlOptionsRepository
+from landmass_emu.db.options import KeyBindDefaults, MouseDefaults, SqlOptionsRepository
 from landmass_emu.domain.account import hash_token
 from landmass_emu.protocol.message import LmRegisterInfo
 from landmass_emu.settings import Settings
 
 TOKEN_ANA = "0123456789abcdef0123456789abcdef"
 TOKEN_BIA = "fedcba9876543210fedcba9876543210"
-PADRAO = LmRegisterInfo(**KeyBindDefaults.VALUES)
+PADRAO = LmRegisterInfo(**KeyBindDefaults.VALUES, **MouseDefaults.VALUES)
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -47,6 +47,9 @@ async def test_save_insere_e_depois_substitui_as_37_opcoes(tmp_path: Path) -> No
         # Save substitui a linha inteira: campos fora do novo registro voltam ao padrão.
         await repo.save(ana.id, LmRegisterInfo(mouse_sensitivity=4))
         assert await repo.get(ana.id) == replace(PADRAO, mouse_sensitivity=4)
+        # Sensibilidade gravada em 0 volta ao padrão no próximo 111; outras opções em 0 ficam.
+        await repo.save(ana.id, LmRegisterInfo(mouse_sensitivity=0, mouse_invert=1))
+        assert await repo.get(ana.id) == replace(PADRAO, mouse_invert=1)
 
     engine = _sync_engine(tmp_path)
     try:

@@ -178,7 +178,7 @@ Forma escrita pelo emulador:
 - `version=` e `login_num=` continuam como último token, sem nada depois (seção 2).
 - `PORT=` vem antes de `-log`. O `main` (`re/LandMass.exe/main_loop.c`, linhas 74-162) remove cada chave de login do fim e preserva o prefixo, então `PORT=` chega ao `appInit`.
 - `game=`, `MaxPlayers`, `TimeLimit` e `GoalScore` são opções de URL. Os nomes vêm do `XGame` (inferido); o servidor ainda não as confirmou em execução.
-- Classes: `XGame.LM_DeathMatch`, `XGame.LM_TeamGame` e `XGame.LM_TeamOperation`, pela regra de modo da UI (D53).
+- Classes: `XGame.LM_DeathMatch`, `XGame.LM_TeamDeathMatch` (time, D170; antes `XGame.LM_TeamGame`) e `XGame.LM_TeamOperation`, pela regra de modo da UI (D53).
 
 ### 10.2 `PORT=` (RE de `IpDrv` e `Core`)
 
@@ -298,3 +298,14 @@ Sintoma relatado pelo usuário na primeira partida real (dois clientes, `LM_Team
   - Não confirmado: se o LOGIN leva `Character` da `[URL]` do cliente (`LandMass.ini`: `Character=M_Sniper01_0`). A linha `Joseph: GameInfo::Login() -> Options` não aparece no log, o que sugere opções vazias, mas o `Login` pode não ter rodado. É pista, não prova.
   - O emulador não tem canal para entregar loadout por jogador ao servidor de partida (`GS_*` não é usado, §11.6). Corrigir exige o cliente enviar `character` e o loadout, ou um default no servidor de partida. Ver D141.
 - **Previsão para andar depois do H2.** Não é prevista pelos dados. Com as teclas ligadas, o pawn anda só se `agility` e `strength` dos padrões da classe derem velocidade positiva com o peso da arma. Esses padrões não foram extraídos.
+
+## 13. Respawn em TDM, mouse, animações e fim por tempo (verificação de 2026-10-14)
+
+Fonte: `XGame.u` e `XInterface.u` do cliente, extraídos em UTF-16 e ASCII (o mesmo pacote está no `servidor-partida`, com o mesmo tamanho). As linhas citadas são de um dump de extração feito na sessão, não versionado. Decisões: D170 a D177.
+
+- **Classe de time (D170).** `class LM_TeamGame extends LM_DeathMatch` (UTF-16, linha 6695) não sobrescreve `BecomeSpectator`. Herda `LM_DeathMatch.BecomeSpectator`, que retorna `false` (linha 16028). `class LM_TeamDeathMatch extends LM_TeamGame` (ASCII 0x00235415) sobrescreve `BecomeSpectator` (0x00238782, retorna `true` com a partida começada) e `AllowBecomeActivePlayer` (0x00238A00). Sem `game=` na sala, o `CServerRoom::Init` nativo escolhe `XGame.LM_TeamDeathMatch` para modo 0 com `team_count >= 2` (`re/LM_Engine.dll/all/100163d0_Init.c`, linhas 317 a 339). O emulador manda `game=XGame.LM_TeamGame` (`domain/match.py`).
+- **Respawn (D171).** `state Dead` do `LM_xPlayer` (ASCII 0x0018A764, linhas 1083 a 1102 do dump de respawn): `Timer` chama `BecomeSpectator()` se `bTeamGame` e `RespawnCountDown <= RespawnDelay * 0.8`, e esse ramo não decrementa o contador. `LM_xPlayer.BecomeSpectator` (0x001842C4) sai cedo quando `Level.Game.BecomeSpectator` é falso. Resultado: o contador para em 0,8 do prazo. O prazo (`var const int RespawnDelay`) não tem valor no texto; com 10 s, o HUD mostra "8 s". Os estados `BehindCamera` e `Spectating` chamam `BecomeActivePlayer()` quando o contador chega a 1, e o pawn nunca chega lá.
+- **Time nulo (não é a causa do 8 s).** `LM_xPawn.TakeDamage` acessa `Team` nulo no log do servidor. `RatePlayerStart` (UTF-16, linha 7788) recusa todo ponto quando `bSpawnInTeamArea` e o time não casa; isso bloquearia o spawn depois do congelamento. O envio de time e de loadout é do outro agente.
+- **Mouse (D172).** `OnApply` do slider grava `mousesence` = `fMouseSence` (XInterface UTF-16, linhas 14346 a 14351). O motor recebe `FClamp(v * 0.1 + 0.25, 0.25, 10.25)`. Leitura inversa: `(MouseSensitivity - 0.25) * 10` (linha 14395). `cliente\system\User.ini` tem `MouseSensitivity=0.250000` (linha 461), gravado pelo próprio cliente depois de aplicar 0. `tools\UT2004\Installer\User.ini` tem `MouseSensitivity=1.000000` (linha 345), `bInvertMouse=False` (338) e `bNoMouseSmoothing=True` (344). Mínimo e máximo do slider não foram lidos.
+- **Animações (D174).** `PlayAnim: Sequence IdleSmg01Shot not found for mesh Assault01` e `Invalid bone index (-1) for GetBoneRotation` no log do cliente; `Accessed null class context 'Species'` em `xPawn.Setup` e `xPawn.PlayDying: No Species` no servidor. Os `SPECIES_*` não estão nos pacotes do cliente. Taxas de tick não foram alteradas.
+- **Fim por tempo (D175).** `RemainingTime = 60 * TimeLimit` (UTF-16, linhas 4300 e 4622). `TimeLimit` da URL vem da sala, em minutos. A partida acabou ~413 s após a entrada dos jogadores, não aos 600 s esperados. Não explicado.

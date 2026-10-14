@@ -62,6 +62,25 @@ class KeyBindDefaults:
         return replace(options, **zeros)
 
 
+class MouseDefaults:
+    """Sensibilidade do mouse de conta sem registro e de sensibilidade gravada em 0. A UI grava o
+    valor do slider (`fMouseSence`, XInterface `OnApply`) e o motor recebe
+    `clamp(valor * 0.1 + 0.25, 0.25, 10.25)`: 0 cai no piso, o mais lento. 8 vem de
+    `MouseSensitivity=1.0` do `User.ini` padrão do UT2004 (`tools/UT2004/Installer/User.ini`,
+    linha 345): (1.0 - 0.25) * 10 = 7.5, arredondado para cima. Inferido.
+    shortcut: o mínimo e o máximo do slider não foram lidos no cliente; se o slider não chega a 8,
+    trocar o padrão. Sem padrão para inverter, voz e volume: 0 é valor válido. A suavização não
+    está no bloco de 37 bytes; fica no `User.ini` do cliente (D173)."""
+
+    VALUES: ClassVar[dict[str, int]] = {"mouse_sensitivity": 8}
+
+    @classmethod
+    def fill(cls, options: LmRegisterInfo) -> LmRegisterInfo:
+        """Troca só a sensibilidade em zero. Valor gravado diferente de zero não muda."""
+        zeros = {name: v for name, v in cls.VALUES.items() if getattr(options, name) == 0}
+        return replace(options, **zeros)
+
+
 class SqlOptionsRepository:
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
         self._sessions = sessions
@@ -75,7 +94,7 @@ class SqlOptionsRepository:
                 select(OptionsRow).where(OptionsRow.account_id == account_id)
             )
         stored = LmRegisterInfo() if row is None else _to_domain(row)
-        return KeyBindDefaults.fill(stored)
+        return MouseDefaults.fill(KeyBindDefaults.fill(stored))
 
     async def save(self, account_id: int, options: LmRegisterInfo) -> None:
         values = asdict(options)

@@ -42,7 +42,7 @@ def _sala(**campos: int) -> Room:
 
 def test_modo_da_ui_vira_classe_do_jogo() -> None:
     assert game_class_for(1, 1) == GAME_OPERATION
-    assert game_class_for(0, 2) == GAME_TEAM
+    assert game_class_for(0, 2) == GAME_TEAM == "XGame.LM_TeamDeathMatch"  # D170
     assert game_class_for(0, 1) == GAME_DEATHMATCH
     assert game_class_for(2, 2) == GAME_DEATHMATCH
 
