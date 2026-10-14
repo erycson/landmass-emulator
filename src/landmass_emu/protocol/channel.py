@@ -84,6 +84,8 @@ class CsOp(IntEnum):
     ROOM_ENTRY_OUT = 549
     ENTER_HANGAR = 586
     ENTER_HANGAR_OUT = 587
+    LEAVE_HANGAR = 588
+    LEAVE_HANGAR_OUT = 589
     EXPEL_PLAYER = 700
     EXPEL_PLAYER_OUT = 701
     EXIT_PLAY = 500
@@ -762,6 +764,21 @@ class CsEnterHangarOut:
 
     def pack(self) -> bytes:
         return _I32.pack(self.client_guid)
+
+
+@dataclass(frozen=True, slots=True)
+class CsLeaveHangarOut:
+    """LEAVE_HANGAR_OUT (589), 8 bytes: `i32 client_guid` @0 e `u8 position` @4. O cliente volta à
+    página da sala só com a chave própria e a posição 0x23 (dispatcher `case 0x24d`, re/rooms.md
+    §12). O tamanho de 8 bytes é inferido: o dispatcher lê até o byte 4."""
+
+    client_guid: int
+    opcode: ClassVar[int] = CsOp.LEAVE_HANGAR_OUT
+    ROOM_POSITION: ClassVar[int] = 0x23
+    _FIXED = struct.Struct("<iB3x")
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(self.client_guid, self.ROOM_POSITION)
 
 
 @dataclass(frozen=True, slots=True)

@@ -84,6 +84,7 @@ class ChannelHandlers:
             CsOp.CREATE_ROOM: self._rooms.create_room,
             CsOp.IN_ROOM: self._rooms.in_room,
             CsOp.ENTER_HANGAR: self._rooms.enter_hangar,
+            CsOp.LEAVE_HANGAR: self._rooms.leave_hangar,
             CsOp.OUT_ROOM: self._rooms.out_room,
             CsOp.READY_GAME: self._rooms.ready_game,
             CsOp.EXIT_PLAY: self._rooms.exit_play,

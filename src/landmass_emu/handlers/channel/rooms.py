@@ -14,10 +14,11 @@ from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
+from uuid import uuid4
 
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.match import MatchPlan, build_plan
-from landmass_emu.domain.match_stats import MatchRecord, PlayerMatchStats
+from landmass_emu.domain.match_stats import MatchRecord, PlayerMatchStats, with_played
 from landmass_emu.domain.rooms import (
     ROOM_PLAYING,
     ROOM_WAITING,
@@ -52,6 +53,7 @@ from landmass_emu.protocol.channel import (
     CsInRoomIn,
     CsInRoomOut,
     CsInviteResultOut,
+    CsLeaveHangarOut,
     CsOp,
     CsOutRoomOut,
     CsReadyGameIn,
@@ -78,6 +80,7 @@ ERR_MATCH_START = 241000201  # "Não foi possível iniciar a partida. Tente nova
 # Motivo do fim no histórico (`matches.end_reason`).
 END_EXIT_PLAY = "exit_play"  # todos saíram da partida (500)
 END_SERVER_EXIT = "server_exit"  # o servidor de partida caiu depois de pronto
+END_RETURN = "return_to_room"  # o último em jogo voltou à sala sem 500 (o cliente não manda)
 
 # Código de erro do 312 (short). O cliente monta a mensagem por `FUN_10021c80` (gap no RE); o
 # número é o sufixo de 211000000 + código em `msg_error` do `landmass.wdb`.
@@ -145,6 +148,8 @@ class RoomHandlers:
         self._matches = matches
         # Histórico em curso por sala: quem jogou no início. O fim e o motivo vêm depois.
         self._open: dict[int, MatchRecord] = {}
+        # Hora em que cada jogador saiu da partida (500, volta à sala ou saída), por sala.
+        self._left: dict[int, dict[int, datetime]] = {}
         # Gravações disparadas por `leave` (síncrono); guardadas para não serem coletadas.
         self._saves: set[asyncio.Task[None]] = set()
 
@@ -188,8 +193,15 @@ class RoomHandlers:
         req = CsInRoomIn.unpack(payload)
         current = self._rooms.room_of(guid)
         if current is not None and current.room_id == req.room_id:
-            # Volta à própria sala depois da partida. O lobby já sabe que está nela, então só quem
-            # entra recebe a sala de novo: 312 para ele, 314 e 317.
+            # Volta à própria sala depois da partida. Quem está na sala saiu da partida: o cliente
+            # não manda 500 quando a partida acaba no servidor. Com o último a voltar, a partida
+            # acaba e a sala volta à espera antes das respostas abaixo (D48, D49).
+            self._leave_game(guid)
+            if current.match_over():
+                record = self._end(current)
+                if record is not None:
+                    await self._save(record, END_RETURN)
+            # O lobby já sabe da sala: só quem entra recebe a sala de novo (312, 314, 317).
             slot = current.members[guid].slot
             return [
                 CsInRoomOut(current.room_id, guid, slot),
@@ -232,6 +244,7 @@ class RoomHandlers:
     def leave(self, guid: int) -> None:
         """Tira o jogador da sala, se houver, e avisa o canal: 322 sempre; 332 se trocou o dono; 342
         se a sala ficou vazia e foi removida."""
+        self._leave_game(guid)
         result = self._rooms.leave(guid)
         if result is None:
             return
@@ -242,6 +255,7 @@ class RoomHandlers:
             # Partida abandonada (ninguém ficou para jogar): o servidor cai e nada é gravado.
             self._match.finish(room_id)
             self._open.pop(room_id, None)
+            self._left.pop(room_id, None)
             self._to_lobby(CsRemoveRoomOut(room_id))
             return
         if result.new_master is not None:
@@ -342,11 +356,14 @@ class RoomHandlers:
         if target is None:
             log.info("[%s] expulsão: %r não está na sala", session.peer, req.nickname)
             return []
+        playing = room.state == ROOM_PLAYING and target in room.in_game
         try:
             expelled = self._rooms.expel(guid, target)
         except RoomError as e:
             log.info("[%s] expulsão recusada: %s", session.peer, e.reason.value)
             return []
+        if playing:
+            self._left.setdefault(room.room_id, {}).setdefault(target, datetime.now(UTC))
         log.info("[%s] expulsou %d da sala %d", session.peer, expelled.guid, room.room_id)
         self._to_lobby(CsOutRoomOut(expelled.room.room_id, expelled.guid))
         self._after_leave(expelled.room)
@@ -399,12 +416,29 @@ class RoomHandlers:
         guid = self._lobby.guid_of(session)
         if guid is None:
             return []
-        room = self._rooms.exit_play(guid)
+        room = self._leave_game(guid)
         if room is not None and room.match_over():
             record = self._end(room)
             if record is not None:
                 await self._save(record, END_EXIT_PLAY)
         return [CsExitPlayOut(0)]
+
+    async def leave_hangar(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        """588 (OutHangar, sem corpo): só quem está em sala. Responde 589 com a própria chave e a
+        posição de sala; sem a resposta, o cliente não volta da hangar para a página da sala."""
+        guid = self._lobby.guid_of(session)
+        if guid is None or self._rooms.room_of(guid) is None:
+            return []
+        return [CsLeaveHangarOut(guid)]
+
+    def _leave_game(self, guid: int) -> Room | None:
+        """Tira `guid` da partida em andamento, se estiver nela, e guarda a hora da saída para o
+        tempo jogado (`with_played`). Devolve a sala, se houver."""
+        room = self._rooms.room_of(guid)
+        if room is None or room.state != ROOM_PLAYING or guid not in room.in_game:
+            return room
+        self._left.setdefault(room.room_id, {}).setdefault(guid, datetime.now(UTC))
+        return self._rooms.exit_play(guid)
 
     async def enter_hangar(self, session: Session, payload: bytes) -> Sequence[Reply]:
         """586 (InHangar, sem corpo): só quem está em sala. Responde 587 com a própria chave; o
@@ -457,7 +491,10 @@ class RoomHandlers:
         for guid, member in room.members.items():
             self._to_room(room, CsReadyGameOut(guid, member.ready, member.morats))
         self._to_room(room, self._records.room_players(room))
-        return self._open.pop(room.room_id, None)
+        record = self._open.pop(room.room_id, None)
+        if record is None:
+            return None
+        return with_played(record, self._left.pop(room.room_id, {}), datetime.now(UTC))
 
     def _after_leave(self, room: Room) -> None:
         """Quem saiu (ou foi expulso) pode ter sido o último em jogo: então a partida acaba."""
@@ -515,6 +552,7 @@ class RoomHandlers:
             ended_at=now,
             end_reason="",
             players=players,
+            uuid=str(uuid4()),
         )
 
     def _to_lobby(self, reply: Reply) -> None:

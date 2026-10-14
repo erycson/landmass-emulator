@@ -17,9 +17,11 @@ from landmass_emu.handlers.channel.rooms import ERR_MATCH_START, RoomHandlers
 from landmass_emu.net.session import Session
 from landmass_emu.ports.match_host import GameEndpoint, MapCatalog, MatchStartError
 from landmass_emu.protocol.channel import (
+    ROOM_FLAG_STATE,
     CsErrorEnvelope,
     CsExitPlayOut,
     CsInRoomOut,
+    CsLeaveHangarOut,
     CsOp,
     CsRoomInfoOut,
     CsRoomPlayerInfoOut,
@@ -184,8 +186,10 @@ async def test_ultimo_a_sair_da_partida_grava_o_historico_e_devolve_a_sala_a_esp
         (7, "Ana", True),
         (9, "Bia", False),
     ]
-    # Nada de partida além de quem jogou: kills, mortes e o resto ficam nulos (ver docs).
-    assert all(p.kills is None and p.played_percent is None for p in gravado.players)
+    # Métricas do jogo ficam nulas (sem bloco GameEnded); o tempo jogado vem do canal (D52).
+    assert all(p.kills is None for p in gravado.players)
+    assert all(p.played_seconds is not None for p in gravado.players)
+    assert gravado.uuid is not None and len(gravado.uuid) == 36
     assert host.encerrados == [sala.room_id]
     assert sala.state == ROOM_WAITING
     assert all(not membro.ready for membro in sala.members.values())  # o dono também (D77)
@@ -321,3 +325,52 @@ async def test_586_responde_587_com_a_propria_chave_so_quem_esta_em_sala() -> No
 
     assert resposta.opcode == CsOp.ENTER_HANGAR_OUT
     assert resposta.pack() == struct.pack("<i", 7)
+
+
+async def test_588_responde_589_com_a_propria_chave_e_posicao_de_sala() -> None:
+    host = _HostFalso()
+    handlers, lobby, rooms = _montagem(host, _Historico())
+    ana = _entra_no_lobby(lobby, 7, "Ana")
+
+    assert await handlers.leave_hangar(ana, b"") == []  # fora de sala: sem resposta
+    _criar_sala(rooms, 7)
+    [resposta] = await handlers.leave_hangar(ana, b"")
+
+    assert isinstance(resposta, CsLeaveHangarOut)
+    assert resposta.opcode == CsOp.LEAVE_HANGAR_OUT
+    # i32 chave @0, u8 posição de sala (0x23) @4: o cliente só volta à sala com esses dois.
+    assert resposta.pack() == struct.pack("<iB3x", 7, 0x23)
+
+
+async def test_volta_sem_500_encerra_partida_e_devolve_sala_a_espera() -> None:
+    host = _HostFalso()
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(host, historico)
+    ana, bia, sala = await _partida(handlers, lobby, rooms)
+    caio = _entra_no_lobby(lobby, 11, "Caio")  # fora de sala: recebe o 412 do lobby
+    await handlers.exit_play(ana, b"")  # Ana sai pelo 500; Bia não manda nada (fim por tempo)
+    _corpos(ana)
+    _corpos(bia)
+    _corpos(caio)
+
+    respostas = await handlers.in_room(bia, struct.pack("<i16s", sala.room_id, b""))
+
+    [gravado] = historico.salvos
+    assert gravado.end_reason == "return_to_room"
+    assert host.encerrados == [sala.room_id]
+    assert sala.state == ROOM_WAITING
+    assert [type(r) for r in respostas] == [CsInRoomOut, CsRoomInfoOut, CsRoomPlayerInfoOut]
+    # Quem está na sala recebe 402 sem pronto de todos, e o lobby recebe 412 com o estado de espera.
+    prontos = [
+        struct.unpack_from("<iB", corpo) for op, corpo in _corpos(ana) if op == CsOp.READY_GAME_OUT
+    ]
+    ultimos = prontos[-2:]
+    assert sorted(guid for guid, _ in ultimos) == [7, 9]
+    assert all(pronto == 0 for _, pronto in ultimos)
+    # 412 ao lobby com o estado de espera (byte @0xf, bit de estado na máscara @4).
+    estados = [
+        corpo
+        for op, corpo in _corpos(caio)
+        if op == CsOp.CHANGE_ROOM_PROPERTY_OUT and corpo[4] & ROOM_FLAG_STATE
+    ]
+    assert [corpo[0xF] for corpo in estados] == [ROOM_WAITING]
