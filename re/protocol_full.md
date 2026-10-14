@@ -263,7 +263,7 @@ Envelope de erro (op 54, L96–108): `u16 @0` = opcode real; `i32 @4` = erro; se
 | 591 | `NotifyGetGatchaPrize` (retorno em L2771) | `u16 @0` key; `i32 @4` = quantidade; `i32 @8` = resultado (gate `== 0`); registros `GACHA_PRIZE` a partir de `@0xc` (tamanho do registro (gap)) | (inferido) | L2749–2771 |
 | 601 | `NotifyTutorialClear(CS_CLEAR_TUTORIAL_OUT)` | `i32 @0` → +0x38 (iTutorialClear); `i32 @4` → +0x5C (iPoint) | 600 | L2440–2449 (`if (param_1 == 0x259)`) |
 | 611 | `NotifyGetGiftItem` | `i32 @0`; `i32 @4` = count; registros de 0x48 a partir de `@8` (`u16 @0` key) | 610 | L1483–1522 |
-| 613 | `NotifyGiftItemUsed` | `u16 @0` key; `i32 @0x34` = resultado (gate `== 0`) e argumento do evento; dados do item a partir de `@0x38` (gap) | 612 | L1526–1561 |
+| 613 | `NotifyGiftItemUsed` | `u16 @0` índice do item, e registro de 0x34 bytes (catálogo `i32` @4); `i32 @0x34` = resultado (gate `== 0`); `i32 @0x38` = chave que o cliente remove do Depósito (`param_2 + 0x38`, L1528–1531) | 612 | L1526–1561 |
 | 614 | `NotifyGiftMoratsUsed` | `u16 @0` key; `i32 @0x5c` = resultado (gate `== 0`) e argumento do evento; dados a partir de `@0x60` (gap) | (inferido) | L1564–1605 |
 | 616 | `NotifyItemGift` | `i32 @0` = resultado; `i32 @4` → +0x58 (iCash); `i32 @8` → +0x5C (iPoint) | 615 | L1608–1625 |
 | 617 | `NotifyGetGift` (sem argumentos) | nenhum campo do corpo é lido (corpo ignorado) | (inferido) | L1626–1629 |
@@ -470,7 +470,7 @@ Resolve os layouts que faltavam para pintura e consumíveis. Os pedidos (C→S) 
 Os offsets de 610 a 617 e de 591 em §3.2 batem com o codec de `protocol/gift.py` e `protocol/gacha.py` (testes em `tests/test_gift_codec.py`). Pontos ainda inferidos:
 
 - 611: registro de 0x48 (L1483–1522): `u16` chave @0; catálogo `i32` @0x14, `item_guid` @0x18 e opção `u8` @0x40 seguem a implementação, a confirmar no cliente.
-- 613: registro do item em @0..0x33 e resultado em @0x34. A chave em @0x38 é a que o cliente usa para tirar a entrada do Depósito (L1526–1561). Confirmar no cliente real.
+- 613: medido no dispatcher (L1526–1561): registro do item em @0..0x33, resultado em @0x34 e chave em @0x38. A linha de §3.2 estava errada e foi corrigida. Nenhum chamador de 612 foi achado no XInterface (risco 1).
 - 616: `i32` resultado @0, Cash @4, LD @8 (L1608–1625). Os códigos de recusa (-2407, -4055, -4056, 8000) são inferidos do `switch` de `NotifyItemGift`.
 - 617: corpo ignorado (L1626–1629).
 - 591: o dispatcher lê até dois registros (`while iVar3 < 2`, L2749–2771). O tamanho de 0x110 do registro `GACHA_PRIZE` e o texto UTF-8 NUL de 260 bytes são inferidos.

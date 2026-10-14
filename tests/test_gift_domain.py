@@ -3,7 +3,7 @@ repositórios falsos: validação do presente, paginação, resgate, sorteio e c
 
 import random
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -307,13 +307,13 @@ def _unidade(index: int, catalog: int, *, montada: bool = False) -> ItemUnit:
         item_guid=f"{index:036d}",
         apply_flag=ApplyFlag.REALTIME,
         apply_value=None,
-        expires_at=AGORA,
+        expires_at=AGORA + timedelta(days=7),
         account_morat_id=7 if montada else None,
     )
 
 
 def _uso(
-    itens: list[ItemUnit], *, gates: int = 4, aceita: bool = True
+    itens: list[ItemUnit], *, gates: int = 4, aceita: bool = True, agora: datetime = AGORA
 ) -> tuple[ItemUseService, FakeUseRepo]:
     repo = FakeUseRepo(aceita=aceita)
     catalogo = FakeCatalog()
@@ -325,6 +325,7 @@ def _uso(
         progression=FakeProgression(ld=777, cash=5),
         repository=repo,
         rng=random.Random(3),
+        clock=lambda: agora,
     )
     return servico, repo
 
@@ -355,6 +356,12 @@ async def test_uso_de_outro_item_ou_montado_segue_para_o_equipar() -> None:
     assert await servico.use(1, 1) is None
     assert await servico.use(1, 2) is None
     assert await servico.use(1, 99) is None
+    assert repo.chamadas == []
+
+
+async def test_item_vencido_segue_para_o_equipar_sem_abrir() -> None:
+    servico, repo = _uso([_unidade(3, GACHA_ITEM)], agora=AGORA + timedelta(days=8))
+    assert await servico.use(1, 3) is None
     assert repo.chamadas == []
 
 

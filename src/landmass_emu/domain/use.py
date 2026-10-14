@@ -6,11 +6,13 @@ numa transação só (D20), sob a trava da conta, como a compra e o equipar.
 
 import logging
 import random
+from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from landmass_emu.domain.equipment import ItemRefusal, UseResult
 from landmass_emu.domain.gacha import ItemNames, Prize, draw, prize_of
-from landmass_emu.domain.inventory import GATE_COUNT, InventoryService, ItemUnit
+from landmass_emu.domain.inventory import GATE_COUNT, InventoryService, ItemUnit, utc_now
 from landmass_emu.domain.locks import AccountLocks
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.inventory import InventoryConflict, InventoryRepository
@@ -50,6 +52,7 @@ class ItemUseService:
         repository: UseRepository,
         locks: AccountLocks | None = None,
         rng: random.Random | None = None,
+        clock: Callable[[], datetime] = utc_now,
     ) -> None:
         self._names = names
         self._inventory = inventory
@@ -59,6 +62,7 @@ class ItemUseService:
         self._repository = repository
         self._locks = locks or AccountLocks()
         self._rng = rng or random.Random()  # noqa: S311 - sorteio de jogo, não é segredo
+        self._clock = clock
 
     async def use(self, account_id: int, index: int) -> GachaOpened | GateAdded | None:
         async with self._locks.of(account_id):
@@ -66,6 +70,8 @@ class ItemUseService:
             item = next((i for i in items if i.inventory_index == index), None)
             if item is None or item.account_morat_id is not None or item.system_slot is not None:
                 return None  # inexistente, montado ou de sistema: o equipar decide
+            if item.expires_at is not None and item.expires_at <= self._clock():
+                return None  # vencido: o equipar recusa com DENIED, como aos demais itens
             if item.catalog_id == GACHA_ITEM:
                 return await self._open_gacha(account_id, item, [i.inventory_index for i in items])
             if item.catalog_id == ADD_GATE_ITEM:

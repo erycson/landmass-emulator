@@ -28,7 +28,7 @@ flowchart LR
 | [04-persistence.md](architecture/04-persistence.md) | Banco portável (SQLAlchemy/Alembic), convenção de nomes (Laravel), schema de contas, opções, inventário (`account_items`, `account_morats`) e colunas de morat regular, tabelas do legado não migradas, dados estáticos do cliente, histórico de partidas (`matches`, `match_players`: uma gravação no fim; métricas ainda nulas). |
 | [05-configuration.md](architecture/05-configuration.md) | Variáveis `LANDMASS_*`, valores padrão e regras de segredos. |
 | [06-game-server-host.md](architecture/06-game-server-host.md) | Host de partida: um `LandMass.exe -server` por sala, com `PORT=` numa porta da faixa, 403 só após a porta abrir, fim de partida e volta à sala. |
-| [07-progression.md](architecture/07-progression.md) | Progressão e economia: modelo de dados (contas, inventário, morats, opções, social, clãs), regras de compra, uso, presente, patente, recompensa e tutorial, mapeamento opcode → tabela e ordem de implementação. |
+| [07-progression.md](architecture/07-progression.md) | Progressão e economia: modelo de dados (contas, inventário, morats, opções, social, clãs), regras de compra, uso, presente, Depósito, gacha, gates, patente, recompensa e tutorial, mapeamento opcode → tabela e ordem de implementação. |
 
 ### Protocolo — [`protocol/`](protocol/)
 
@@ -37,7 +37,7 @@ flowchart LR
 | [wire-format.md](protocol/wire-format.md) | Framing TCP, cabeçalho `opcode/net_code`, convenções de structs e strings. |
 | [authentication.md](protocol/authentication.md) | Login por token (`login_num`), chave de sessão entre Message e Channel, geração de credenciais e sequência de login. |
 | [message-server.md](protocol/message-server.md) | Opcodes e mensagens da porta 7313, incluindo amigos, sussurro, clã e ranking. |
-| [channel-server.md](protocol/channel-server.md) | Opcodes e mensagens da porta 7314, incluindo loja (550 a 552) e `GS_*`. |
+| [channel-server.md](protocol/channel-server.md) | Opcodes e mensagens da porta 7314, incluindo loja (550 a 552), presente e Depósito (610 a 617), gacha (591) e `GS_*`. |
 
 ### Operação — [`operations/`](operations/)
 

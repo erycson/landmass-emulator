@@ -349,7 +349,7 @@ Fontes: `re/protocol_full.md` §2.1, §3.1 e §3.2 (102, 103, 104 e 105), `LM_PL
 |---|---|---|---|---|
 | 101 | `ucNest` | 0x20 | u8 | (RE) §1.1 |
 | 101 | `sGate[k].siIdx` | 0x5A + 4k | i16 | (RE) §1.1; o emulador grava `siIdx = k` |
-| 101 | `sGate[k].bEnable` | 0x5C + 4k | u8 | (RE) §1.1; 1 quando o gate tem morat |
+| 101 | `sGate[k].bEnable` | 0x5C + 4k | u8 | (RE) §1.1; 1 quando o gate está habilitado (D95, `enabled_gates`); habilitar sem morat não corrige a sala (linha 377) |
 | 102 | chave `siIdx` | 0 | u16 | (RE) §3.2 |
 | 102 | id do catálogo | 4 | i32 | (inferido) |
 | 102 | GUID | 8 | char[37] | (inferido) |
