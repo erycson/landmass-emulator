@@ -52,6 +52,8 @@ class CsOp(IntEnum):
     OUT_CHANNEL_OUT = 123
     CHANNEL_ROOM_INFO_OUT = 141
     CHANNEL_PLAYER_INFO_OUT = 151
+    GET_CHANNEL_PLAYER_INFO = 464  # sem corpo; resposta 151 (lista do lobby)
+    PLAYER_DETAIL_IN = 542
     REFRESH_ROOM_LIST = 545
     REFRESH_PLAYER_LIST = 546
     REFRESH_ROOM_LIST_OUT = 547
@@ -368,9 +370,10 @@ class CsReadyGameIn:
 
 @dataclass(frozen=True, slots=True)
 class CsChangeRoomSlotIn:
-    """CHANGE_ROOM_SLOT (420): `u8 num` @0, número do slot (rooms.md §4)."""
+    """CHANGE_ROOM_SLOT (420): `u8 team` @0, o grupo novo (`ChangeTeam` manda `slot % team_count`;
+    `re/rooms.md` §4). O servidor escolhe o slot livre dentro do grupo."""
 
-    slot: int
+    team: int
 
     @classmethod
     def unpack(cls, payload: bytes) -> CsChangeRoomSlotIn:
@@ -495,7 +498,7 @@ class CsRoom:
       0x00 i32 room_id (chave de busca de 302, 312, 322, 332, 342 e 412)
       0x04 char[51] name, NUL-terminado (o cliente lê até NUL; 301 limita a 50 bytes + NUL)
       0x37 u8 has_password (bool `password` do `LM_ROOM_INFO`)
-      0x38 u8 state (1 espera, 2 jogando; 402 compara com 1) | 0x39 u8 game_mode
+      0x38 u8 state (0 espera, 1 jogando; RS_WAITING e RS_PLAYING) | 0x39 u8 game_mode
       0x3A u8 team_count | 0x3B u8 curr_player (conta o dono) | 0x3C u8 curr_spectator
       0x3D u8 max_player | 0x3E u8 open | 0x40 i16 map_num | 0x44 i16 limit_score
       0x46 u8 limit_time | 0x47 u8 game_scale | 0x48 u8 team_damage (zero aqui)
@@ -865,6 +868,20 @@ class CsRoomEntryOut:
 
 
 @dataclass(frozen=True, slots=True)
+class CsPlayerDetailIn:
+    """PLAYER_DETAIL_IN (542), 17 bytes: `char nick[17]` @0, NUL-terminado (wrapper `0x10017d50`).
+    É o clique no nick da lista (`NetDetailPlayerInfo`); a resposta é o 543."""
+
+    nickname: str
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> CsPlayerDetailIn:
+        if len(payload) < NICK_SIZE:
+            raise ValueError(f"CS_PLAYER_DETAIL_IN curto: {len(payload)} bytes")
+        return cls(cstr(payload[:NICK_SIZE]))
+
+
+@dataclass(frozen=True, slots=True)
 class CsPlayerDetailOut:
     """PLAYER_DETAIL_OUT (543): corpo de `LM_PLAYER_DETAIL_INFO` (evento `NotifyDetailPlayerInfo`,
     `result` vem do envelope, não do corpo). Layout de `re/protocol_full.md` §3.2: nick @0; oito
@@ -873,7 +890,8 @@ class CsPlayerDetailOut:
 
     shortcut: a ordem dos campos segue `LM_PLAYER_DETAIL_INFO` em `LM_Engine.src.txt` (nove inteiros
     entre o nick e o clã, como no RE); o nick ocupa @0..0x13 (20 bytes) e o clã 17 bytes. Ambos são
-    inferidos: o RE não fixa o tamanho. Sem handler: 542 não é roteado."""
+    inferidos: o RE não fixa o tamanho. Resposta a 542 (`CsPlayerDetailIn`), só com o que o lobby
+    tem: nick e exp; o resto sai zero."""
 
     nickname: str
     rank: int = 0
@@ -1042,7 +1060,7 @@ class CsRefreshRoomListIn:
 class CsRefreshRoomListOut:
     """NOTIFY_CHANGE_ROOM_PROPERTY (547), resposta a 545: `u8 count` @0, 3 bytes sem uso e entradas
     de 16 bytes a partir de @4 (`re/layouts_f0.md` §4.2): `i32 room_guid` +0, `u8 state` +4
-    (0 vazio, 1 espera, 2 jogando), `game_mode` +5, `team_count` +6, `curr_player` +7,
+    (0 espera, 1 jogando), `game_mode` +5, `team_count` +6, `curr_player` +7,
     `curr_spectator` +8, `max_player` +9, `open` +10, 1 de padding, `u16 map_num` +12 e 2 de
     padding.
 

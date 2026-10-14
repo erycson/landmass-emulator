@@ -124,7 +124,7 @@ Os índices [0..2] estão comentados (L64074-64089).
 1. UI: `NetChangeRoomSlot(num)` (XInterface L17330) → `ChangeRoomSlot(num)` (`LM_Engine.src.txt` L1680): `/ChangeRoomSlot`, 1 parâmetro.
 2. Pedido 420 (`lit 0x3480`, `N = p ? 3 : 2`): `u8 @0` = num (`channel_server.md` L74; `channel_interface.c` L66-67). A troca de grupo (657, `lit 0x5220`) usa o mesmo corpo e não entra no fluxo de sala.
 3. Resposta 421 `NotifyChangeRoomSlot` (`disp@382-406`): layout **gap**. Evento de UI `NotifyChangeRoomSlot(client_guid, slot_num)` (`XInterface.src.txt` L23714-23717) → `OnChangeRoomSlot(nParam0, byte nParam1)` (L17522).
-4. `ChangeRoomSlot` não tem chamador ativo no cliente (`features.md` §6; cruzamento confirmado). **(inferido)** a troca de time da UI (L21760-21790, não lido em detalhe) usa outro caminho.
+4. `ChangeRoomSlot` tem chamador: `ChangeTeam()` (`XInterface` L21737-21790), que exige `MyInfo.position == 0x23` e jogador não pronto. Calcula `MyTeam = i % MyRoom.team_count` e envia `ChangeRoomSlot(++MyTeam % team_count)`. Logo o `u8` do 420 é o grupo, não o slot; o servidor escolhe o primeiro slot livre do grupo (D66). **(inferido do UnrealScript, não observado no cliente.)** `re/features.md` §6.1 (L287) já cita `ChangeTeam`; `NetChangeRoomSlot` segue sem chamador.
 5. Propriedades da sala (modo, mapa, limites):
    - Pedido 411 (`FUN_100016e0`, `AX = 0x19b`, `N = 12`): corpo de 10 bytes; empacotamento abaixo (corrige a versão anterior `u32 @0`, `u32 @4`, `u16 @8`).
    - UnrealScript `ChangeRoomProperty` (`LM_Engine.src.txt` L1636-1678) envia **7** valores em `/ChangeRoomProperty`: `flags, map_num, game_mode, team_count, max_player, limit_time, limit_score`. Empacotamento decodificado (`FUN_10017820`, `re/layouts_f0.md` §7.2): `u8 flags @0`; `u16 map @2` (se MAP); `u8 game_mode @4` e `u8 team_count @5` (se MODE); `u8 max_player @6`, `u8 limit_time @7`, `u16 limit_score @8` (sempre). 10 bytes.
@@ -205,7 +205,7 @@ Detalhe completo em `channel_server.md` §4.
 3. Layout completo do registro de sala (302, 314 além dos bytes lidos) e de 317.
 4. Layouts ainda sem decodificação: 342, 421, 462, 543 (raw), 332. 412 (máscara) e 547 (passo) foram fechados em `channel_server.md` §3.1 e `re/layouts_f0.md` §4.2.
 5. Offset de slots, resolvido por bytes de retorno (inferido): `FUN_1001d640` e `FUN_1001d5d0` devolvem `nó+0x10` (valor; `add eax,0x10` em `asm@0x1001d640` e `asm@0x1001d5d0`), enquanto `FUN_10019e90` e `FUN_10007830` devolvem o nó pelo out-param. Logo `+0x50` relativo ao valor = `+0x60` relativo ao nó (317 e 421 vs 312, 314, 322, 549). Os pares 402/403 (`+0xac/+0xb0` vs `+0x9c/+0xa0`) batem com a mesma regra. Não verificado: o par 101/121 (`guid` em `+0` do valor vs `+0xa0`).
-6. Conflito de estado/dono: `+0x38` é lido por 402 e 412 como estado; 332 trata `master`. Confirmar qual campo é o dono.
+6. Estado e dono (resolvido em parte). Estado: `+0x38` (302, 314, 412 @0x0F, 547 @0x04), com valores `RS_WAITING = 0` e `RS_PLAYING = 1` dos UConst de `Core.u` (D65). Dono: `master` (302 @0x4C), comparado a `MyInfo.client_guid` em `RefreshPlayers` (`XInterface` L34690–34830); o 332 troca o `master`.
 7. Conversão de 403 fechada (`re/LM_Engine.dll/NotifyStartGame_0x10004440.c`).
 8. Quem envia 403 e sob qual condição. O binário cliente só recebe; a decisão de iniciar fica no Channel server. `+0xa4` gravado por 317, 549 e 312 (`re/layouts_f0.md` §1.2).
 9. `CERR_*` resolvidos (`re/layouts_f0.md` §7.3); `MT_*` e `GM_*` continuam sem valor.
@@ -214,3 +214,5 @@ Detalhe completo em `channel_server.md` §4.
 12. Origem do 512 (resultado) no GS.
 13. Envelope `0x36`: se o corpo real começa em `@0` do mesmo buffer (**inferido**).
 14. Correção aplicada: `channel_server.md` linha 139 (111) e linhas 323 e 329 (layout lido e gap) foram ajustadas a partir deste documento.
+15. Revisão de D40 (549 e 312): não é a causa de o dono ver os botões desabilitados. Na criação, `_joined` roda com `others=[]`, então o criador recebe o 312 e grava o próprio `+0xa4` e `+0xb0 = 0x23`. Confirmado no servidor; no cliente real, não testado.
+16. Lista de salas e de jogadores em sessão: o caso 0x97 (151) põe `+0xb0 = 0x22` em todo nó da lista, inclusive o do próprio jogador (`channel_dispatch_FUN_1001da60.c` L1223-1225). Logo um 464 de quem está numa sala tira a posição 0x23 dele. O servidor não responde a esse caso (D67).

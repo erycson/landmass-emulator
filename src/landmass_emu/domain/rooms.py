@@ -7,8 +7,10 @@ código de erro e monta as mensagens. Acessado só pelo loop de eventos, como o 
 from dataclasses import dataclass, field
 from enum import Enum
 
-ROOM_WAITING = 1
-ROOM_PLAYING = 2
+# Valores de RS_WAITING e RS_PLAYING em Core.u (constantes UConst " \t0" e " \t1"). O cliente
+# compara `state` com elas (ex.: RefreshPlayers, ChangeTeam); 1 é jogando, não espera.
+ROOM_WAITING = 0
+ROOM_PLAYING = 1
 MAX_SLOTS = 70
 NAME_MIN_BYTES = 3
 # 301 traz char[51] e char[13] (re/layouts_f0.md §7.1).
@@ -29,7 +31,7 @@ class RoomReason(Enum):
     NOT_IN_ROOM = "não está em sala"
     NOT_OWNER = "não é o dono da sala"
     NOT_READY = "ninguém pronto para iniciar"
-    SLOT_TAKEN = "slot ocupado"
+    NO_TEAM_SLOT = "sem vaga no grupo"
     NO_SUCH_PLAYER = "jogador não está na sala"
     BAD_NAME = "nome fora de 3..50 bytes"
     BAD_PASSWORD = "senha longa demais"
@@ -218,16 +220,23 @@ class Rooms:
         room.master = next(iter(room.members))
         return LeaveResult(room, removed=False, new_master=room.master)
 
-    def change_slot(self, guid: int, slot: int) -> Room:
+    def change_slot(self, guid: int, team: int) -> Room:
+        """Mudar grupo (420). O cliente manda o grupo novo, não o slot: o grupo do slot `i` é
+        `i % team_count` (`ChangeTeam`, `re/rooms.md` §4). Vai para o primeiro slot livre desse
+        grupo, sem contar o próprio slot; sem vaga, recusa."""
         room = self.room_of(guid)
         if room is None:
             raise RoomError(RoomReason.NOT_IN_ROOM)
         if room.state != ROOM_WAITING:
             raise RoomError(RoomReason.STARTED)
-        if not 0 <= slot < room.max_player:
-            raise RoomError(RoomReason.SLOT_TAKEN)
-        if any(m.slot == slot for m in room.members.values()):
-            raise RoomError(RoomReason.SLOT_TAKEN)
+        grupos = max(room.team_count, 1)
+        ocupados = {m.slot for g, m in room.members.items() if g != guid}
+        slot = next(
+            (s for s in range(room.max_player) if s % grupos == team and s not in ocupados),
+            None,
+        )
+        if slot is None:
+            raise RoomError(RoomReason.NO_TEAM_SLOT)
         room.members[guid].slot = slot
         return room
 

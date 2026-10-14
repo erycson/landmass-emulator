@@ -81,6 +81,8 @@ class ChannelHandlers:
             CsOp.ROOM_EXPEL: self._rooms.room_expel,
             CsOp.ROOM_INVITE: self._rooms.room_invite,
             CsOp.ROOM_INVITE_ANSWER: self._rooms.room_invite_answer,
+            CsOp.GET_CHANNEL_PLAYER_INFO: self._lists.channel_player_info,
+            CsOp.PLAYER_DETAIL_IN: self._lists.player_detail,
             CsOp.REFRESH_PLAYER_LIST: self._lists.refresh_player_list,
             CsOp.REFRESH_ROOM_LIST: self._lists.refresh_room_list,
             CsInventoryOp.SET_REGULAR_IN: self._morats.set_regular,

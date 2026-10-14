@@ -1,4 +1,4 @@
-"""Salas: 301 criar, 311 entrar, 321 sair, 401 pronto e início, 411 configurar, 420 slot,
+"""Salas: 301 criar, 311 entrar, 321 sair, 401 pronto e início, 411 configurar, 420 mudar grupo,
 451 expulsar, 461 convidar e 471 responder ao convite.
 
 Regras em `domain/rooms.py`; layouts em `protocol/channel.py`; evidências em `re/rooms.md` e
@@ -316,11 +316,13 @@ class RoomHandlers:
             return []
         req = CsChangeRoomSlotIn.unpack(payload)
         try:
-            room = self._rooms.change_slot(guid, req.slot)
+            room = self._rooms.change_slot(guid, req.team)
         except RoomError as e:
-            log.info("[%s] troca de slot recusada: %s", session.peer, e.reason.value)
+            log.info("[%s] mudança de grupo recusada: %s", session.peer, e.reason.value)
             return []
-        self._to_room(room, CsChangeRoomSlotOut(guid, req.slot))
+        slot = room.members[guid].slot
+        log.info("[%s] grupo %d: slot %d na sala %d", session.peer, req.team, slot, room.room_id)
+        self._to_room(room, CsChangeRoomSlotOut(guid, slot))
         return []
 
     async def room_expel(self, session: Session, payload: bytes) -> Sequence[Reply]:

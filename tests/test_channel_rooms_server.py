@@ -18,7 +18,7 @@ from test_channel_server import (
 
 from landmass_emu.app import game_servers, open_accounts
 from landmass_emu.domain.account import hash_token
-from landmass_emu.protocol.channel import CsOp
+from landmass_emu.protocol.channel import NICK_SIZE, ROOM_FLAG_LIMIT_PLAYER, CsOp
 from landmass_emu.protocol.header import CHANNEL_NET_CODE
 from landmass_emu.protocol.message import cfield, cstr
 
@@ -27,10 +27,10 @@ SENHA = "segredo"
 ERRO_NOME_CURTO = 211000202
 
 
-def _payload_criar(nome: str, senha: str = "") -> bytes:
-    """CREATE_ROOM (301), layout de `CsCreateRoomIn`."""
+def _payload_criar(nome: str, senha: str = "", grupos: int = 1) -> bytes:
+    """CREATE_ROOM (301), layout de `CsCreateRoomIn`. `grupos` é o team_count."""
     return struct.pack(
-        "<H51s13sBBBBBxH", 1, cfield(nome, 51), cfield(senha, 13), 0, 1, 1, 4, 10, 10
+        "<H51s13sBBBBBxH", 1, cfield(nome, 51), cfield(senha, 13), 0, 1, grupos, 4, 10, 10
     )
 
 
@@ -66,9 +66,9 @@ async def _entra_com_outros(c: Client, chave: str, guid: int, *no_lobby: Client)
     return lista
 
 
-async def _cria_sala(a: Client, b: Client, nome: str, senha: str = "") -> int:
+async def _cria_sala(a: Client, b: Client, nome: str, senha: str = "", grupos: int = 1) -> int:
     """A cria a sala. B, no lobby, recebe o 302 e o 312 do canal; A recebe também 314 e 317."""
-    await a.send(CsOp.CREATE_ROOM, _payload_criar(nome, senha))
+    await a.send(CsOp.CREATE_ROOM, _payload_criar(nome, senha, grupos))
     criada = await a.expect(CsOp.CREATE_ROOM_OUT)
     assert await b.expect(CsOp.CREATE_ROOM_OUT) == criada
     await a.expect(CsOp.IN_ROOM_OUT)
@@ -105,6 +105,7 @@ async def test_dois_clientes_na_mesma_sala_ficam_prontos_e_recebem_o_inicio(
             sala = struct.unpack_from("<i", criada, 0)[0]
             assert cstr(criada[0x04:0x37]) == "Sala Azul"
             assert struct.unpack_from("<i", criada, 0x4C) == (ana.id,)
+            assert criada[0x38] == 0  # ROOM_WAITING (RS_WAITING = 0): o dono vê a sala em espera
             for x in (a, b):
                 assert struct.unpack("<iii", await x.expect(CsOp.IN_ROOM_OUT)) == (sala, ana.id, 0)
             # Só A recebe o detalhe da sala (314) e a lista de jogadores (317).
@@ -134,7 +135,7 @@ async def test_dois_clientes_na_mesma_sala_ficam_prontos_e_recebem_o_inicio(
             for x in (a, b):
                 estado = await x.expect(CsOp.CHANGE_ROOM_PROPERTY_OUT)
                 assert struct.unpack_from("<i", estado, 0) == (sala,)
-                assert estado[0xF] == 2  # ROOM_PLAYING
+                assert estado[0xF] == 1  # ROOM_PLAYING (RS_PLAYING = 1)
                 inicio = await x.expect(CsOp.START_GAME_OUT)
                 assert cstr(inicio[:16]) == "127.0.0.1"
                 assert struct.unpack_from("<H", inicio, 16) == (7777,)
@@ -262,3 +263,69 @@ async def test_senha_errada_e_recusada_e_quem_entra_no_lobby_ve_a_sala(tmp_path:
             assert struct.unpack_from("<i", await a.expect(CsOp.ROOM_ENTRY_OUT), 0) == (bia.id,)
             await b.expect(CsOp.ROOM_INFO_OUT)
             assert len(_jogadores(await b.expect(CsOp.ROOM_PLAYER_INFO_OUT))) == 2
+
+
+async def test_dono_configura_e_entrante_muda_de_grupo_com_sala_em_espera(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        ana = await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+        bia = await accounts.create("bia", "Bia", hash_token(TOKEN_BIA))
+
+    async with game_servers(settings) as (msg, ch):
+        chave_ana = await _chave_de_sessao(msg, TOKEN_ANA)
+        chave_bia = await _chave_de_sessao(msg, TOKEN_BIA)
+
+        async with (
+            _connect(ch, CHANNEL_NET_CODE) as a,
+            _connect(ch, CHANNEL_NET_CODE) as b,
+        ):
+            await _entra_no_canal(a, chave_ana, ana.id)
+            await _entra_com_outros(b, chave_bia, bia.id, a)
+            # Dois grupos: slots pares no grupo 0 e ímpares no grupo 1. A (dono) é o slot 0; B, o 1.
+            sala = await _cria_sala(a, b, "Sala Azul", grupos=2)
+            await b.send(CsOp.IN_ROOM, _payload_entrar(sala))
+            await b.expect(CsOp.IN_ROOM_OUT)
+            await a.expect(CsOp.ROOM_ENTRY_OUT)
+            await b.expect(CsOp.ROOM_INFO_OUT)
+            await b.expect(CsOp.ROOM_PLAYER_INFO_OUT)
+
+            # Dono em sala de espera: 411 passa e 412 chega aos dois com o máximo novo (6).
+            pedido = struct.pack("<BxHBBBBH", ROOM_FLAG_LIMIT_PLAYER, 0, 0, 0, 6, 0, 0)
+            await a.send(CsOp.CHANGE_ROOM_PROPERTY, pedido)
+            for x in (a, b):
+                resposta = await x.expect(CsOp.CHANGE_ROOM_PROPERTY_OUT)
+                assert struct.unpack_from("<i", resposta, 0) == (sala,)
+                assert resposta[0xA] == 6
+
+            # B, no grupo 1, pede o grupo 0: o primeiro livre é o slot 2 (o 0 é de A).
+            await b.send(CsOp.CHANGE_ROOM_SLOT, bytes([0]))
+            for x in (a, b):
+                assert struct.unpack_from("<iB", await x.expect(CsOp.CHANGE_ROOM_SLOT_OUT), 0) == (
+                    bia.id,
+                    2,
+                )
+
+
+async def test_ficha_de_quem_esta_no_lobby_volta_com_o_nick(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        ana = await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+        bia = await accounts.create("bia", "Bia", hash_token(TOKEN_BIA))
+
+    async with game_servers(settings) as (msg, ch):
+        chave_ana = await _chave_de_sessao(msg, TOKEN_ANA)
+        chave_bia = await _chave_de_sessao(msg, TOKEN_BIA)
+
+        async with (
+            _connect(ch, CHANNEL_NET_CODE) as a,
+            _connect(ch, CHANNEL_NET_CODE) as b,
+        ):
+            await _entra_no_canal(a, chave_ana, ana.id)
+            await _entra_com_outros(b, chave_bia, bia.id, a)
+
+            # B clica no nick de A: a ficha (543) volta com o nick; as estatísticas saem zero.
+            await b.send(CsOp.PLAYER_DETAIL_IN, cfield("Ana", NICK_SIZE))
+            ficha = await b.expect(CsOp.PLAYER_DETAIL_OUT)
+            assert cstr(ficha[:20]) == "Ana"
+            assert ficha[0x14:0x30] == bytes(0x1C)
+            await a.assert_silencio()

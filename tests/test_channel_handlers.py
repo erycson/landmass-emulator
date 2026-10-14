@@ -8,7 +8,7 @@ from landmass_emu.domain.match import MapRecord
 from landmass_emu.domain.rooms import Room, Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.handlers.channel import ChannelHandlers
-from landmass_emu.handlers.channel.lists import ListHandlers
+from landmass_emu.handlers.channel.lists import ERR_FIND_PLAYER, ListHandlers
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.handlers.channel.rooms import (
     CERR_FIND_PLAYER,
@@ -21,9 +21,12 @@ from landmass_emu.net.session import Session
 from landmass_emu.ports.match_host import GameEndpoint
 from landmass_emu.protocol.channel import (
     CsChangeRoomPropertyIn,
+    CsChangeRoomSlotOut,
+    CsChannelPlayerInfoOut,
     CsErrorEnvelope,
     CsInviteResultOut,
     CsOp,
+    CsPlayerDetailOut,
     CsRefreshPlayerListOut,
     CsRoomEntryOut,
     CsRoomExpelIn,
@@ -129,6 +132,8 @@ def test_tabela_do_roteador_cobre_entrada_chat_salas_e_listas() -> None:
         CsOp.ROOM_EXPEL,
         CsOp.ROOM_INVITE,
         CsOp.ROOM_INVITE_ANSWER,
+        CsOp.GET_CHANNEL_PLAYER_INFO,
+        CsOp.PLAYER_DETAIL_IN,
         CsOp.REFRESH_PLAYER_LIST,
         CsOp.REFRESH_ROOM_LIST,
         CsProgressionOp.TUTORIAL_CLEAR,
@@ -311,3 +316,66 @@ async def test_411_do_dono_muda_a_sala_e_manda_412_ao_canal() -> None:
         assert corpo[4] == 0x05
         assert struct.unpack_from("<h", corpo, 6) == (9,)
         assert corpo[0xA] == 4
+
+
+async def test_464_responde_a_lista_do_lobby_so_a_quem_esta_nele() -> None:
+    lobby = Lobby()
+    ana = _entra_no_lobby(lobby, 7, "Ana", 150)
+    _entra_no_lobby(lobby, 9, "Bia")
+    listas = ListHandlers(lobby, Rooms(), ChannelRecords(lobby))
+    assert await listas.channel_player_info(Session(peer="fora"), b"") == []
+    [resposta] = await listas.channel_player_info(ana, b"")
+    assert isinstance(resposta, CsChannelPlayerInfoOut)
+    assert [(j.client_guid, j.nick, j.total_exp) for j in resposta.players] == [
+        (7, "Ana", 150),
+        (9, "Bia", 0),
+    ]
+
+
+async def test_464_nao_responde_a_quem_esta_numa_sala() -> None:
+    """O 151 zeraria a posição de quem está na sala (0x23 vira 0x22): não há resposta."""
+    lobby = Lobby()
+    rooms = Rooms()
+    ana = _entra_no_lobby(lobby, 7, "Ana")
+    _criar_sala(rooms, 7)
+    listas = ListHandlers(lobby, rooms, ChannelRecords(lobby))
+    assert await listas.channel_player_info(ana, b"") == []
+
+
+async def test_542_devolve_nick_e_exp_do_lobby_e_erro_se_o_nick_nao_esta_no_canal() -> None:
+    lobby = Lobby()
+    ana = _entra_no_lobby(lobby, 7, "Ana", 150)
+    _entra_no_lobby(lobby, 9, "Bia", 20)
+    listas = ListHandlers(lobby, Rooms(), ChannelRecords(lobby))
+    [ficha] = await listas.player_detail(ana, cfield("Bia", 17))
+    assert ficha == CsPlayerDetailOut(nickname="Bia", total_exp=20)
+    [erro] = await listas.player_detail(ana, cfield("Fulano", 17))
+    assert erro == CsErrorEnvelope(CsOp.PLAYER_DETAIL_OUT, ERR_FIND_PLAYER)
+    assert await listas.player_detail(Session(peer="fora"), cfield("Bia", 17)) == []
+
+
+async def test_420_muda_de_grupo_para_o_primeiro_slot_livre_e_avisa_a_sala() -> None:
+    handlers, lobby, rooms = _montagem()
+    dono = _entra_no_lobby(lobby, 1, "Dono")
+    conv = _entra_no_lobby(lobby, 2, "Conv")
+    rooms.create(
+        1,
+        name="Sala Azul",
+        password="",
+        scale=0,
+        game_mode=1,
+        map_num=1,
+        max_player=4,
+        team_count=2,
+        limit_time=10,
+        limit_score=10,
+    )
+    rooms.join(1, 2, "")  # slot 1, grupo 1
+    # Grupo 0: slot 0 é do dono e 2 está livre. O cliente manda o grupo, não o slot.
+    await handlers.change_room_slot(conv, b"\x00")
+    esperado = (CsOp.CHANGE_ROOM_SLOT_OUT, CsChangeRoomSlotOut(2, 2).pack())
+    assert _corpos(dono) == [esperado]
+    assert _corpos(conv) == [esperado]
+    # Grupo que não existe: sem resposta, e o slot não muda.
+    await handlers.change_room_slot(conv, b"\x09")
+    assert _corpos(dono) == [] and _corpos(conv) == []

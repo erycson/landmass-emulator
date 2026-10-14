@@ -34,7 +34,9 @@ Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151
 | `321` OutRoom, vazio | `322` ao lobby; `332` se trocou o dono; `342` se a sala esvaziou | Sai da sala. |
 | `401` ReadyGame, `u8 morats`, de jogador não dono | `402` aos membros da sala | Alterna o estado de pronto. |
 | `401` ReadyGame, do dono | `412` ao lobby; depois `403` aos membros da sala (endereço e porta da partida) | Inicia a partida se houver outro jogador e todos os outros estiverem prontos. Se não, envelope `54` com `404` e código 241002702 (condições não atendidas). Se o servidor da partida não abre a porta, a sala volta à espera (`412` ao lobby, `402` aos não-donos) e o dono recebe envelope `54` com `404` e código 241000201. |
-| `420` ChangeRoomSlot, `u8 slot` | `421` aos membros da sala | Troca de slot. Slot ocupado ou inválido: sem resposta. |
+| `420` ChangeRoomSlot (mudar grupo), `u8 grupo` | `421` aos membros da sala, com o slot escolhido | Vai ao primeiro slot livre do grupo (D66). Sem vaga ou grupo inválido: sem resposta. |
+| `464` GetChannelPlayerInfo, vazio | `151` a quem pediu | Lista de jogadores do lobby. Quem não está no lobby ou está numa sala: sem resposta (D67). |
+| `542` PlayerDetail, `char nick[17]` | `543` a quem pediu | Ficha com nick e exp do lobby; o resto sai zero (D67). Nick fora do canal: envelope 54 com 543. |
 | `411` ChangeRoomProperty, 10 bytes, do dono | `412` ao lobby | Muda só os campos marcados em `flags`, com os limites da criação. Sala jogando, quem não é dono ou configuração inválida: sem resposta. |
 | `451` RoomExpel, 18 bytes, do dono | `322` ao lobby | Expulsa pelo nick. Sem resposta a quem pediu; quem não é dono é ignorado. Sem caminho de UI confirmado (item 20). |
 | `461` RoomInvite, nick de 17 bytes, do dono | `462` ao dono (`i32`); `463` ao convidado | Convite pendente até o 471. Resultado: 0 enviado; -2460 nick fora do canal; -2411 já em sala; -2406 sala cheia; -2412 partida iniciada. Quem não é dono: envelope `54` com 462 e -4061 (o cliente não mostra nada). |
@@ -44,7 +46,7 @@ Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151
 | (queda da conexão) | `123` aos demais | Saída implícita; antes, sai da sala como em `321`. |
 | servidor, a cada 10 s | `2` heartbeat | O cliente responde com `2`; o servidor ignora essa resposta. |
 
-Opcodes sem handler (inclusive 67, 64, 66, 464, 545, 546): logados com hexdump e ignorados. Pedido com payload inválido: logado sem hexdump e ignorado.
+Opcodes sem handler (inclusive 64, 66 e 67): logados com hexdump e ignorados. Pedido com payload inválido: logado sem hexdump e ignorado.
 
 ## Identificação do cliente
 
@@ -97,7 +99,7 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 404 | S→C | `READY_GAME_ERROR` (dentro do envelope 54) | sem corpo próprio | implementado |
 | 411 | C→S | `CHANGE_ROOM_PROPERTY` | 10 bytes | implementado (shortcut: só campos com bit ligado) |
 | 412 | S→C | `CHANGE_ROOM_PROPERTY_OUT` | 16 bytes | implementado (shortcut: máscara e campos) |
-| 420 | C→S | `CHANGE_ROOM_SLOT` | `u8 slot` | implementado |
+| 420 | C→S | `CHANGE_ROOM_SLOT` | `u8 grupo` | implementado (mudar grupo; D66) |
 | 421 | S→C | `CHANGE_ROOM_SLOT_OUT` | 8 bytes | implementado |
 | 451 | C→S | `ROOM_EXPEL` | 18 bytes | implementado (shortcut: nick inferido; sem resposta) |
 | 461 | C→S | `ROOM_INVITE` | nick de 17 bytes | implementado (shortcut: nick inferido) |
@@ -106,14 +108,16 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 471 | C→S | `ROOM_INVITE_ANSWER` | `i32 room_id`, `u8 accept` | implementado |
 | 500 | C→S | `EXIT_PLAY` | sem corpo | implementado (shortcut: fim da partida quando todos saem, D48; o cliente real não confirmou) |
 | 501 | S→C | `EXIT_PLAY_OUT` | `i32 result` | implementado (shortcut: `result` 0 não confirmado no cliente) |
-| 543 | S→C | `PLAYER_DETAIL_OUT` | 77 bytes | só codec: nenhum handler roteia o 542 |
+| 542 | C→S | `PLAYER_DETAIL_IN` | `char nick[17]` | implementado (D67): responde 543 |
+| 543 | S→C | `PLAYER_DETAIL_OUT` | 77 bytes | implementado (shortcut: nick e exp; o resto zero) |
 | 549 | S→C | `ROOM_ENTRY_OUT` | entrada de jogador, 48 bytes | implementado (shortcut: divisão com 312) |
 | 550 | C→S | `ITEM_BUY_IN` | 12 bytes: `i32 id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 nBuyOption` @5 (0 a 3) | implementado (F8): debita e cria a unidade numa transação; recusa com result ≠ 0 |
 | 551 | S→C | `ITEM_BUY_OUT` | 68 bytes: registro de 102 em @0..0x33, `i32 cash` @0x38, `i32 point` @0x3c, `i32 result` @0x40 | implementado (F8): sucesso manda 551, 102, 900 e 902; recusa vai sem registro e com saldos zero |
 | 552 | S→C | `MORATS_BUY_OUT` | 104 bytes: registro de 103 em @0..0x5b, `i32 cash` @0x5c, `i32 point` @0x60, `i32 result` @0x64 | implementado (F8): sucesso manda 552, 103, 900 e 902 |
 | 700 | C→S | `EXPEL_PLAYER` | `u8 kind`, nick de 17 bytes | só codec: não executado (console) |
 | 701 | S→C | `EXPEL_PLAYER_OUT` | `i32` 0 | só codec: nenhum handler envia |
-| 64, 66, 67, 464 | C→S | pedidos de lista | — | não tratados |
+| 464 | C→S | `GET_CHANNEL_PLAYER_INFO` | vazio | implementado: responde 151 a quem está no lobby e fora de sala (D67) |
+| 64, 66, 67 | C→S | pedidos de lista | — | não tratados |
 
 ## Salas
 
@@ -122,7 +126,7 @@ Estado em `domain/rooms.py`, só em memória (D12, D24). `handlers/channel/rooms
 - **Criar.** O criador entra no slot 0, já pronto, e é o dono. Nome de 3 a 50 bytes; senha de até 12 bytes (shortcut). Valores numéricos fora da faixa são limitados e logados, não recusados: `scale`, `game_mode`, `team_count` e `limit_time` em 0..255; `map_num` e `limit_score` em 0..32767; `max_player` em 1..70.
 - **Entrar.** A sala precisa existir, não ter começado, ter slot livre e, se tiver senha, a senha certa. Entra no primeiro slot livre. Quem entra não sai do lobby: continua recebendo a lista e o chat do canal.
 - **Pronto.** Jogador que não é dono alterna o estado com `401`. O dono não marca pronto: o `401` dele inicia a partida.
-- **Iniciar.** Só o dono. Exige ao menos um outro membro e todos os outros prontos. A sala passa a jogando (estado 2) e não aceita novas entradas. O `403` leva `LANDMASS_GAME_HOST` com a porta fixa `LANDMASS_GAME_PORT`, ou com a porta da partida lançada pelo emulador (`LANDMASS_MATCH_SERVER_DIR`). Ver [05-configuration](../architecture/05-configuration.md) e [game-server](../operations/game-server.md).
+- **Iniciar.** Só o dono. Exige ao menos um outro membro e todos os outros prontos. A sala passa a jogando (estado 1, D65) e não aceita novas entradas. O `403` leva `LANDMASS_GAME_HOST` com a porta fixa `LANDMASS_GAME_PORT`, ou com a porta da partida lançada pelo emulador (`LANDMASS_MATCH_SERVER_DIR`). Ver [05-configuration](../architecture/05-configuration.md) e [game-server](../operations/game-server.md).
 - **Sair.** Se o dono sai e ainda há membros, o dono passa ao primeiro membro na ordem de entrada (`332`). Sala sem membros é removida (`342`).
 - **Configurar.** Só o dono, com a sala esperando. Muda os campos marcados em `flags` (411) e avisa o canal (412). Valores fora da faixa são limitados; `max_player` abaixo de quem já está sentado é ignorado.
 - **Convidar.** Só o dono. O convidado do canal recebe o convite (463) e responde com 471. O convite fica pendente até a resposta e não expira (shortcut). O aceite entra sem senha.
@@ -284,7 +288,7 @@ Offsets relativos ao valor do nó (`re/rooms.md` §1, §2, §5 e 412). Bytes nã
 | 0x00 | `i32` | `room_id`; chave de busca de 302, 312, 322, 332, 342 e 412 |
 | 0x04 | `char[51]` | `name`, NUL-terminado (até 50 bytes; `execGetRoomInfo`) |
 | 0x37 | `u8` | `has_password` (bool; `execGetRoomInfo`) |
-| 0x38 | `u8` | `state`: 1 espera, 2 jogando |
+| 0x38 | `u8` | `state`: 0 espera (RS_WAITING), 1 jogando (RS_PLAYING); D65 |
 | 0x39 | `u8` | `game_mode` |
 | 0x3A | `u8` | `team_count` |
 | 0x3B | `u8` | `curr_player` (conta o dono) |
@@ -426,11 +430,13 @@ Shortcut: os 16 bytes de endereço são hipótese (`re/rooms.md` §8). Se o clie
 | 0x0B | `u8` | `limit_time` (LIMIT_TIME) |
 | 0x0C | `i16` | `limit_score` (LIMIT_SCORE) |
 | 0x0E | `u8` | `open` (OPEN) |
-| 0x0F | `u8` | `state` (STATE; 2 jogando) |
+| 0x0F | `u8` | `state` (STATE; 1 jogando, D65) |
 
 Campo sem bit fica de fora e não muda no cliente. MODE exige `game_mode` e `team_count` juntos.
 
-**420 CHANGE_ROOM_SLOT (C→S), 1 byte**: `u8 slot`.
+**420 CHANGE_ROOM_SLOT (C→S), 1 byte**: `u8 grupo` @0. O cliente manda o grupo novo: `ChangeTeam` usa `grupo = (i % team_count + 1) % team_count`, em que `i` é o slot atual (D66). Resposta 421 com o slot escolhido.
+
+**542 PLAYER_DETAIL_IN (C→S), 17 bytes**: `char nick[17]` @0, NUL-terminado. Resposta 543.
 
 **421 CHANGE_ROOM_SLOT_OUT (S→C), 8 bytes**
 
@@ -449,7 +455,7 @@ Campo sem bit fica de fora e não muda no cliente. MODE exige `game_mode` e `tea
 
 **471 ROOM_INVITE_ANSWER (C→S), mínimo 5 bytes**: `i32 room_id` @0, `u8 accept` @4 (1 aceita); @5 em diante não é lido. O aceite só entra com convite pendente para a sala.
 
-**543 PLAYER_DETAIL_OUT (S→C), 77 bytes**: só codec, sem handler. `char nick[20]` @0; oito `i32` a partir de @0x14 (rank, jogos, vitórias, derrotas, abates, mortes, headshots, exp); `u8 nest` @0x34; `i32 clan_mark` @0x38; `char clan[17]` @0x3C.
+**543 PLAYER_DETAIL_OUT (S→C), 77 bytes**: resposta a 542 com nick e exp do lobby; o resto sai zero (D67). `char nick[20]` @0; oito `i32` a partir de @0x14 (rank, jogos, vitórias, derrotas, abates, mortes, headshots, exp); `u8 nest` @0x34; `i32 clan_mark` @0x38; `char clan[17]` @0x3C.
 
 **549 ROOM_ENTRY_OUT (S→C), 48 bytes**: a entrada de jogador de 317 (tabela acima) de quem entrou. Vai só a quem já está na sala.
 
@@ -470,7 +476,7 @@ Campo sem bit fica de fora e não muda no cliente. MODE exige `game_mode` e `tea
 | Offset | Tipo | Campo |
 |-------:|------|-------|
 | 0x00 | `i32` | `room_guid` |
-| 0x04 | `u8` | `state` (0 vazio, 1 espera, 2 jogando) |
+| 0x04 | `u8` | `state` (0 espera, 1 jogando; D65) |
 | 0x05 | `u8` | `game_mode` |
 | 0x06 | `u8` | `team_count` |
 | 0x07 | `u8` | `curr_player` |
@@ -514,7 +520,7 @@ Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cli
 6. **Mesma conta em duas conexões.** A segunda substitui a primeira no lobby sem notificá-la.
 7. **Heartbeat do servidor.** O cliente responde a `2` com `2`; o emulador envia `2` a cada 10 s e nunca responde. Não há evidência de que o cliente exija esse heartbeat; se a conexão cair em 20 s sem tráfego, reduzir o intervalo.
 8. **Limite de lobby.** Uma lista de 151 cabe em um quadro de 65000 bytes: no máximo 1600 entradas (`MAX_LOBBY_ENTRIES`). A lista de salas (141) cabe em 955 registros (`MAX_ROOM_ENTRIES`).
-9. **Pedidos de lista (64, 66, 67, 464).** Não tratados. 545 e 546 têm resposta (547 e 548). Se o lobby passar do limite do item 8, a paginação ainda não está decodificada.
+9. **Pedidos de lista (64, 66, 67).** Não tratados. 464 responde 151 com o lobby a quem está fora de sala (D67); 545 e 546 têm resposta (547 e 548). Se o lobby passar do limite do item 8, a paginação ainda não está decodificada.
 10. **Chave de sessão não zerada.** O teste com o cliente real mostrou o `100` com 33 bytes zerados, depois de um `111` zerado. Não confirmado: o cliente aceitar a chave não zerada que o `111` entrega e reenviá-la em nova conexão ao canal. Se o cliente recusar, conferir `MsRegisterOut.session_key` e a regra de expiração em [authentication.md](authentication.md).
 11. **544 sem resposta e ordem não confirmada.** O RE não tem opcode de retorno para `SaveOption`; o emulador não responde. A ordem dos 37 bytes segue `LM_REGISTER_INFO` (inferido: o RE mostra cópia de 37 bytes de `_OPTION_INFO`, e a struct `LM_OPTION_INFO` do UnrealScript não foi decodificada campo a campo). Se o cliente real mostrar uma opção trocada, decodificar `LM_OPTION_INFO` em `LM_Engine.u`. Conta sem registro devolve 0 em tudo (sem fonte no RE).
 12. **Nome e senha da sala (301).** Layout de `re/layouts_f0.md` §7.1 (`char[51]` @2 e `char[13]` @0x35), conferido com um hexdump do cliente real. Limites de 3 a 50 bytes para o nome e 12 para a senha em `domain/rooms.py` (shortcut; o RE dá 13 bytes à senha). Confirmar com outra sala.
@@ -531,12 +537,15 @@ Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cli
 23. **Troca de dono (332).** Passa para o primeiro membro na ordem de entrada. Regra escolhida, não observada no cliente.
 24. **Progressão no login (F2 e F3).** O 101 leva tutorial, exp, Cash e LD em `@0x28`, `@0x2C`, `@0x48` e `@0x4C` (`PlayerRecord`), e os pushes 900 e 902 saem depois do 111. Inferido dos layouts `LM_PLAYER_INFO` (`re/layouts_f0.md` §1.1 e §7.6); não confirmado no cliente real. O 902 vai no bloco misto do dispatcher (shortcut).
 25. **Exp nos demais registros (D44).** O `total_exp` de 151, 317, 548 e 549 vem do lobby, fixado na entrada no canal com o valor do banco (`Lobby.join`; shortcut em `domain/lobby.py`). Não muda durante a sessão: concessão pela CLI só aparece ao reentrar. O 121 do próprio jogador continua sendo a referência. Não verificado no cliente real que 151, 317 e 548 não zerem a exp no nó.
-26. **Divisão de 549 e 312 (D40).** Quem já está na sala recebe 549 (nó e slot de quem chegou); quem está no canal fora da sala e o entrante recebem 312. O RE mostra que os dois somam 1 no contador de jogadores (`disp@608-691` e `disp@2908-2912`), mas não quem os envia em cada caso: é decisão deste servidor (`RoomHandlers._joined`). Revisar com captura de dois clientes na sala.
+26. **Divisão de 549 e 312 (D40).** Quem já está na sala recebe 549 (nó e slot de quem chegou); quem está no canal fora da sala e o entrante recebem 312. O RE mostra que os dois somam 1 no contador de jogadores (`disp@608-691` e `disp@2908-2912`), mas não quem os envia em cada caso: é decisão deste servidor (`RoomHandlers._joined`). Revisar com captura de dois clientes na sala. Não é a causa de o dono ver os botões desabilitados: na criação, o 312 vai ao próprio criador, que o recebe (D65, revisão de D40).
 27. **Convite (461 a 471; D42).** O convite fica pendente até o 471 e não expira. O aceite entra sem senha, só com convite pendente para a sala; recusa ou convite inexistente não entra. Os 17 bytes do nick em 461 e 463 são inferidos. Revisar na primeira captura de convite.
 28. **Configuração (411; D43).** Campos sem bit em `flags` não mudam; o RE manda max, tempo e pontos sempre, e o emulador só os aplica com o bit ligado (`CsChangeRoomPropertyIn`). `max_player` não cai abaixo de quem já está sentado. Revisar na primeira troca de configuração capturada.
-29. **Detalhe do jogador (543).** O codec segue `LM_PLAYER_DETAIL_INFO` (`re/protocol_full.md` §3.2), mas nenhum handler roteia o 542 nem envia o 543. Revisar quando houver tela de detalhe.
+29. **Detalhe do jogador (542 e 543; D67).** O codec segue `LM_PLAYER_DETAIL_INFO` (`re/protocol_full.md` §3.2). O 542 responde com o 543 só com nick e exp, vindos do lobby; clã, nest e estatísticas saem zero (shortcut). Nick fora do canal manda envelope 54 com -2460, código de `re/layouts_f0.md` §7.3; a mensagem na tela não é conhecida. Revisar com a tela de detalhe.
 30. **Inventário e morat regular (F4/F5).** 102 e 103 saem no login depois de 900 e 902; 103 só para morat com gate. Peças em -1 e skins em 0 (inferido, D31). Offsets de 102 e 103 além do que o RE dá (GUID, `apply_flag` em `@0x2D`, skins) são inferidos ([re/layouts_f0.md](../../re/layouts_f0.md) §8). Conta sem morat: a sala trava no cliente, e habilitar gate sem morat não corrige (dúvida 24 em [07-progression](../architecture/07-progression.md)). Nada disso foi confirmado no cliente real.
 31. **Loja (F8; D50, D51).** 550 debita `accounts.ld` ou `cash` e cria a unidade na mesma transação. Sucesso manda 551 (ou 552), 102 (ou 103), 900 e 902, e o item aparece sem relogar. Recusa manda o mesmo opcode com o código de `NotifyItemBuy` (-4056 LD, -4055 Cash, -1 sem gate) ou 8000 (sem mensagem). Os códigos de saldo são inferidos iguais aos `CERR_BUY_*`, não vistos em runtime. Morat comprado no meio da sessão pode não ficar habilitado no gate: `bEnable` só é ligado pelo 101, então vale relogar. Catálogo abre na primeira compra (D50). O 102 depois do 551 não duplica: é upsert pela chave no mesmo mapa (`FUN_1001d6b0`, dispatcher L699–700 e L890–891), e `@0x35` = 0 não zera `apply_value`. O 552 e o 103 seguem o mesmo padrão (`FUN_100237d0`, `FUN_1001d7f0`, L727–728 e L916). `FUN_10007830`, chamado de novo pelo 103, é busca e não insere. Revisar no cliente real.
+32. **Estado da sala (D65).** 0 é espera (RS_WAITING) e 1 é jogando (RS_PLAYING), conforme os UConst de `Core.u`. A versão anterior mandava 1 para espera e 2 para jogando; com `ready_game` do dono, `RefreshPlayers` (`XInterface` L34719) desabilitava os botões. `ROOM_WAITING` em `domain/rooms.py` é a única fonte do valor. Confirmar com dois clientes.
+33. **Mudar grupo (420; D66).** O `u8` é o grupo (`ChangeTeam` calcula `i % team_count`), não o slot. O servidor põe quem pede no primeiro slot livre desse grupo, sem contar o próprio slot. Grupo inválido ou sala ausente não respondem; a posição real vai no 421. Semântica inferida do RE (`XInterface` L21737–21790), não observada no cliente.
+34. **Amizade pelo nick (181 para 183).** A busca do nick é exata (`AccountRepository.find_by_nickname`, `accounts.nickname`). Nick recusado volta como 183 com id 0 e `result` -11, e o cliente não insere registro negativo (`handlers/message/social.py`). A amizade vem do menu de contexto (`AddFriendList`, 181); a ficha (542) vem de outro clique, e 464 não entra. `CurSelPlayerNick` só recebe valor ao selecionar a linha da lista (`XInterface` L26857, L27082, L32210, L32412, L62340), nunca pelo 543. Se a seleção não bate com o nick do menu, o menu passa `""` (L26876, L32227, L62359) e a recusa é silenciosa. Esse caso é do cliente e não tem correção no servidor; conferir o log `recusado` com `''` no reteste.
 
 ## Checklist no cliente real
 
@@ -558,6 +567,10 @@ Conferir nesta ordem; cada falha aponta o item de lacunas indicado.
 14. **Configurar a sala.** O dono muda o mapa ou o máximo; os dois clientes recebem 412 e a lista atualiza (item 28).
 15. **Convidar.** O dono convida o nick do outro (461). O convidado recebe o convite (463), aceita (471) e entra sem senha. Nick fora do canal: o dono recebe 462 com -2460 (item 27).
 16. **Contagem com 549.** Com dois clientes já na sala, o contador de jogadores sobe uma vez para o entrante (item 26).
+17. **Botões do dono (D65).** O dono vê Iniciar, configuração e Sair habilitados. O entrante não vê Iniciar habilitado (item 32); essa metade é previsão pelo mesmo valor de estado, não rastreada no `XInterface`. Sair do dono manda 321 e a sala passa ao outro (item 9).
+18. **Mudar grupo (420).** Com `team_count` 2 e o entrante sem pronto, a troca de grupo manda 421 com o slot novo para os dois clientes (item 33).
+19. **Ficha do jogador (542).** Clique no nick de quem está no lobby abre a ficha com nick e exp, sem "Buscando...". Nick fora do canal fecha a espera com a mensagem da UI (item 29).
+20. **Amizade pelo nick (181).** Tester2 adiciona Tester pelo menu e o amigo aparece na lista. Se não aparecer, conferir o log `recusado` com `''` no servidor de mensagens (item 34).
 
 ## Responsabilidades do serviço
 

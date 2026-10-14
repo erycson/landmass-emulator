@@ -142,7 +142,7 @@ Total: 60 opcodes com cabeçalho medido (extração automática conferida com o 
 | 321 | `OutRoom()` | inline, lit 0x2820 | 2 | — | 322 |
 | 401 | `ReadyGame(CS_READY_GAME_IN)` | inline, lit 0x3220 | 3 ou 2 | `u8 @0` | 402 |
 | 411 | `ChangeRoomProperty(CS_CHANGE_ROOM_PROPERTY_IN)` | helper `FUN_100016e0`, AX=0x19b | 12 | `u32 @0`; `u32 @4`; `u16 @8` | 412 |
-| 420 | `ChangeRoomSlot(CS_CHANGE_ROOM_SLOT_IN)` | inline, lit 0x3480 | 3 ou 2 | `u8 @0` = slot (wrapper `0x100179c0`) | 421 |
+| 420 | `ChangeRoomSlot(CS_CHANGE_ROOM_SLOT_IN)` | inline, lit 0x3480 | 3 ou 2 | `u8 @0` = grupo, não slot (`ChangeTeam`, D66; wrapper `0x100179c0`) | 421 |
 | 451 | `RoomExpel(CS_ROOM_EXPEL_IN)` | helper `FUN_10001830`, AX=0x1c3 | 20 | 18 bytes: `@0` não é preenchido pelo wrapper `0x10017a10` (lixo de pilha, gap); nick `char[17]` a partir de @1 (cópia sem limite) | 452 (**gap**: sem `case 452` no dispatcher) |
 | 461 | `RoomInvite(CS_ROOM_INVITE_IN)` | helper `FUN_10001420`, AX=0x1cd | 19 | `char nick[17]` @0, NUL-terminado (wrapper `0x10017a90`, cópia sem limite) | 462 |
 | 464 | `GetChannelPlayerInfo()` | inline, lit 0x3a00 | 2 | — | 151 (inferido) |

@@ -4,7 +4,7 @@ import struct
 
 import pytest
 
-from landmass_emu.domain.rooms import ROOM_PLAYING, RoomError, RoomReason, Rooms
+from landmass_emu.domain.rooms import ROOM_PLAYING, ROOM_WAITING, RoomError, RoomReason, Rooms
 from landmass_emu.protocol.channel import (
     ROOM_HEAD_SIZE,
     ROOM_INFO_SIZE,
@@ -52,7 +52,7 @@ def _sala(**kw: object) -> CsRoom:
         "room_id": 7,
         "name": "Sala",
         "has_password": False,
-        "state": 1,
+        "state": ROOM_WAITING,
         "game_mode": 2,
         "team_count": 3,
         "curr_player": 1,
@@ -101,7 +101,7 @@ def test_registro_de_sala_tem_612_bytes_e_offsets_do_no() -> None:
     assert cstr(raw[0x04:0x37]) == "Sala Azul"  # char[51], de @4 até @0x36
     assert raw[0x04 + 9] == 0  # NUL depois do nome
     assert raw[0x37] == 1  # senha (bool `password` de LM_ROOM_INFO)
-    assert raw[0x38] == 1  # estado: espera (402 compara value+0x38 com 1)
+    assert raw[0x38] == 0  # estado: espera (RS_WAITING = 0 em Core.u)
     assert raw[0x39] == 2  # modo de jogo
     assert raw[0x3A] == 3  # times
     assert raw[0x3B] == 1  # jogadores (conta o dono)
@@ -159,7 +159,7 @@ def test_sala_info_314_offsets_do_corpo() -> None:
     assert raw[0x03] == 0x21  # escala (node+0x57)
     assert struct.unpack_from("<i", raw, 0x08) == (0x0102,)  # dono (node+0x5c)
     assert struct.unpack_from("<i", raw, 0x0C) == (7,)  # chave de busca (body+0xc)
-    assert raw[0x10] == 1 and raw[0x11] == 2 and raw[0x12] == 3 and raw[0x13] == 4
+    assert raw[0x10] == 0 and raw[0x11] == 2 and raw[0x12] == 3 and raw[0x13] == 4  # espera
     assert raw[0x14] == 1
     assert struct.unpack_from("<h", raw, 0x16) == (9,)  # mapa (node+0x50)
     assert CsRoomInfoOut.opcode == CsOp.ROOM_INFO_OUT == 314
@@ -442,11 +442,40 @@ def test_dominio_criar_entrar_e_slots() -> None:
     assert sala.members[1].slot == 0 and sala.members[1].ready
     rooms.join(1, 2, "")
     assert rooms.room_of(2) is sala and sala.members[2].slot == 1
-    rooms.change_slot(2, 3)
-    assert sala.members[2].slot == 3
+
+
+def test_estados_da_sala_seguem_rs_do_core() -> None:
+    # RS_WAITING e RS_PLAYING em Core.u são 0 e 1 (UConst " \t0" e " \t1"). 1 é jogando.
+    assert (ROOM_WAITING, ROOM_PLAYING) == (0, 1)
+
+
+def test_dominio_mudar_grupo_vai_ao_primeiro_slot_livre_do_grupo() -> None:
+    rooms = Rooms()
+    sala = rooms.create(
+        1,
+        name="Sala",
+        password="",
+        scale=0,
+        game_mode=1,
+        map_num=1,
+        max_player=4,
+        team_count=2,
+        limit_time=10,
+        limit_score=10,
+    )
+    rooms.join(1, 2, "")  # slot 1, grupo 1
+    rooms.join(1, 3, "")  # slot 2, grupo 0
     with pytest.raises(RoomError) as exc:
-        rooms.change_slot(1, 3)
-    assert exc.value.reason is RoomReason.SLOT_TAKEN
+        rooms.change_slot(2, 0)  # grupo 0 tem slot 0 (dono) e 2 (guid 3): sem vaga
+    assert exc.value.reason is RoomReason.NO_TEAM_SLOT
+    rooms.leave(3)
+    rooms.change_slot(2, 0)  # agora o slot 2 está livre no grupo 0
+    assert sala.members[2].slot == 2
+    rooms.change_slot(2, 1)  # volta ao primeiro slot livre do grupo 1, o slot 1
+    assert sala.members[2].slot == 1
+    with pytest.raises(RoomError) as exc:
+        rooms.change_slot(2, 7)  # grupo que não existe
+    assert exc.value.reason is RoomReason.NO_TEAM_SLOT
 
 
 def test_dominio_senha_cheia_e_sala_inexistente() -> None:

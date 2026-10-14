@@ -1,4 +1,5 @@
-"""Listas sob pedido: 546 (jogadores, resposta 548) e 545 (salas, resposta 547).
+"""Listas sob pedido: 464 (lista do lobby, resposta 151), 542 (ficha do jogador, resposta 543),
+546 (jogadores, resposta 548) e 545 (salas, resposta 547).
 
 Só responde a quem está no lobby. Pedido sem nenhum item conhecido não gera resposta.
 """
@@ -11,6 +12,12 @@ from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.net.server import Reply
 from landmass_emu.net.session import Session
 from landmass_emu.protocol.channel import (
+    MAX_LOBBY_ENTRIES,
+    CsChannelPlayerInfoOut,
+    CsErrorEnvelope,
+    CsOp,
+    CsPlayerDetailIn,
+    CsPlayerDetailOut,
     CsPlayerProperty,
     CsRefreshPlayerListIn,
     CsRefreshPlayerListOut,
@@ -18,12 +25,36 @@ from landmass_emu.protocol.channel import (
     CsRefreshRoomListOut,
 )
 
+# shortcut: código do envelope 54 do 543 quando o nick não está no canal (CERR_FIND_PLAYER,
+# `re/layouts_f0.md` §7.3). A UI deve fechar "Buscando..."; a mensagem não é conhecida. Confirmar.
+ERR_FIND_PLAYER = -2460
+
 
 class ListHandlers:
     def __init__(self, lobby: Lobby, rooms: Rooms, records: ChannelRecords) -> None:
         self._lobby = lobby
         self._rooms = rooms
         self._records = records
+
+    async def channel_player_info(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        """464, sem corpo: a lista do lobby (151). Quem está numa sala não recebe: o 151 põe
+        `+0xb0 = 0x22` em todo nó da lista, o do próprio pedido também (`LM_Engine` case 0x97,
+        L1223-1225), e isso tira a posição 0x23 que `ChangeTeam` exige."""
+        guid = self._lobby.guid_of(session)
+        if guid is None or self._rooms.room_of(guid) is not None:
+            return []
+        return [CsChannelPlayerInfoOut(self._records.lobby_players()[:MAX_LOBBY_ENTRIES])]
+
+    async def player_detail(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        """542: ficha do jogador do clique no nick. O canal só tem nick e exp (o lobby); o resto do
+        543 sai zero, como em `CsPlayerDetailOut`. Nick fora do canal: envelope 54 com o código."""
+        if self._lobby.guid_of(session) is None:
+            return []
+        req = CsPlayerDetailIn.unpack(payload)
+        guid = self._lobby.guid_of_nick(req.nickname)
+        if guid is None:
+            return [CsErrorEnvelope(CsOp.PLAYER_DETAIL_OUT, ERR_FIND_PLAYER)]
+        return [CsPlayerDetailOut(nickname=req.nickname, total_exp=self._lobby.exp_of(guid))]
 
     async def refresh_player_list(self, session: Session, payload: bytes) -> Sequence[Reply]:
         if self._lobby.guid_of(session) is None:

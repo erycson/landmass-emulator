@@ -15,12 +15,20 @@ from landmass_emu.protocol.channel import (
     CsInChannelServerOut,
     CsOp,
     CsOutChannelOut,
+    CsPlayerDetailIn,
     CsPlayerProperty,
     CsRefreshPlayerListIn,
     CsRefreshPlayerListOut,
     CsSendMessageIn,
     CsSendMessageOut,
 )
+from landmass_emu.protocol.message import cfield
+
+
+def test_player_detail_in_le_o_nick_de_17_bytes_e_recusa_pedido_curto() -> None:
+    assert CsPlayerDetailIn.unpack(cfield("Ana", 17)) == CsPlayerDetailIn("Ana")
+    with pytest.raises(ValueError):
+        CsPlayerDetailIn.unpack(b"Ana")
 
 
 def test_in_channel_server_in_le_session_key_de_33_bytes() -> None:
