@@ -189,6 +189,13 @@ async def test_ultimo_a_sair_da_partida_grava_o_historico_e_devolve_a_sala_a_esp
     assert host.encerrados == [sala.room_id]
     assert sala.state == ROOM_WAITING
     assert all(not membro.ready for membro in sala.members.values())  # o dono também (D77)
+    # O que o cliente do dono recebe ao fim: 402 dele com pronto zerado, não só o estado no domínio.
+    pronto_do_dono = [
+        corpo
+        for op, corpo in _corpos(ana)
+        if op == CsOp.READY_GAME_OUT and struct.unpack_from("<i", corpo)[0] == 7
+    ]
+    assert struct.unpack_from("<iB", pronto_do_dono[-1]) == (7, 0)
 
 
 async def test_queda_do_servidor_depois_de_pronto_encerra_a_partida_com_server_exit() -> None:
