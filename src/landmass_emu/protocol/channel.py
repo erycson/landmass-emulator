@@ -899,14 +899,15 @@ class CsPlayerDetailIn:
 @dataclass(frozen=True, slots=True)
 class CsPlayerDetailOut:
     """PLAYER_DETAIL_OUT (543): corpo de `LM_PLAYER_DETAIL_INFO` (evento `NotifyDetailPlayerInfo`,
-    `result` vem do envelope, não do corpo). Layout de `re/protocol_full.md` §3.2: nick @0; oito
-    `i32` a partir de @0x14 (rank, jogos, vitórias, derrotas, abates, mortes, headshots, exp);
-    `u8 nest` @0x34; `i32 clan_mark` @0x38; clã @0x3c, NUL-terminado.
+    `result` vem do envelope, não do corpo). Ordem da struct em `LM_Engine.src.txt` (L722): nick;
+    oito `i32` a partir de @0x14 (`nTotalRank`, `nTotalGamecount`, `nTotalWin`, `nTotalLose`,
+    `nTotalKill`, `nTotalDeath`, `nHeadshot`, `nTotalExp`); `u8 ucNest` @0x34; `i32 nClanMark`
+    @0x38; `strClanName` @0x3c, NUL-terminado. A ficha (`LM_PlayerInfoPage.OnDetailPlayerInfo`,
+    `XInterface.src.txt` L32768) mostra o nest, a patente pelo exp, "Desertado" por
+    `(jogos - vitórias - derrotas) * 100 / jogos` e o clã só com `nClanMark > -1` e nome não vazio.
 
-    shortcut: a ordem dos campos segue `LM_PLAYER_DETAIL_INFO` em `LM_Engine.src.txt` (nove inteiros
-    entre o nick e o clã, como no RE); o nick ocupa @0..0x13 (20 bytes) e o clã 17 bytes. Ambos são
-    inferidos: o RE não fixa o tamanho. Resposta a 542 (`CsPlayerDetailIn`), só com o que o lobby
-    tem: nick e exp; o resto sai zero."""
+    shortcut: o tamanho do nick (20 bytes) e do clã (17) é inferido: a struct não fixa. Os valores
+    vêm do banco pelo handler (`ListHandlers.player_detail`, D107)."""
 
     nickname: str
     rank: int = 0

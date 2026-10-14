@@ -1,15 +1,24 @@
 import re
-from datetime import datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 from sqlalchemy import Engine, create_engine, inspect, select, update
 
+from landmass_emu.__main__ import _parser
 from landmass_emu.admin import AccountAdmin
-from landmass_emu.app import open_accounts
+from landmass_emu.app import open_accounts, open_database
+from landmass_emu.db.accounts import SqlAccountRepository
+from landmass_emu.db.clans import SqlClanRepository
 from landmass_emu.db.models import AccountRow
-from landmass_emu.domain.account import hash_token, new_token, verify_token
-from landmass_emu.protocol.message import MsLoginIn
+from landmass_emu.db.options import SqlOptionsRepository
+from landmass_emu.domain.account import Account, hash_token, is_banned, new_token, verify_token
+from landmass_emu.domain.presence import MessagePresence
+from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
+from landmass_emu.handlers.message.account import AccountHandlers
+from landmass_emu.net.session import Session
+from landmass_emu.protocol.message import MsLoginIn, MsResult
 from landmass_emu.settings import Settings
 
 
@@ -102,6 +111,7 @@ async def test_schema_segue_convencao_laravel(tmp_path: Path) -> None:
             "cash",
             "regular_nest_id",
             "regular_morat_class",
+            "banned_until",
         ]
         unicos = sorted(u["name"] for u in insp.get_unique_constraints("accounts"))
         assert unicos == [
@@ -129,3 +139,51 @@ async def test_rotacao_atualiza_updated_at(tmp_path: Path) -> None:
     finally:
         engine.dispose()
     assert atualizado is not None and atualizado > antigo
+
+
+def test_bloqueio_vale_so_ate_o_prazo() -> None:
+    agora = datetime(2026, 10, 13, 12, tzinfo=UTC)
+    conta = Account(id=1, username="fulano", nickname="Fulano", token_hash="h")
+    assert not is_banned(conta, agora)
+    assert is_banned(replace(conta, banned_until=agora + timedelta(seconds=1)), agora)
+    assert not is_banned(replace(conta, banned_until=agora), agora)
+
+
+def test_cli_de_ban_e_unban_leem_os_argumentos() -> None:
+    args = _parser().parse_args(["account", "ban", "--user", "fulano", "--days", "3"])
+    assert (args.action, args.user, args.days) == ("ban", "fulano", 3)
+    assert _parser().parse_args(["account", "unban", "--user", "fulano"]).action == "unban"
+
+
+async def _resultado_login(handlers: AccountHandlers, token: str) -> int:
+    [resposta] = await handlers.login(Session(peer="teste"), MsLoginIn(login_num=token).pack())
+    return resposta.result
+
+
+async def test_ban_recusa_o_login_ate_expirar_e_unban_libera(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_database(settings) as db:
+        accounts = SqlAccountRepository(db)
+        admin = AccountAdmin(accounts, settings)
+        bat = await admin.create("fulano", "Fulano", tmp_path)
+        token = _token_do_bat(bat)
+        handlers = AccountHandlers(
+            accounts,
+            MemorySessionKeyRegistry(),
+            SqlOptionsRepository(db),
+            MessagePresence(),
+            SqlClanRepository(db),
+        )
+        with pytest.raises(ValueError, match="mínimo de 1 dia"):
+            await admin.ban("fulano", 0)
+        assert "bloqueada" in await admin.ban("fulano", 2)
+        assert await _resultado_login(handlers, token) == MsResult.INVALID_PASSWORD
+        # O prazo vence sozinho: sem nenhuma ação, o login volta a valer.
+        conta = await accounts.find_by_username("fulano")
+        assert conta is not None and conta.banned_until is not None
+        await accounts.set_banned_until(conta.id, datetime.now(UTC) - timedelta(seconds=1))
+        assert await _resultado_login(handlers, token) == MsResult.OK
+        await admin.ban("fulano", 1)
+        assert await _resultado_login(handlers, token) == MsResult.INVALID_PASSWORD
+        assert "bloqueio removido" in await admin.unban("fulano")
+        assert await _resultado_login(handlers, token) == MsResult.OK

@@ -5,6 +5,7 @@ import struct
 
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.match import MapRecord
+from landmass_emu.domain.profile import PlayerProfile
 from landmass_emu.domain.rooms import Room, Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.handlers.channel import ChannelHandlers
@@ -45,6 +46,27 @@ class _Mapas:
 
     def get(self, record_id: int) -> MapRecord | None:
         return MapRecord(record_id=record_id, file_name="ONS-Treino", player_max=32, op_type=0)
+
+
+class _Fichas:
+    """Ficha em memória: só a conta 9 ("Bia", exp 20) tem ficha; o resto dos campos é zero."""
+
+    async def profile(self, account_id: int) -> PlayerProfile | None:
+        if account_id != 9:
+            return None
+        return PlayerProfile(
+            rank=3,
+            games=0,
+            wins=0,
+            losses=0,
+            kills=0,
+            deaths=0,
+            headshots=0,
+            total_exp=20,
+            nest=0,
+            clan_mark=0,
+            clan_name="",
+        )
 
 
 class _Recebedor:
@@ -115,6 +137,7 @@ def test_tabela_do_roteador_cobre_entrada_chat_salas_e_listas() -> None:
         None,
         None,
         None,
+        profiles=_Fichas(),
     )
     esperados = {
         CsOp.HEARTBEAT,
@@ -180,7 +203,9 @@ async def test_total_exp_do_lobby_vai_a_151_317_e_548() -> None:
     assert records.room_players(sala).players[0].total_exp == 1234
     # 548: resposta ao pedido 546 (`i32 channel`, `u8 count` @4, guids a partir de @8).
     pedido = bytes(4) + bytes((1,)) + bytes(3) + struct.pack("<i", 7)
-    [resposta] = await ListHandlers(lobby, rooms, records).refresh_player_list(ana, pedido)
+    [resposta] = await ListHandlers(lobby, rooms, records, _Fichas()).refresh_player_list(
+        ana, pedido
+    )
     assert isinstance(resposta, CsRefreshPlayerListOut)
     assert resposta.players[0].total_exp == 1234
 
@@ -322,7 +347,7 @@ async def test_464_responde_a_lista_do_lobby_so_a_quem_esta_nele() -> None:
     lobby = Lobby()
     ana = _entra_no_lobby(lobby, 7, "Ana", 150)
     _entra_no_lobby(lobby, 9, "Bia")
-    listas = ListHandlers(lobby, Rooms(), ChannelRecords(lobby))
+    listas = ListHandlers(lobby, Rooms(), ChannelRecords(lobby), _Fichas())
     assert await listas.channel_player_info(Session(peer="fora"), b"") == []
     [resposta] = await listas.channel_player_info(ana, b"")
     assert isinstance(resposta, CsChannelPlayerInfoOut)
@@ -338,17 +363,17 @@ async def test_464_nao_responde_a_quem_esta_numa_sala() -> None:
     rooms = Rooms()
     ana = _entra_no_lobby(lobby, 7, "Ana")
     _criar_sala(rooms, 7)
-    listas = ListHandlers(lobby, rooms, ChannelRecords(lobby))
+    listas = ListHandlers(lobby, rooms, ChannelRecords(lobby), _Fichas())
     assert await listas.channel_player_info(ana, b"") == []
 
 
-async def test_542_devolve_nick_e_exp_do_lobby_e_erro_se_o_nick_nao_esta_no_canal() -> None:
+async def test_542_devolve_a_ficha_do_repositorio_e_erro_se_o_nick_nao_esta_no_canal() -> None:
     lobby = Lobby()
     ana = _entra_no_lobby(lobby, 7, "Ana", 150)
     _entra_no_lobby(lobby, 9, "Bia", 20)
-    listas = ListHandlers(lobby, Rooms(), ChannelRecords(lobby))
+    listas = ListHandlers(lobby, Rooms(), ChannelRecords(lobby), _Fichas())
     [ficha] = await listas.player_detail(ana, cfield("Bia", 17))
-    assert ficha == CsPlayerDetailOut(nickname="Bia", total_exp=20)
+    assert ficha == CsPlayerDetailOut(nickname="Bia", rank=3, total_exp=20)
     [erro] = await listas.player_detail(ana, cfield("Fulano", 17))
     assert erro == CsErrorEnvelope(CsOp.PLAYER_DETAIL_OUT, ERR_FIND_PLAYER)
     assert await listas.player_detail(Session(peer="fora"), cfield("Bia", 17)) == []

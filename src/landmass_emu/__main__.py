@@ -50,6 +50,12 @@ class Cli:
             return await self.kit_apply(args)
         if args.action == "create":
             return await self.create(args)
+        if args.action == "ban":
+            async with open_accounts(self._settings) as accounts:
+                return await AccountAdmin(accounts, self._settings).ban(args.user, args.days)
+        if args.action == "unban":
+            async with open_accounts(self._settings) as accounts:
+                return await AccountAdmin(accounts, self._settings).unban(args.user)
         client_dir: Path = args.client_dir or self._settings.client_dir
         async with open_accounts(self._settings) as accounts:
             admin = AccountAdmin(accounts, self._settings)
@@ -149,6 +155,11 @@ def _parser() -> argparse.ArgumentParser:
     grant.add_argument("--exp", type=int, default=0)
     grant.add_argument("--ld", type=int, default=0)
     grant.add_argument("--cash", type=int, default=0)
+    ban = actions.add_parser("ban", help="bloqueia a conta por N dias (sem aviso ao servidor)")
+    ban.add_argument("--user", required=True)
+    ban.add_argument("--days", type=int, required=True)
+    unban = actions.add_parser("unban", help="remove o bloqueio da conta")
+    unban.add_argument("--user", required=True)
     item = actions.add_parser("item", help="itens do inventário")
     item_add = item.add_subparsers(dest="op", required=True).add_parser(
         "add", help="cria um item com prazo em dias"

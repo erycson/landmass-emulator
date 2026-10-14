@@ -5,6 +5,7 @@ import hmac
 import re
 import secrets
 from dataclasses import dataclass
+from datetime import datetime
 
 USERNAME_PATTERN = re.compile(r"[a-z0-9_]{1,12}")
 NICKNAME_MAX_BYTES = 16
@@ -16,6 +17,12 @@ class Account:
     username: str
     nickname: str
     token_hash: str
+    banned_until: datetime | None = None
+
+
+def is_banned(account: Account, now: datetime) -> bool:
+    """Bloqueio temporário ainda vigente (D106). Expira sozinho: nada é apagado ao fim do prazo."""
+    return account.banned_until is not None and now < account.banned_until
 
 
 def new_token() -> str:

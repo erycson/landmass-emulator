@@ -16,6 +16,7 @@ from landmass_emu.admin_inventory import InventoryAdmin, StarterKitAdmin
 from landmass_emu.app import open_database
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.inventory import SqlInventoryRepository
+from landmass_emu.db.profile import SqlPlayerProfileRepository
 from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.domain.account import Account, hash_token
 from landmass_emu.domain.inventory import ApplyFlag, InventoryService, ItemUnit, MoratUnit
@@ -149,6 +150,7 @@ def _canal(
         SqlAccountRepository(db),
         SqlInventoryRepository(db),
         None,
+        profiles=SqlPlayerProfileRepository(db),
     )
 
 

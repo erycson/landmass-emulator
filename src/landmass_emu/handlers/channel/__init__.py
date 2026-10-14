@@ -26,6 +26,7 @@ from landmass_emu.ports.inventory import InventoryRepository
 from landmass_emu.ports.match_host import MapCatalog, MatchHost
 from landmass_emu.ports.matches import MatchRepository
 from landmass_emu.ports.options import OptionsRepository
+from landmass_emu.ports.profile import PlayerProfileRepository
 from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.protocol.channel import CsOp
@@ -52,6 +53,8 @@ class ChannelHandlers:
         shop: ShopService,
         equipment: EquipmentHandlers | None = None,
         audit: EconomyAudit | None = None,
+        *,
+        profiles: PlayerProfileRepository,
     ) -> None:
         records = ChannelRecords(lobby)
         room_handlers = RoomHandlers(lobby, rooms, records, match, maps, matches)
@@ -62,7 +65,7 @@ class ChannelHandlers:
         self._login = LoginHandlers(self._entry, accounts, inventory)
         self._morats = MoratHandlers(accounts, RegularService())
         self._chat = ChatHandlers(lobby, rooms)
-        self._lists = ListHandlers(lobby, rooms, records)
+        self._lists = ListHandlers(lobby, rooms, records, profiles)
         self._options = OptionHandlers(player_options)
         self._rooms = room_handlers
         self._shop = ShopHandlers(shop, audit)

@@ -43,6 +43,8 @@ class AccountRow(Base):
     cash: Mapped[int] = mapped_column(Integer, server_default="0")
     regular_nest_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     regular_morat_class: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Bloqueio temporário pela CLI (D106): nulo = sem bloqueio.
+    banned_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AccountMoratRow(Base):

@@ -329,9 +329,11 @@ async def test_ficha_de_quem_esta_no_lobby_volta_com_o_nick(tmp_path: Path) -> N
             await _entra_no_canal(a, chave_ana, ana.id)
             await _entra_com_outros(b, chave_bia, bia.id, a)
 
-            # B clica no nick de A: a ficha (543) volta com o nick; as estatísticas saem zero.
+            # B clica no nick de A: a ficha (543) volta com o nick; sem exp, A é 1º (D18) e as
+            # estatísticas saem zero.
             await b.send(CsOp.PLAYER_DETAIL_IN, cfield("Ana", NICK_SIZE))
             ficha = await b.expect(CsOp.PLAYER_DETAIL_OUT)
             assert cstr(ficha[:20]) == "Ana"
-            assert ficha[0x14:0x30] == bytes(0x1C)
+            assert ficha[0x14:0x18] == (1).to_bytes(4, "little")
+            assert ficha[0x18:0x30] == bytes(0x18)
             await a.assert_silencio()

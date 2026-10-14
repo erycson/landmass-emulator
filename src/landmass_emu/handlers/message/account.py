@@ -2,8 +2,9 @@
 
 import logging
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
-from landmass_emu.domain.account import Account, hash_token, verify_token
+from landmass_emu.domain.account import Account, hash_token, is_banned, verify_token
 from landmass_emu.domain.presence import MessagePresence
 from landmass_emu.net.server import Reply
 from landmass_emu.net.session import Session
@@ -45,6 +46,12 @@ class AccountHandlers:
         account = await self._authenticate(req.login_num)
         if account is None:
             log.info("[%s] login recusado", session.peer)
+            return [MsLoginOut(MsResult.INVALID_PASSWORD)]
+        if is_banned(account, datetime.now(UTC)):
+            # shortcut: bloqueio recusa com -160, o único código de login recusado conhecido. O
+            # cliente pode mostrar "senha inválida"; o código próprio de bloqueio não foi achado
+            # (re/message_server.md §7). Expira sozinho (D106).
+            log.info("[%s] login recusado: conta bloqueada", session.peer)
             return [MsLoginOut(MsResult.INVALID_PASSWORD)]
         session.account = account
         self._presence.bind(account.id, session)

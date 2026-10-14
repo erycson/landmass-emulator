@@ -17,7 +17,15 @@ def _to_domain(row: AccountRow) -> Account:
         username=row.username,
         nickname=row.nickname,
         token_hash=row.token_hash,
+        banned_until=_aware(row.banned_until),
     )
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    # SQLite devolve datetime sem fuso; a comparação com `now` (UTC) exige fuso.
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
 
 
 class SqlAccountRepository:
@@ -57,6 +65,14 @@ class SqlAccountRepository:
                 return _to_domain(row)
         except IntegrityError as e:
             raise AccountConflict(f"usuário {username!r} ou nickname {nickname!r} já existe") from e
+
+    async def set_banned_until(self, account_id: int, until: datetime | None) -> None:
+        async with self._sessions.begin() as session:
+            await session.execute(
+                update(AccountRow)
+                .where(AccountRow.id == account_id)
+                .values(banned_until=until, updated_at=datetime.now(UTC))
+            )
 
     async def set_token_hash(self, account_id: int, token_hash: str) -> None:
         async with self._sessions.begin() as session:

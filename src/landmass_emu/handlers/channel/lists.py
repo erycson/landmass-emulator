@@ -11,6 +11,7 @@ from landmass_emu.domain.rooms import Rooms
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.net.server import Reply
 from landmass_emu.net.session import Session
+from landmass_emu.ports.profile import PlayerProfileRepository
 from landmass_emu.protocol.channel import (
     MAX_LOBBY_ENTRIES,
     CsChannelPlayerInfoOut,
@@ -31,10 +32,17 @@ ERR_FIND_PLAYER = -2460
 
 
 class ListHandlers:
-    def __init__(self, lobby: Lobby, rooms: Rooms, records: ChannelRecords) -> None:
+    def __init__(
+        self,
+        lobby: Lobby,
+        rooms: Rooms,
+        records: ChannelRecords,
+        profiles: PlayerProfileRepository,
+    ) -> None:
         self._lobby = lobby
         self._rooms = rooms
         self._records = records
+        self._profiles = profiles
 
     async def channel_player_info(self, session: Session, payload: bytes) -> Sequence[Reply]:
         """464, sem corpo: a lista do lobby (151). Quem está numa sala não recebe: o 151 põe
@@ -46,15 +54,31 @@ class ListHandlers:
         return [CsChannelPlayerInfoOut(self._records.lobby_players()[:MAX_LOBBY_ENTRIES])]
 
     async def player_detail(self, session: Session, payload: bytes) -> Sequence[Reply]:
-        """542: ficha do jogador do clique no nick. O canal só tem nick e exp (o lobby); o resto do
-        543 sai zero, como em `CsPlayerDetailOut`. Nick fora do canal: envelope 54 com o código."""
+        """542: ficha do jogador do clique no nick, com os dados do banco (D107). Nick fora do
+        canal, ou conta sem ficha: envelope 54 com o código."""
         if self._lobby.guid_of(session) is None:
             return []
         req = CsPlayerDetailIn.unpack(payload)
         guid = self._lobby.guid_of_nick(req.nickname)
-        if guid is None:
+        profile = None if guid is None else await self._profiles.profile(guid)
+        if profile is None:
             return [CsErrorEnvelope(CsOp.PLAYER_DETAIL_OUT, ERR_FIND_PLAYER)]
-        return [CsPlayerDetailOut(nickname=req.nickname, total_exp=self._lobby.exp_of(guid))]
+        return [
+            CsPlayerDetailOut(
+                nickname=req.nickname,
+                rank=profile.rank,
+                games=profile.games,
+                wins=profile.wins,
+                losses=profile.losses,
+                kills=profile.kills,
+                deaths=profile.deaths,
+                headshots=profile.headshots,
+                total_exp=profile.total_exp,
+                nest=profile.nest,
+                clan_mark=profile.clan_mark,
+                clan=profile.clan_name,
+            )
+        ]
 
     async def refresh_player_list(self, session: Session, payload: bytes) -> Sequence[Reply]:
         if self._lobby.guid_of(session) is None:

@@ -2,10 +2,17 @@
 concede progressão (exp, LD, Cash).
 """
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from landmass_emu.db.catalog import WdbCatalog
-from landmass_emu.domain.account import check_nickname, check_username, hash_token, new_token
+from landmass_emu.domain.account import (
+    Account,
+    check_nickname,
+    check_username,
+    hash_token,
+    new_token,
+)
 from landmass_emu.domain.progression import Grant, ProgressionService, RankTable
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.progression import ProgressionRepository
@@ -16,6 +23,26 @@ class AccountAdmin:
     def __init__(self, accounts: AccountRepository, settings: Settings) -> None:
         self._accounts = accounts
         self._settings = settings
+
+    async def ban(self, username: str, days: int) -> str:
+        """Bloqueio temporário (D106): recusa o login até o prazo. Sem aviso ao servidor (D27)."""
+        if days < 1:
+            raise ValueError("bloqueio: mínimo de 1 dia")
+        account = await self._account(username)
+        until = datetime.now(UTC) + timedelta(days=days)
+        await self._accounts.set_banned_until(account.id, until)
+        return f"{username} bloqueada até {until:%Y-%m-%d %H:%M} UTC (vale no próximo login)"
+
+    async def unban(self, username: str) -> str:
+        account = await self._account(username)
+        await self._accounts.set_banned_until(account.id, None)
+        return f"{username}: bloqueio removido"
+
+    async def _account(self, username: str) -> Account:
+        account = await self._accounts.find_by_username(username)
+        if account is None:
+            raise ValueError(f"conta {username!r} não existe")
+        return account
 
     async def create(self, username: str, nickname: str, client_dir: Path) -> Path:
         check_username(username)

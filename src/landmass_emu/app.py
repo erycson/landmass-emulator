@@ -16,6 +16,7 @@ from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.item_catalog import LazyItemCatalog
 from landmass_emu.db.matches import SqlMatchRepository
 from landmass_emu.db.options import SqlOptionsRepository
+from landmass_emu.db.profile import SqlPlayerProfileRepository
 from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.db.ranking import SqlRankingRepository
 from landmass_emu.db.shop import SqlShopRepository
@@ -42,6 +43,7 @@ from landmass_emu.ports.inventory import InventoryRepository
 from landmass_emu.ports.match_host import GameEndpoint, MatchHost
 from landmass_emu.ports.matches import MatchRepository
 from landmass_emu.ports.options import OptionsRepository
+from landmass_emu.ports.profile import PlayerProfileRepository
 from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.ranking import RankingRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
@@ -156,6 +158,7 @@ async def channel_server(
     matches: MatchRepository,
     equipment: EquipmentHandlers,
     audit: EconomyAudit,
+    profiles: PlayerProfileRepository,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
@@ -175,6 +178,7 @@ async def channel_server(
         shop,
         equipment=equipment,
         audit=audit,
+        profiles=profiles,
     )
     server = await Service(
         net_code=CHANNEL_NET_CODE,
@@ -204,6 +208,7 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         social = SqlSocialRepository(db)
         clans = SqlClanRepository(db)
         ranking = SqlRankingRepository(db)
+        profiles = SqlPlayerProfileRepository(db)
         shop, equipment, audit = _game_services(settings, db, accounts, progression, inventory)
         matches = SqlMatchRepository(db)
         async with (
@@ -221,6 +226,7 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
                 matches,
                 equipment,
                 audit,
+                profiles,
             ) as channel,
         ):
             yield message, channel
