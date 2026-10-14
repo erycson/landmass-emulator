@@ -30,3 +30,17 @@ A cópia deixa de fora o que o servidor não usa: `music`, `ScreenShots`, logs, 
 
 - **`LMEmu.u`:** compile com `uv run python tools/unreal/build_lmemu.py` na raiz do emulador. O build também atualiza a cópia desta pasta.
 - **Conteúdo** (mapas, pacotes `.lm`, `landmass.wdb`): o servidor de partida e os clientes precisam ter os mesmos arquivos. Ao trocar um no cliente, copie o mesmo arquivo para o servidor.
+
+## Rotas dos bots
+
+Os bots andam pela rota do mapa quando não têm inimigo (D225 a D227). A rota sai da geometria do mapa:
+
+1. Suba um servidor sem bots com o bake: `LandMass.exe ONS-Airport?listen?game=LMEmu.LMEmuDeathMatch?lmemubake=1 -server PORT=<porta> LOG=bake.log -log` (com os argumentos de login da sessão de teste). O processo sai sozinho ao fim, com `LMEmuBake fim` no log. No ONS-Airport leva cerca de 30 s de jogo.
+2. `uv run python tools/routes/rotas.py --log <pasta>\bake.log --mapa ONS-Airport --ini tools\server-patch\system\LMEmuRoutes.ini` imprime o resumo (contagem por flag e conectividade das bases) e grava só a seção do mapa.
+3. `aplicar.ps1` copia `system\LMEmuRoutes.ini` para o servidor quando o arquivo existe. Um arquivo serve a todos os mapas, com uma seção `[<mapa> LMEmuRoutes]` por mapa.
+
+Só o ONS-Airport está gerado nesta fase. Para outro mapa, rode o bake com o nome dele e `--mapa`.
+
+Chaves do `LMEmu.ini` (seção `[LMEmu.LMEmuRecorder]`): `bRecord=True` grava as posições humanas (complemento, `LMEmuRec` no log); `bRecordBots=True` inclui os bots, só para teste. A seção `[LMEmu.LMEmuBake]` aceita `Cell`, `StepH`, `MaxDrop`, `FlyMax`, `Reach`, `NodeCap` e `PerTick`; sem ela valem os padrões do código.
+
+Limites: o bot andando pela rota não foi visto no servidor headless (ver `docs/architecture/08-bots.md`), e pulo e booster não foram verificados em jogo.
