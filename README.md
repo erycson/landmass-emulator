@@ -173,4 +173,13 @@ Os quatro precisam passar antes de cada commit. A documentação é técnica e n
 
 ## Licença
 
-Veja [`LICENSE`](LICENSE). LandMass e seus recursos pertencem aos respectivos donos. Este projeto não é afiliado a eles e não distribui o jogo.
+[GNU Affero General Public License v3.0](LICENSE) ou posterior (AGPL-3.0-or-later). Em resumo:
+
+- Você pode usar, estudar, modificar e distribuir o emulador, inclusive com fins comerciais.
+- Quem distribuir o código, modificado ou não, tem de manter a mesma licença e entregar o código-fonte.
+- **Servidor público conta como distribuição:** se você rodar uma versão modificada para outras pessoas jogarem pela rede, tem de oferecer a elas o código-fonte dessa versão.
+- Não há garantia.
+
+O texto válido é o do [LICENSE](LICENSE); este resumo não o substitui.
+
+LandMass e seus recursos pertencem aos respectivos donos. Este projeto não é afiliado a eles e não distribui o jogo. O dgVoodoo2 é de terceiro e tem licença própria.

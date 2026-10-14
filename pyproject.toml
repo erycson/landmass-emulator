@@ -3,6 +3,8 @@ name = "landmass-emu"
 version = "0.1.0"
 description = "Emulador do servidor LandMass"
 readme = "README.md"
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE"]
 authors = [
     { name = "Érycson Nóbrega", email = "egdn2004@gmail.com" }
 ]
