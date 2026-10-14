@@ -1,19 +1,27 @@
 """Plano da partida: mapa, classe do jogo e limites a partir da sala. Só regras, sem IO.
 
-Mapa: `RecordIndex` da tabela `maps` do `landmass.wdb` é o `map_num` da sala. Modo: a UI do cliente
-(`XInterface`, `nModeIndex`) lê `game_mode == 1` como OP, `game_mode == 0` com dois times como time
-e o resto como DM. As classes estão em `re/game_server_host.md`, seção 10. O time é
-`XGame.LM_TeamDeathMatch` (D170).
+Mapa: `RecordIndex` da tabela `maps` do `landmass.wdb` é o `map_num` da sala. Modo, como o servidor
+nativo (`LM_Engine` `CServerRoom::Init`, `re/LM_Engine.dll/all/100163d0_Init.c`, linhas 317 a 363):
+`game_mode == 1` é OP ou Bombing Run pelo `OPType` do mapa; `game_mode == 0` com dois ou mais times
+é time; o resto é DM. As classes estão em `re/game_server_host.md`, seção 10. O time é
+`XGame.LM_TeamDeathMatch` (D170), estendido pelo pacote LMEmu (D190). Regra do modo: D192.
 """
 
 from dataclasses import dataclass
 
 from landmass_emu.domain.rooms import Room
 
-GAME_DEATHMATCH = "XGame.LM_DeathMatch"
+# Classes do pacote LMEmu (`unreal/build_lmemu.py`). Herdam das de XGame e leem o equipamento de
+# cada jogador do `LMEmu.ini` pela chave `?lmemu=` (D190).
+GAME_DEATHMATCH = "LMEmu.LMEmuDeathMatch"
 # LM_TeamGame herda BecomeSpectator=false de LM_DeathMatch e trava o respawn em TDM (D170).
-GAME_TEAM = "XGame.LM_TeamDeathMatch"
-GAME_OPERATION = "XGame.LM_TeamOperation"
+GAME_TEAM = "LMEmu.LMEmuTeamDeathMatch"
+GAME_OPERATION = "LMEmu.LMEmuTeamOperation"
+GAME_BOMBING = "LMEmu.LMEmuBombingRun"
+# `OPType` do mapa que escolhe a classe de OP (D192). Os demais valores (ex.: Onslaught nativo) não
+# têm classe LMEmu e caem em DM.
+OP_TYPE_OPERATION = 0
+OP_TYPE_BOMBING = 1
 TEAM_COUNT_FOR_TEAM_GAME = 2
 MIN_PLAYERS = 2
 
@@ -35,12 +43,20 @@ class MatchPlan:
     max_players: int
     time_limit: int  # limit_time da sala, em minutos (inferido pela UI; ver re/game_server_host.md)
     goal_score: int  # limit_score da sala
+    # Valores `Players=` da seção do LMEmu.ini, uma linha por jogador (D190). Vazio se não há.
+    loadout: tuple[str, ...] = ()
+    # Chave da seção do LMEmu.ini (`?lmemu=`). Quem põe é o servidor de partida ao lançar.
+    lmemu_key: str = ""
 
 
-def game_class_for(game_mode: int, team_count: int) -> str:
+def game_class_for(game_mode: int, team_count: int, op_type: int) -> str:
     if game_mode == 1:
-        return GAME_OPERATION
-    if game_mode == 0 and team_count == TEAM_COUNT_FOR_TEAM_GAME:
+        if op_type == OP_TYPE_BOMBING:
+            return GAME_BOMBING
+        if op_type == OP_TYPE_OPERATION:
+            return GAME_OPERATION
+        return GAME_DEATHMATCH
+    if game_mode == 0 and team_count >= TEAM_COUNT_FOR_TEAM_GAME:
         return GAME_TEAM
     return GAME_DEATHMATCH
 
@@ -50,7 +66,7 @@ def build_plan(room: Room, map_record: MapRecord) -> MatchPlan:
     max_players = min(max(room.max_player, MIN_PLAYERS), map_record.player_max)
     return MatchPlan(
         map_file=map_record.file_name,
-        game_class=game_class_for(room.game_mode, room.team_count),
+        game_class=game_class_for(room.game_mode, room.team_count, map_record.op_type),
         max_players=max_players,
         time_limit=room.limit_time,
         goal_score=room.limit_score,

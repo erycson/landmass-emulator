@@ -17,6 +17,7 @@ from functools import partial
 from uuid import uuid4
 
 from landmass_emu.audit import EconomyAudit
+from landmass_emu.domain.loadout import LoadoutMember, LoadoutService
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.match import MatchPlan, build_plan
 from landmass_emu.domain.match_stats import (
@@ -150,6 +151,7 @@ class RoomHandlers:
         matches: MatchRepository | None,
         progression: ProgressionRepository | None = None,
         audit: EconomyAudit | None = None,
+        loadout: LoadoutService | None = None,
     ) -> None:
         self._lobby = lobby
         self._rooms = rooms
@@ -159,6 +161,7 @@ class RoomHandlers:
         self._matches = matches
         self._progression = progression
         self._audit = audit
+        self._loadout = loadout
         # Histórico em curso por sala: quem jogou no início. O fim e o motivo vêm depois.
         self._open: dict[int, MatchRecord] = {}
         # Hora em que cada jogador saiu da partida (500, volta à sala ou saída), por sala.
@@ -467,7 +470,7 @@ class RoomHandlers:
         """Sobe o servidor da partida e manda o 403 quando ele aceita conexões.
         Falha devolve a sala à espera e avisa o dono com o erro 241000201."""
         try:
-            plan = self._plan(room)
+            plan = await self._plan(room)
             endpoint = await self._match.start(
                 room.room_id, plan, partial(self._match_exited, room.room_id)
             )
@@ -578,14 +581,30 @@ class RoomHandlers:
                 para, reply_body(CsChargePointOut(point=saldo.ld), CHANNEL_NET_CODE)
             )
 
-    def _plan(self, room: Room) -> MatchPlan:
+    async def _plan(self, room: Room) -> MatchPlan:
         try:
             record = self._maps.get(room.map_num)
         except ValueError as e:
             raise MatchStartError(f"catálogo de mapas indisponível: {e}") from e
         if record is None:
             raise MatchStartError(f"mapa {room.map_num} não existe no catálogo")
-        return build_plan(room, record)
+        plan = build_plan(room, record)
+        return replace(plan, loadout=await self._loadout_of(room, plan.game_class))
+
+    async def _loadout_of(self, room: Room, game_class: str) -> tuple[str, ...]:
+        """Equipamento de cada jogador (LMEmu.ini, D190). Erro do catálogo não impede a partida: ela
+        sobe sem linhas e o motor usa o padrão do cliente para todos."""
+        if self._loadout is None:
+            return ()
+        membros = [
+            LoadoutMember(guid, self._lobby.nickname_of(guid) or "", membro.slot, membro.morats)
+            for guid, membro in room.members.items()
+        ]
+        try:
+            return await self._loadout.lines(membros, game_class, room.team_count)
+        except ValueError as e:
+            log.warning("sala %d sem equipamento no LMEmu.ini: %s", room.room_id, e)
+            return ()
 
     def _open_record(self, room: Room, plan: MatchPlan) -> MatchRecord:
         """Histórico no início: quem está na sala agora joga. Resultado e fim vêm em `_save`."""

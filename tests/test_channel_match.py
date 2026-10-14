@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 
 from test_channel_handlers import _corpos, _criar_sala, _entra_no_lobby, _Mapas
 
+from landmass_emu.domain.loadout import LoadoutMember
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.match import MapRecord, MatchPlan
 from landmass_emu.domain.match_stats import GameEndedPlayer, MatchRecord
@@ -96,12 +97,31 @@ class _Auditoria:
         self.linhas.append((event, account_id, fields))
 
 
+class _Equipamento:
+    """Serviço de equipamento sem banco: devolve linhas fixas, ou levanta `erro` como o catálogo
+    faz quando o wdb não tem as tabelas."""
+
+    def __init__(self, linhas: tuple[str, ...] = (), erro: Exception | None = None) -> None:
+        self._linhas = linhas
+        self._erro = erro
+        self.chamadas: list[tuple[list[LoadoutMember], str, int]] = []
+
+    async def lines(
+        self, membros: list[LoadoutMember], game_class: str, team_count: int
+    ) -> tuple[str, ...]:
+        self.chamadas.append((list(membros), game_class, team_count))
+        if self._erro is not None:
+            raise self._erro
+        return self._linhas
+
+
 def _montagem(
     host: _HostFalso,
     historico: _Historico | None = None,
     maps: MapCatalog | None = None,
     progressao: _Progressao | None = None,
     auditoria: _Auditoria | None = None,
+    equipamento: _Equipamento | None = None,
 ) -> tuple[RoomHandlers, Lobby, Rooms]:
     lobby = Lobby()
     rooms = Rooms()
@@ -114,6 +134,7 @@ def _montagem(
         historico,
         progression=progressao,
         audit=auditoria,
+        loadout=equipamento,
     )
     return handlers, lobby, rooms
 
@@ -172,7 +193,7 @@ async def test_401_do_dono_sobe_a_partida_e_so_depois_manda_403_aos_da_sala() ->
 
     [(room_id, plano)] = host.iniciados
     assert room_id == sala.room_id
-    assert (plano.map_file, plano.game_class) == ("ONS-Treino", "XGame.LM_TeamOperation")
+    assert (plano.map_file, plano.game_class) == ("ONS-Treino", "LMEmu.LMEmuTeamOperation")
     # Bia recebe: 402 de Bia pronta, 412 PLAYING ao canal, 402 do dono pronto (D77) e 403 com o
     # endereço do servidor.
     recebidos = _corpos(bia)
@@ -187,6 +208,34 @@ async def test_401_do_dono_sobe_a_partida_e_so_depois_manda_403_aos_da_sala() ->
     inicio = recebidos[3][1]
     assert inicio.split(b"\0")[0] == b"10.0.0.5"
     assert struct.unpack_from("<H", inicio, 16) == (7800,)
+
+
+async def test_plano_leva_o_equipamento_de_cada_jogador_ao_host() -> None:
+    host = _HostFalso()
+    equipamento = _Equipamento(("0041006E0061|?Team=0?morats=101000001",))
+    handlers, lobby, rooms = _montagem(host, _Historico(), equipamento=equipamento)
+    await _partida(handlers, lobby, rooms)
+
+    [(_, plano)] = host.iniciados
+    assert plano.loadout == ("0041006E0061|?Team=0?morats=101000001",)
+    [(membros, classe, grupos)] = equipamento.chamadas
+    assert classe == "LMEmu.LMEmuTeamOperation"
+    assert grupos == 1  # team_count da sala de teste (`_criar_sala`)
+    assert [(m.account_id, m.nickname, m.slot, m.gate) for m in membros] == [
+        (7, "Ana", 0, 0),
+        (9, "Bia", 1, 0),
+    ]
+
+
+async def test_erro_do_catalogo_sobe_a_partida_sem_equipamento() -> None:
+    host = _HostFalso()
+    equipamento = _Equipamento(erro=ValueError("catálogo sem Morats"))
+    handlers, lobby, rooms = _montagem(host, _Historico(), equipamento=equipamento)
+
+    await _partida(handlers, lobby, rooms)
+
+    [(_, plano)] = host.iniciados
+    assert plano.loadout == ()  # o motor usa o padrão do cliente; a partida não cai (D190)
 
 
 async def test_falha_ao_subir_servidor_volta_a_sala_a_espera_e_erra_para_o_dono() -> None:

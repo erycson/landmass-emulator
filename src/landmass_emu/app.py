@@ -30,6 +30,7 @@ from landmass_emu.domain.equipment import EquipService
 from landmass_emu.domain.gift import GiftService
 from landmass_emu.domain.inventory import InventoryService
 from landmass_emu.domain.lifecycle import DestroyService, ExtendService
+from landmass_emu.domain.loadout import LoadoutService
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.locks import AccountLocks
 from landmass_emu.domain.presence import MessagePresence
@@ -167,6 +168,7 @@ async def channel_server(
     audit: EconomyAudit,
     profiles: PlayerProfileRepository,
     gifts: GiftService,
+    loadout: LoadoutService,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
@@ -188,6 +190,7 @@ async def channel_server(
         audit=audit,
         profiles=profiles,
         gifts=GiftHandlers(gifts, lobby, audit),
+        loadout=loadout,
     )
     server = await Service(
         net_code=CHANNEL_NET_CODE,
@@ -218,7 +221,7 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         clans = SqlClanRepository(db)
         ranking = SqlRankingRepository(db)
         profiles = SqlPlayerProfileRepository(db)
-        shop, equipment, audit, gifts = _game_services(
+        shop, equipment, audit, gifts, loadout = _game_services(
             settings, db, accounts, progression, inventory
         )
         matches = SqlMatchRepository(db)
@@ -239,6 +242,7 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
                 audit,
                 profiles,
                 gifts,
+                loadout,
             ) as channel,
         ):
             yield message, channel
@@ -250,9 +254,10 @@ def _game_services(
     accounts: AccountRepository,
     progression: ProgressionRepository,
     inventory: InventoryRepository,
-) -> tuple[ShopService, EquipmentHandlers, EconomyAudit, GiftService]:
+) -> tuple[ShopService, EquipmentHandlers, EconomyAudit, GiftService, LoadoutService]:
     """Compra e F6/F7 com o mesmo catálogo (LazyItemCatalog, o canal sobe sem o wdb) e a mesma trava
-    por conta: uma conta não compra e equipa ao mesmo tempo."""
+    por conta: uma conta não compra e equipa ao mesmo tempo. O equipamento da partida (D190) lê o
+    mesmo catálogo."""
     wdb = settings.client_dir / "landmass.wdb"
     catalog = LazyItemCatalog(wdb)
     levels = WdbCatalog(wdb)
@@ -288,6 +293,7 @@ def _game_services(
         repository=SqlGiftRepository(db),
         locks=locks,
     )
+    loadout = LoadoutService(catalog=catalog, inventory=inventory, accounts=accounts)
     handlers = EquipmentHandlers(
         equip=EquipService(
             catalog=catalog,
@@ -314,4 +320,4 @@ def _game_services(
         audit=audit,
         use=use,
     )
-    return shop, handlers, audit, gifts
+    return shop, handlers, audit, gifts, loadout

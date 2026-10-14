@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 
 from landmass_emu.audit import EconomyAudit
+from landmass_emu.domain.loadout import LoadoutService
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.progression import ProgressionService
 from landmass_emu.domain.regular import RegularService
@@ -58,10 +59,19 @@ class ChannelHandlers:
         *,
         profiles: PlayerProfileRepository,
         gifts: GiftHandlers | None = None,
+        loadout: LoadoutService | None = None,
     ) -> None:
         records = ChannelRecords(lobby)
         room_handlers = RoomHandlers(
-            lobby, rooms, records, match, maps, matches, progression=progression, audit=audit
+            lobby,
+            rooms,
+            records,
+            match,
+            maps,
+            matches,
+            progression=progression,
+            audit=audit,
+            loadout=loadout,
         )
         progression_handlers = ProgressionHandlers(progression, ProgressionService())
         self._entry = EntryHandlers(

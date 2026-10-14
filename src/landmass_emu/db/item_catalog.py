@@ -55,6 +55,7 @@ class ItemCatalog:
         equip: dict[int, EquipSpec],
         morat_stats: dict[int, MoratStats],
         names: dict[int, str] | None = None,
+        defaults: dict[int, dict[str, int]] | None = None,
     ) -> None:
         self._inventory_items = inventory_items
         self._morats = morats
@@ -62,23 +63,29 @@ class ItemCatalog:
         self._equip = equip
         self._morat_stats = morat_stats
         self._names = names or {}
+        self._defaults = defaults or {}
 
     @classmethod
     def open(cls, path: Path) -> ItemCatalog:
         if not path.is_file():
             raise ValueError(f"catálogo do cliente não encontrado: {path}")
         uri = f"{path.resolve().as_uri()}?mode=ro"
-        with closing(sqlite3.connect(uri, uri=True)) as conn:
-            conn.text_factory = _decode
-            # Item (grupo 3) e Item_Equip (grupo 2) vão para o inventário; Morats (grupo 1), não.
-            items = _type_ids(conn, "item") | _type_ids(conn, "Item_Equip")
-            morats = _type_ids(conn, "Morats")
-            sales: dict[int, SaleInfo] = {}
-            for table, prefix, is_morat in _SALE_TABLES:
-                sales.update(_sale_infos(conn, table, prefix, is_morat))
-            equip_fields = _attributes(conn, "Item_Equip", "item_", _EQUIP_NAMES)
-            morat_fields = _attributes(conn, "Morats", "", _MORAT_NAMES)
-            names = _names(conn)
+        try:
+            with closing(sqlite3.connect(uri, uri=True)) as conn:
+                conn.text_factory = _decode
+                # Item (grupo 3) e Item_Equip (grupo 2) vão ao inventário; Morats (grupo 1), não.
+                items = _type_ids(conn, "item") | _type_ids(conn, "Item_Equip")
+                morats = _type_ids(conn, "Morats")
+                sales: dict[int, SaleInfo] = {}
+                for table, prefix, is_morat in _SALE_TABLES:
+                    sales.update(_sale_infos(conn, table, prefix, is_morat))
+                equip_fields = _attributes(conn, "Item_Equip", "item_", _EQUIP_NAMES)
+                morat_fields = _attributes(conn, "Morats", "", _MORAT_NAMES)
+                names = _names(conn)
+                defaults = _default_sets(conn)
+        except sqlite3.Error as e:
+            # Mesmo tratamento do `WdbCatalog`: quem consulta recebe ValueError, não erro do SQLite.
+            raise ValueError(f"catálogo do cliente ilegível: {e}") from e
         # Equipar não depende de venda: um equipamento sem preço ainda monta.
         equip = {
             cid: _equip_spec(fields, sales[cid].requirements if cid in sales else Requirements())
@@ -90,7 +97,7 @@ class ItemCatalog:
             for cid, fields in morat_fields.items()
             if "required_class" in fields
         }
-        return cls(frozenset(items), frozenset(morats), sales, equip, stats, names)
+        return cls(frozenset(items), frozenset(morats), sales, equip, stats, names, defaults)
 
     def is_inventory_item(self, catalog_id: int) -> bool:
         return catalog_id in self._inventory_items
@@ -109,6 +116,11 @@ class ItemCatalog:
 
     def name(self, catalog_id: int) -> str | None:
         return self._names.get(catalog_id)
+
+    def default_set(self, morat_id: int) -> dict[str, int]:
+        """Peças padrão da espécie (chaves do `DefaultSet`: `MainWeapon`, `Skin1`...). Vazio se o
+        morat não tem set no wdb."""
+        return self._defaults.get(morat_id, {})
 
 
 class LazyItemCatalog:
@@ -142,9 +154,36 @@ class LazyItemCatalog:
     def name(self, catalog_id: int) -> str | None:
         return self._catalog().name(catalog_id)
 
+    def default_set(self, morat_id: int) -> dict[str, int]:
+        return self._catalog().default_set(morat_id)
+
 
 def _decode(raw: bytes) -> str:
     return raw.decode("cp1252", errors="replace")
+
+
+def _default_sets(conn: sqlite3.Connection) -> dict[int, dict[str, int]]:
+    """Peças padrão por morat. `Morats.defaultset` aponta o set; `DefaultSet` traz as peças de cada
+    set (`type` é o set, `key` a peça, `value` o id, vazio vira 0). Sem a tabela: sem padrões."""
+    try:
+        linhas = conn.execute('SELECT type, "key", value FROM DefaultSet').fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    sets: dict[str, dict[str, int]] = {}
+    for tipo, chave, valor in linhas:
+        sets.setdefault(str(tipo), {})[str(chave)] = _valor_inteiro(valor)
+    padroes: dict[int, dict[str, int]] = {}
+    for tipo, set_id in conn.execute(
+        'SELECT type, value FROM Morats WHERE "key" = ?', ("defaultset",)
+    ):
+        if str(tipo).isdigit() and str(set_id) in sets:
+            padroes[int(tipo)] = sets[str(set_id)]
+    return padroes
+
+
+def _valor_inteiro(valor: object) -> int:
+    texto = str(valor or "").strip()
+    return int(texto) if texto.isdigit() else 0
 
 
 def _names(conn: sqlite3.Connection) -> dict[int, str]:

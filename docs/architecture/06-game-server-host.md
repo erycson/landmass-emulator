@@ -23,11 +23,13 @@ Uma partida por sala. O canal lança um servidor próprio para cada sala que ini
 - **Fixa** (`FixedMatchHost`): sem `LANDMASS_MATCH_SERVER_DIR`. O 403 leva `LANDMASS_GAME_HOST:LANDMASS_GAME_PORT`; não há processo. Mesmo assim, o 401 consulta o mapa no `landmass.wdb` (ver Riscos).
 - **Por processo** (`ProcessMatchHost`): com `LANDMASS_MATCH_SERVER_DIR` (pasta `system\` do servidor-partida):
   1. Escolhe a primeira porta UDP livre em `LANDMASS_MATCH_PORT_MIN..MAX`. O teste é um bind e fechamento, feito antes do lançamento.
-  2. Lança `LandMass.exe <mapa>?listen?game=<classe>?MaxPlayers=<n>?TimeLimit=<t>?GoalScore=<g> -server PORT=<porta> -log login_server=<msg>?version=<v>?login_num=<l>`. `login_server` é `LANDMASS_PUBLIC_HOST:LANDMASS_MESSAGE_PORT`.
-  3. Espera a porta aparecer em `netstat -ano -p UDP` com o PID do próprio processo, até `LANDMASS_MATCH_READY_TIMEOUT` segundos. Não há bind de teste depois do lançamento: disputaria a porta com o servidor.
-  4. Se o processo cai antes de abrir a porta, ou o prazo vence, o processo é encerrado e a partida falha.
+  2. Grava a seção `[m<8 hex> LMEmuLoadout]` no `LMEmu.ini` da pasta de sistema, com uma linha `Players=` por jogador (`hosting/loadout.py`, D190). Falha de escrita é falha de início.
+  3. Lança `LandMass.exe <mapa>?listen?game=<classe>?MaxPlayers=<n>?TimeLimit=<t>?GoalScore=<g>?lmemu=<chave> -server PORT=<porta> -log login_server=<msg>?version=<v>?login_num=<l>`. `login_server` é `LANDMASS_PUBLIC_HOST:LANDMASS_MESSAGE_PORT`. A classe é `LMEmu.*` (D190).
+  4. Espera a porta aparecer em `netstat -ano -p UDP` com o PID do próprio processo, até `LANDMASS_MATCH_READY_TIMEOUT` segundos. Não há bind de teste depois do lançamento: disputaria a porta com o servidor.
+  5. Se o processo cai antes de abrir a porta, ou o prazo vence, o processo é encerrado, a seção sai do `LMEmu.ini` e a partida falha.
 - `PORT=` abre uma única tentativa, sem fallback (re/game_server_host.md, §10). Porta ocupada é falha, não troca.
-- Plano da partida (`domain/match.py`, puro): mapa de `maps` (`RecordIndex` = `map_num`), classe pelo modo (D53), `MaxPlayers` limitado pelo mapa e no mínimo 2.
+- Plano da partida (`domain/match.py`, puro): mapa de `maps` (`RecordIndex` = `map_num`), classe pelo modo e pelo `OPType` do mapa (D53, D170, D192), `MaxPlayers` limitado pelo mapa e no mínimo 2.
+- Equipamento (`domain/loadout.py`, puro, com as portas de inventário e conta): para cada jogador, o morat do gate escolhido no 401, com peças e pinturas montadas, senão o `DefaultSet` do wdb. Ver D190.
 
 ### Fim da partida
 
@@ -82,4 +84,5 @@ Este contrato só seria necessário se a validação de jogador fosse feita pelo
 - Matching de `map_num` com `RecordIndex` e unidades de `TimeLimit` são inferidos (D53).
 - Um cliente que nunca manda 500 com o servidor vivo mantém a sala em jogo até o processo cair. Sem prazo próprio de partida (ver `operations/game-server.md`).
 - Modo fixo também precisa do `landmass.wdb` e do mapa da sala: sem eles o 401 devolve 241000201. Antes do marco 4 o 403 saía sem consultar o catálogo, então é uma mudança de comportamento.
-- Pawn sem personagem e sem booster ou gerador: o loadout não sai do cliente (`EnterGame` não manda `character`), então o emulador não tem como montá-lo na partida. Ver D141 e `re/game_server_host.md`, §12.
+- Equipamento na partida (D190): o cliente não manda o equipamento (`EnterGame` não manda `character`, D141). O emulador monta cada jogador no `LMEmu.ini` a partir do inventário. Não validado no jogo: o pacote `LMEmu` precisa estar em `servidor-partida\system` (ver [game-server](../operations/game-server.md)), e o `selected_morats` do 401 é tratado como gate sem prova (`re/rooms.md` §5).
+- Bombing Run (D192): a classe e o grupo mínimo de dois times vêm do `CServerRoom::Init` nativo. Não testados com clientes.

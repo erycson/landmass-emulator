@@ -10,10 +10,12 @@ from landmass_emu.domain.match import MatchPlan
 
 
 def match_url(plan: MatchPlan) -> str:
-    """Primeiro token: mapa, listen e as opções de jogo que o cliente lê em `InitGame`."""
+    """Primeiro token: mapa, listen e as opções de jogo que o cliente lê em `InitGame`. A chave
+    `lmemu` manda o pacote LMEmu ler a seção do equipamento (D190)."""
+    lmemu = f"?lmemu={plan.lmemu_key}" if plan.lmemu_key else ""
     return (
         f"{plan.map_file}?listen?game={plan.game_class}?MaxPlayers={plan.max_players}"
-        f"?TimeLimit={plan.time_limit}?GoalScore={plan.goal_score}"
+        f"?TimeLimit={plan.time_limit}?GoalScore={plan.goal_score}{lmemu}"
     )
 
 

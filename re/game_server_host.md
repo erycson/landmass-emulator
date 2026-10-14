@@ -172,13 +172,15 @@ Implementação: `src/landmass_emu/hosting/command.py` (linha de comando, tabela
 Forma escrita pelo emulador:
 
 ```
-<mapa>?listen?game=<classe>?MaxPlayers=<n>?TimeLimit=<t>?GoalScore=<g> -server PORT=<porta> -log login_server=<ip>:<porta>?version=<v>?login_num=<l>
+<mapa>?listen?game=<classe>?MaxPlayers=<n>?TimeLimit=<t>?GoalScore=<g>?lmemu=<chave> -server PORT=<porta> -log login_server=<ip>:<porta>?version=<v>?login_num=<l>
 ```
 
 - `version=` e `login_num=` continuam como último token, sem nada depois (seção 2).
 - `PORT=` vem antes de `-log`. O `main` (`re/LandMass.exe/main_loop.c`, linhas 74-162) remove cada chave de login do fim e preserva o prefixo, então `PORT=` chega ao `appInit`.
 - `game=`, `MaxPlayers`, `TimeLimit` e `GoalScore` são opções de URL. Os nomes vêm do `XGame` (inferido); o servidor ainda não as confirmou em execução.
-- Classes: `XGame.LM_DeathMatch`, `XGame.LM_TeamDeathMatch` (time, D170; antes `XGame.LM_TeamGame`) e `XGame.LM_TeamOperation`, pela regra de modo da UI (D53).
+- `?lmemu=<chave>` (D190) manda o pacote `LMEmu` ler a seção `[<chave> LMEmuLoadout]` do `LMEmu.ini` da pasta de sistema, com o equipamento de cada jogador.
+- Classes lançadas: `LMEmu.LMEmuDeathMatch`, `LMEmu.LMEmuTeamDeathMatch`, `LMEmu.LMEmuTeamOperation` e `LMEmu.LMEmuBombingRun` (D190, D192). Por baixo, são `XGame.LM_DeathMatch`, `XGame.LM_TeamDeathMatch` (time, D170; antes `XGame.LM_TeamGame`), `XGame.LM_TeamOperation` e `XGame.xBombingRun`.
+- Regra de modo, como `CServerRoom::Init` (`re/LM_Engine.dll/all/100163d0_Init.c`, linhas 317 a 363). Modo 0 com `team_count >= 2` é time. Modo 1 escolhe pelo `OPType` do mapa: 1 é Bombing Run, 0 é OP. Outro `OPType` vira `LM_OnslaughtGame` no nativo, e DM no emulador (D192). Antes, a regra não olhava o `OPType` e tratava qualquer modo 1 como OP (D53).
 
 ### 10.2 `PORT=` (RE de `IpDrv` e `Core`)
 

@@ -25,6 +25,15 @@ Log: Socket close at UNetConnection::Tick by TimeOut
 """
 
 
+def test_cabecalho_com_a_classe_do_lmemu_tambem_casa() -> None:
+    # Com o pacote LMEmu (D190) o nome da classe no cabeçalho muda; o parser não depende dele.
+    texto = LOG_REAL.replace("XGame.LM_TeamGame Ended", "LMEmu.LMEmuDeathMatch Ended")
+
+    [jogador] = parse_game_ended(texto)
+
+    assert jogador.nickname == "Tester2"
+
+
 def test_bloco_real_da_primeira_partida_com_dois_clientes() -> None:
     [jogador] = parse_game_ended(LOG_REAL)
 

@@ -17,7 +17,7 @@ Carregue com `pydantic-settings` (`settings.py`), prefixo `LANDMASS_`, de variá
 | `LANDMASS_GAME_HOST` | `127.0.0.1` | Endereço do servidor de partida anunciado no 403 (`NotifyStartGame`). Máximo 15 caracteres (campo `char[16]` NUL-terminado). Mínimo 1. Com `LANDMASS_MATCH_SERVER_DIR`, é o endereço do 403 de toda partida. | 3, 4 |
 | `LANDMASS_GAME_PORT` | `7777` | Porta do servidor de partida anunciada no 403 quando a partida é fixa (sem `LANDMASS_MATCH_SERVER_DIR`). Entre 1 e 65535. | 3, 4 |
 | `LANDMASS_GAME_SERVER_PASSWORD` | `4567` | Senha que o Game Server Host apresenta ao Channel (`ch_pw`). Não usada no caminho por processo (D46). | 4 |
-| `LANDMASS_MATCH_SERVER_DIR` | não definida | Pasta `system\` do servidor-partida, com o `LandMass.exe`. Sem ela a partida é o endereço fixo de `LANDMASS_GAME_HOST/PORT`. Com ela, cada sala em partida tem um processo próprio (D46). | 4 |
+| `LANDMASS_MATCH_SERVER_DIR` | não definida | Pasta `system\` do servidor-partida, com o `LandMass.exe`. Sem ela a partida é o endereço fixo de `LANDMASS_GAME_HOST/PORT`. Com ela, cada sala em partida tem um processo próprio (D46), e o equipamento vai para `LMEmu.ini` nessa pasta (D190). | 4 |
 | `LANDMASS_MATCH_PORT_MIN` | `7800` | Primeira porta UDP da faixa das partidas. Entre 1024 e 65535. Não pode ser maior que `LANDMASS_MATCH_PORT_MAX`. | 4 |
 | `LANDMASS_MATCH_PORT_MAX` | `7899` | Última porta UDP da faixa das partidas. Entre 1024 e 65535. | 4 |
 | `LANDMASS_MATCH_READY_TIMEOUT` | `30` | Segundos até a porta da partida aparecer em `netstat`. Entre 0 e 300 (exclusivo em 0). Vencido o prazo, a sala volta à espera e o dono recebe o erro 241000201 (D47). | 4 |

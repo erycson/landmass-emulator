@@ -37,8 +37,22 @@ def _criar_wdb(caminho: Path) -> Path:
             ("strength", "185"),
             ("agility", "185"),
             ("precision", "200"),
+            ("defaultset", "1"),
         ):
             conn.execute("INSERT INTO Morats VALUES ('101000001', ?, ?)", (chave, valor))
+        conn.execute(
+            'CREATE TABLE DefaultSet (memo TEXT, type TEXT, section TEXT, "key" TEXT, '
+            "array INTEGER, value TEXT, desc TEXT)"
+        )
+        for chave, valor in (
+            ("Morats", "101000001"),
+            ("MainWeapon", "201030001"),
+            ("EtcWeapon3", ""),
+            ("Skin1", "307010001"),
+        ):
+            conn.execute(
+                "INSERT INTO DefaultSet VALUES ('', '1', 'Character', ?, 0, ?, '')", (chave, valor)
+            )
         conn.commit()
     return caminho
 
@@ -122,6 +136,36 @@ def test_morat_stats_com_classe_e_atributos(wdb: Path) -> None:
     )
 
 
+def test_default_set_do_morat_vem_do_set_de_defaultset(wdb: Path) -> None:
+    padrao = ItemCatalog.open(wdb).default_set(101000001)
+
+    # Vazio no wdb vira 0; morat sem set não tem padrão.
+    assert padrao == {
+        "Morats": 101000001,
+        "MainWeapon": 201030001,
+        "EtcWeapon3": 0,
+        "Skin1": 307010001,
+    }
+    assert ItemCatalog.open(wdb).default_set(999) == {}
+
+
+def test_wdb_sem_defaultset_abre_sem_padrao(wdb: Path) -> None:
+    with closing(sqlite3.connect(wdb)) as conn:
+        conn.execute("DROP TABLE DefaultSet")
+        conn.commit()
+
+    assert ItemCatalog.open(wdb).default_set(101000001) == {}
+    assert ItemCatalog.open(wdb).is_morat(101000001)
+
+
+def test_wdb_sem_tabelas_do_catalogo_levanta_valueerror(tmp_path: Path) -> None:
+    caminho = tmp_path / "vazio.wdb"
+    sqlite3.connect(caminho).close()
+
+    with pytest.raises(ValueError, match="ilegível"):
+        ItemCatalog.open(caminho)
+
+
 def test_caminho_inexistente_levanta(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="não encontrado"):
         ItemCatalog.open(tmp_path / "nao_existe.wdb")
@@ -152,3 +196,6 @@ def test_wdb_real_morats_e_item() -> None:
     venda = catalogo.sale(101000001)
     assert venda is not None
     assert venda.ld[0] == 5000
+    # DefaultSet do set 1 (Morats.defaultset de 101000001): arma principal e pintura padrão.
+    padrao = catalogo.default_set(101000001)
+    assert (padrao["MainWeapon"], padrao["Skin1"]) == (201030001, 307010001)

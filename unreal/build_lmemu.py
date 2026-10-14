@@ -66,7 +66,12 @@ class LMEmuBuilder:
     def _make(self) -> None:
         (self.system / f"{PACKAGE}.u").unlink(missing_ok=True)
         result = subprocess.run(
-            [str(self.system / "ucc.exe"), "Editor.MakeCommandlet", "-ini=LandMass.ini", "-userini=User.ini"],
+            [
+                str(self.system / "ucc.exe"),
+                "Editor.MakeCommandlet",
+                "-ini=LandMass.ini",
+                "-userini=User.ini",
+            ],
             cwd=self.system,
             capture_output=True,
             text=True,

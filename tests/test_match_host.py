@@ -5,6 +5,7 @@ import asyncio
 import socket
 import sys
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 from subprocess import DEVNULL
 
@@ -16,11 +17,12 @@ from landmass_emu.ports.match_host import GameEndpoint, MatchStartError
 
 PLANO = MatchPlan(
     map_file="ONS-Treino",
-    game_class="XGame.LM_DeathMatch",
+    game_class="LMEmu.LMEmuDeathMatch",
     max_players=8,
     time_limit=10,
     goal_score=20,
 )
+EQUIPE = ("0041006E0061|?Team=0?morats=101000001",)
 DORME = [sys.executable, "-c", "import time; time.sleep(60)"]
 LOG_PARTIDA = """\
 GameEnded: XGame.LM_TeamGame Ended Deathmatch Exp/Money ==============================
@@ -58,12 +60,14 @@ class _Falso:
         self.portas: list[int] = []
         self.processos: list[asyncio.subprocess.Process] = []
         self.logs: list[str] = []
+        self.planos: list[MatchPlan] = []
         self._anuncia = anuncia
         self._argv = list(argv)
 
     def argv(self, plan: MatchPlan, port: int, log_name: str) -> list[str]:
         self.portas.append(port)
         self.logs.append(log_name)
+        self.planos.append(plan)
         return self._argv
 
     async def spawn(self, argv: list[str], cwd: Path) -> asyncio.subprocess.Process:
@@ -179,7 +183,33 @@ async def test_executavel_inexistente_vira_erro_de_inicio(tmp_path: Path) -> Non
     )
 
     with pytest.raises(MatchStartError, match="não iniciou"):
-        await host.start(7, PLANO, _sem_queda)
+        await host.start(7, replace(PLANO, loadout=EQUIPE), _sem_queda)
+    # Sem processo, a seção gravada antes do lançamento sai do LMEmu.ini.
+    assert "LMEmuLoadout" not in (tmp_path / "LMEmu.ini").read_bytes().decode("cp1252")
+
+
+async def test_start_grava_a_secao_do_lmemu_e_finish_tira_so_a_da_sala(tmp_path: Path) -> None:
+    falso = _Falso()
+    host = _host(tmp_path, falso)
+    try:
+        await host.start(7, replace(PLANO, loadout=EQUIPE), _sem_queda)
+        await host.start(8, replace(PLANO, loadout=("0042006F0062|?Team=1",)), _sem_queda)
+        chave_7, chave_8 = falso.planos[0].lmemu_key, falso.planos[1].lmemu_key
+        assert chave_7 != chave_8
+        assert chave_7.startswith("m") and len(chave_7) == 9  # m + 8 hex, como o log_name
+
+        ini = (tmp_path / "LMEmu.ini").read_bytes().decode("cp1252")
+        assert f"[{chave_7} LMEmuLoadout]\r\nPlayers={EQUIPE[0]}\r\n" in ini
+        assert f"[{chave_8} LMEmuLoadout]\r\nPlayers=0042006F0062|?Team=1\r\n" in ini
+
+        host.finish(7)
+
+        ini = (tmp_path / "LMEmu.ini").read_bytes().decode("cp1252")
+        assert f"[{chave_7}" not in ini
+        assert f"[{chave_8} LMEmuLoadout]" in ini
+    finally:
+        await host.close()
+    assert (tmp_path / "LMEmu.ini").read_bytes().decode("cp1252").count("LMEmuLoadout") == 0
 
 
 async def _sem_tabela() -> str:
@@ -195,13 +225,14 @@ async def test_end_sem_janela_derruba_o_processo_e_le_o_bloco_do_log(tmp_path: P
         argv=falso.argv,
         exit_sender=lambda pid: False,
     )
-    await host.start(7, PLANO, _sem_queda)
+    await host.start(7, replace(PLANO, loadout=EQUIPE), _sem_queda)
     (tmp_path / falso.logs[-1]).write_text(LOG_PARTIDA, encoding="utf-8")
 
     jogadores = await host.end(7)
 
     assert [j.nickname for j in jogadores] == ["Tester2"]
     assert falso.processos[-1].returncode is not None
+    assert "LMEmuLoadout" not in (tmp_path / "LMEmu.ini").read_bytes().decode("cp1252")
 
 
 async def test_end_digita_exit_e_espera_o_motor_sair(tmp_path: Path) -> None:

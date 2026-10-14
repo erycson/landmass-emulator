@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from landmass_emu.db.catalog import WdbCatalog
 from landmass_emu.domain.match import (
+    GAME_BOMBING,
     GAME_DEATHMATCH,
     GAME_OPERATION,
     GAME_TEAM,
@@ -40,11 +41,36 @@ def _sala(**campos: int) -> Room:
     return Room(**base)  # type: ignore[arg-type]
 
 
-def test_modo_da_ui_vira_classe_do_jogo() -> None:
-    assert game_class_for(1, 1) == GAME_OPERATION
-    assert game_class_for(0, 2) == GAME_TEAM == "XGame.LM_TeamDeathMatch"  # D170
-    assert game_class_for(0, 1) == GAME_DEATHMATCH
-    assert game_class_for(2, 2) == GAME_DEATHMATCH
+@pytest.mark.parametrize(
+    ("game_mode", "team_count", "op_type", "classe"),
+    [
+        (1, 1, 1, GAME_BOMBING),  # OP com mapa de Bombing Run (OP-AirPort, OPType 1)
+        (1, 0, 1, GAME_BOMBING),
+        (1, 1, 0, GAME_OPERATION),  # OP com mapa de OP (OPType 0)
+        (1, 0, 0, GAME_OPERATION),
+        (0, 2, 0, GAME_TEAM),
+        (0, 3, 0, GAME_TEAM),  # time com mais de dois grupos (>= 2, como o nativo)
+        (0, 2, 1, GAME_TEAM),  # OPType só vale em modo OP
+        (0, 1, 0, GAME_DEATHMATCH),
+        (2, 2, 0, GAME_DEATHMATCH),
+        (1, 2, 2, GAME_DEATHMATCH),  # OPType sem classe LMEmu (Onslaught nativo): DM
+    ],
+)
+def test_modo_e_optype_do_mapa_escolhem_a_classe(
+    game_mode: int, team_count: int, op_type: int, classe: str
+) -> None:
+    assert game_class_for(game_mode, team_count, op_type) == classe
+
+
+def test_url_sem_chave_nao_leva_lmemu() -> None:
+    assert "lmemu" not in match_url(MatchPlan("ONS-Treino", GAME_DEATHMATCH, 8, 10, 20))
+
+
+def test_classes_do_lmemu_com_nomes_do_pacote() -> None:
+    assert GAME_TEAM == "LMEmu.LMEmuTeamDeathMatch"  # D170, estendido pelo D190
+    assert GAME_OPERATION == "LMEmu.LMEmuTeamOperation"
+    assert GAME_BOMBING == "LMEmu.LMEmuBombingRun"
+    assert GAME_DEATHMATCH == "LMEmu.LMEmuDeathMatch"
 
 
 def test_plano_limita_jogadores_ao_mapa_e_ao_minimo_de_dois() -> None:
@@ -56,8 +82,16 @@ def test_plano_limita_jogadores_ao_mapa_e_ao_minimo_de_dois() -> None:
     assert build_plan(_sala(max_player=1), mapa).max_players == 2
 
 
+def test_plano_usa_o_optype_do_mapa_para_o_modo_op() -> None:
+    airport = MapRecord(record_id=22, file_name="OP-AirPort", player_max=32, op_type=1)
+    treino = MapRecord(record_id=1, file_name="ONS-Treino", player_max=32, op_type=0)
+
+    assert build_plan(_sala(game_mode=1), airport).game_class == GAME_BOMBING
+    assert build_plan(_sala(game_mode=1), treino).game_class == GAME_OPERATION
+
+
 def test_linha_de_comando_leva_a_porta_antes_do_login() -> None:
-    plano = MatchPlan("ONS-Treino", GAME_DEATHMATCH, 8, 10, 20)
+    plano = MatchPlan("ONS-Treino", GAME_DEATHMATCH, 8, 10, 20, lmemu_key="m1a2b3c4d")
 
     argv = build_command(
         Path("LandMass.exe"),
@@ -70,7 +104,8 @@ def test_linha_de_comando_leva_a_porta_antes_do_login() -> None:
 
     assert argv[1] == match_url(plano)
     assert match_url(plano) == (
-        "ONS-Treino?listen?game=XGame.LM_DeathMatch?MaxPlayers=8?TimeLimit=10?GoalScore=20"
+        "ONS-Treino?listen?game=LMEmu.LMEmuDeathMatch?MaxPlayers=8?TimeLimit=10?GoalScore=20"
+        "?lmemu=m1a2b3c4d"
     )
     assert argv[2:] == [
         "-server",

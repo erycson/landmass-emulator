@@ -7,6 +7,10 @@ lançamento disputaria a porta com o servidor, então não é usado. `PORT=` abr
 
 Fim: `end` digita `exit` na janela para o motor gravar o `LOG=` da partida e só então derruba o
 processo. `finish` derruba na hora (abandono e reinício de sala).
+
+Equipamento (D190): antes do lançamento, a seção `[m<8 hex> LMEmuLoadout]` vai para o `LMEmu.ini`
+da pasta de sistema do servidor; o motor lê na entrada de cada jogador. A seção sai em `end`,
+`finish`, em falha de lançamento e quando o processo cai sozinho.
 """
 
 import asyncio
@@ -15,7 +19,7 @@ import logging
 import os
 import socket
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from subprocess import DEVNULL, PIPE
 from uuid import uuid4
@@ -24,6 +28,7 @@ from landmass_emu.domain.match import MatchPlan
 from landmass_emu.domain.match_stats import GameEndedPlayer
 from landmass_emu.hosting.command import build_command, udp_listeners
 from landmass_emu.hosting.game_end import parse_game_ended
+from landmass_emu.hosting.loadout import LoadoutFile
 from landmass_emu.hosting.window import send_exit
 from landmass_emu.ports.match_host import GameEndpoint, MatchStartError
 
@@ -35,6 +40,7 @@ NETSTAT_TIMEOUT = 5.0
 # voltar cortado, subir este prazo antes de mexer no resto.
 EXIT_GRACE_SECONDS = 8.0
 EXE_NAME = "LandMass.exe"
+LOADOUT_FILE = "LMEmu.ini"
 CREATE_NO_WINDOW = 0x08000000
 
 ExitCallback = Callable[[], Awaitable[None]]
@@ -63,6 +69,7 @@ class _Running:
     process: asyncio.subprocess.Process
     on_exit: ExitCallback
     log_name: str  # arquivo LOG= da partida, dentro de server_dir
+    loadout_key: str  # seção da partida no LMEmu.ini
     ready: bool = False
 
 
@@ -84,15 +91,28 @@ class ProcessMatchHost:
         self._netstat = netstat or _netstat_udp
         self._argv = argv or self._default_argv
         self._exit_sender = exit_sender or send_exit
+        self._loadouts = LoadoutFile(config.server_dir / LOADOUT_FILE)
         self._running: dict[int, _Running] = {}
         self._watchers: set[asyncio.Task[None]] = set()
 
     async def start(self, room_id: int, plan: MatchPlan, on_exit: ExitCallback) -> GameEndpoint:
         self.finish(room_id)
         port = self._pick_port()
-        log_name = f"partida-{port}-{uuid4().hex[:8]}.log"
-        process = await self._spawn(self._argv(plan, port, log_name), self._config.server_dir)
-        match = _Running(room_id, port, process, on_exit, log_name)
+        token = uuid4().hex[:8]
+        log_name = f"partida-{port}-{token}.log"
+        key = f"m{token}"
+        try:
+            self._loadouts.write(key, plan.loadout)
+        except OSError as e:
+            raise MatchStartError(f"LMEmu.ini não gravado: {e}") from e
+        try:
+            process = await self._spawn(
+                self._argv(replace(plan, lmemu_key=key), port, log_name), self._config.server_dir
+            )
+        except BaseException:
+            self._loadouts.remove(key)
+            raise
+        match = _Running(room_id, port, process, on_exit, log_name, key)
         self._running[room_id] = match
         watcher = asyncio.create_task(self._watch(match))
         self._watchers.add(watcher)
@@ -114,6 +134,7 @@ class ProcessMatchHost:
             # No Windows, terminar processo já encerrado levanta PermissionError (OSError).
             with contextlib.suppress(OSError):
                 match.process.terminate()
+        self._loadouts.remove(match.loadout_key)
         log.info("partida da sala %d: servidor encerrado (porta %d)", room_id, match.port)
 
     async def end(self, room_id: int) -> tuple[GameEndedPlayer, ...]:
@@ -131,6 +152,7 @@ class ProcessMatchHost:
             with contextlib.suppress(OSError):
                 match.process.terminate()
             await match.process.wait()
+        self._loadouts.remove(match.loadout_key)
         log.info("partida da sala %d: servidor encerrado (porta %d)", room_id, match.port)
         return parse_game_ended(self._read_log(match.log_name) or "")
 
@@ -182,6 +204,7 @@ class ProcessMatchHost:
         if self._running.get(match.room_id) is not match:
             return  # encerrado por finish ou end: não é queda
         del self._running[match.room_id]
+        self._loadouts.remove(match.loadout_key)
         if not match.ready:
             log.warning("servidor da sala %d encerrou antes de ficar pronto", match.room_id)
             return

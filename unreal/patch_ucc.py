@@ -21,7 +21,7 @@ PATCHES = {
     0x409554: (b"\xdc\x01\x00\x00", b"\xe4\x01\x00\x00"),
     0x4095AA: (b"\xdc\x01\x00\x00", b"\xe4\x01\x00\x00"),
     0x4094E8: (b"\x2c", b"\x34"),
-    # call [edx+0x70] -> +0x74: o LandMass inseriu UObject::DBResult no slot 0x70, Main foi para 0x74
+    # call [edx+0x70] -> +0x74: o LandMass inseriu UObject::DBResult no slot 0x70 (Main em 0x74)
     0x409550: (b"\xff\x52\x70", b"\xff\x52\x74"),
 }
 
@@ -33,9 +33,11 @@ def va_to_off(data: bytes, va: int) -> int:
     base = struct.unpack_from("<I", data, pe + 24 + 28)[0]
     sec = pe + 24 + opt
     for i in range(nsec):
-        vaddr, vsize, raw = struct.unpack_from("<III", data, sec + i * 40 + 12)[:1] + struct.unpack_from(
-            "<I", data, sec + i * 40 + 8
-        ) + struct.unpack_from("<I", data, sec + i * 40 + 20)
+        vaddr, vsize, raw = (
+            struct.unpack_from("<III", data, sec + i * 40 + 12)[:1]
+            + struct.unpack_from("<I", data, sec + i * 40 + 8)
+            + struct.unpack_from("<I", data, sec + i * 40 + 20)
+        )
         if base + vaddr <= va < base + vaddr + vsize:
             return va - base - vaddr + raw
     raise ValueError(hex(va))

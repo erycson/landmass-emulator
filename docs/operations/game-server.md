@@ -86,6 +86,10 @@ Arquivo: `D:\landmass\servidor-partida\system\LandMass.log`, gravado no encerram
 
 Com `LANDMASS_MATCH_SERVER_DIR`, o canal sobe um `LandMass.exe` por sala que inicia a partida e o encerra no fim (D46). Sem a variável, vale o `servidor.bat` com endereço fixo, como acima.
 
+O equipamento de cada jogador vai para `LMEmu.ini`, na mesma pasta `system\`, em uma seção `[m<8 hex> LMEmuLoadout]` por partida. A seção é gravada antes do lançamento e tirada no fim, na falha de início e na queda (D190).
+
+Pré-requisito: o pacote `LMEmu` precisa estar em `servidor-partida\system`. Gere-o a partir da raiz de `emulador\` com `uv run python unreal/build_lmemu.py --landmass D:/landmass`. O script compila com o UCC 3369 ajustado e copia `LMEmu.u` para essa pasta. Sem o pacote, a classe `LMEmu.*` não existe no motor (inferido, não testado).
+
 Configuração (PowerShell, na raiz de `emulador\`). O valor de `login_num` vem do `jogar_teste.bat`; não o escreva em arquivo versionado:
 
 ```
@@ -106,14 +110,14 @@ Pré-requisito: `servidor-partida` com os patches conferidos (ver acima) e duas 
 | 2 | Abrir `cliente\jogar_ana.bat` e `cliente2\jogar_bia.bat`, entrar no canal 1. | Sem log de erro. Os dois veem um ao outro no lobby. |
 | 3 | Ana cria sala DM em ONS-Treino, 2 vagas. | `[...] sala 1 criada: <nome>` |
 | 4 | Bia entra na sala 1. | `[...] entrou na sala 1` |
-| 5 | Bia marca pronto; Ana inicia. | `partida iniciada na sala 1`, depois `partida da sala 1: XGame.LM_DeathMatch pronta na porta UDP 7800`. |
+| 5 | Bia marca pronto; Ana inicia. | `partida iniciada na sala 1`, depois `partida da sala 1: LMEmu.LMEmuDeathMatch pronta na porta UDP 7800`. |
 | 6 | Conferir a porta: `netstat -ano -p UDP \| findstr :7800`. | Uma linha `UDP 0.0.0.0:7800` com o PID do `LandMass.exe` lançado. |
 | 7 | Os clientes mostram a contagem (402 pronto do dono, D77) e entram em `127.0.0.1:7800`. | (Não confirmado: aceitar o 403 atrasado.) |
 | 8 | Jogar até o fim. Cada cliente manda 500 ao sair da partida. | `partida da sala 1: servidor encerrado (porta 7800)`. Sala volta à espera e Bia fica sem pronto. |
-| 9 | Conferir o histórico (com o emulador parado): `uv run python -c "import sqlite3; c=sqlite3.connect('data/landmass.db'); print(c.execute('select id, room_id, map_file, game_class, end_reason from matches').fetchall()); print(c.execute('select match_id, account_id, nickname, is_master, kills from match_players').fetchall())"` | Uma linha em `matches` (`ONS-Treino`, `XGame.LM_DeathMatch`, `exit_play`). Duas em `match_players` com `kills` nulo. |
+| 9 | Conferir o histórico (com o emulador parado): `uv run python -c "import sqlite3; c=sqlite3.connect('data/landmass.db'); print(c.execute('select id, room_id, map_file, game_class, end_reason from matches').fetchall()); print(c.execute('select match_id, account_id, nickname, is_master, kills from match_players').fetchall())"` | Uma linha em `matches` (`ONS-Treino`, `LMEmu.LMEmuDeathMatch`, `exit_play`). Duas em `match_players` com `kills` nulo. |
 | 10 | Cada cliente volta à sala e envia 311 para a sala 1. | Só quem entrou recebe 312, 314 e 317; o lobby não recebe nada de novo. |
 
-Os logs do servidor de partida (`servidor-partida\system\LandMass.log`) só são gravados no encerramento normal do processo; enquanto ele roda o arquivo fica travado. Procure `Game class is 'LM_DeathMatch'` e `Bringing Level ONS-Treino.myLevel up for play`, que apareceram numa execução anterior.
+Os logs do servidor de partida (`servidor-partida\system\LandMass.log`) só são gravados no encerramento normal do processo; enquanto ele roda o arquivo fica travado. Procure `Game class is 'LM_DeathMatch'` e `Bringing Level ONS-Treino.myLevel up for play`, que apareceram numa execução anterior. Com o LMEmu, procure as linhas do `LMEmuLoadout` (D190): `LMEmu: login ... recebe ...` por jogador com equipamento, e `LMEmu: login sem equipamento ...` para quem não tem morat no gate. A linha `Game class` com `LMEmu.LMEmuDeathMatch` não foi observada.
 
 ### Casos que devem falhar do jeito certo
 
@@ -126,6 +130,7 @@ Os logs do servidor de partida (`servidor-partida\system\LandMass.log`) só são
 ### Limites conhecidos
 
 - A partida não foi jogada por agente. Os passos 5 a 10 dependem do cliente real.
+- O equipamento (D190) não foi visto no jogo. Não há prova de que o `LMEmuLoadout` aplique as peças, e o gate do `selected_morats` do 401 é tratado como índice sem prova (`re/rooms.md` §5).
 - Não há prazo próprio de partida. Se um cliente nunca manda 500 e o servidor não cai, a sala fica jogando até alguém sair.
 - As métricas de jogador ficam nulas quando o log não traz o bloco `GameEnded` (D153, D154; `re/game_server_host.md` §11.4 e §11.7) (ver `04-persistence.md`, "Histórico de partidas").
 - Salas e partidas em andamento são só de memória: reiniciar o emulador zera as salas.
