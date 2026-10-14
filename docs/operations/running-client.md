@@ -84,6 +84,11 @@ Não use `Launcher.exe`: ele tenta FTP de patch inexistente. Inicie `LandMass.ex
   - Proporção: `ScalingMode = stretched_ar` mantém 4:3 com faixas pretas em `fullscreensize`. `KeepWindowAspectRatio` só vale para redimensionar janela comum.
   - Sair do jogo: Alt+Tab ou tecla Windows. Alt+Enter alterna para tela cheia real.
   - Remoção: apague `system\D3D8.dll` e `system\dgVoodoo.conf`.
+  - `[DirectX]`: `VRAM = 1024` (era 256; backup `dgVoodoo.conf.bak-vram256`).
+    - Com 256, `Resolution = max_qhd` e `Antialiasing = 2x`, o cliente dava GPF em `UD3DRenderDevice::Present`, com `FMallocWindows::Realloc` no histórico, ao recriar o dispositivo. O caso mais comum era sair da janela durante o carregamento do mapa.
+    - Inferido; não reproduzido depois da troca.
+    - Se continuar, use `Antialiasing = appdriven` e `Resolution = unforced`.
+- `LandMass.ini`, `[WinDrv.WindowsClient]`: `TextureDetail*=UltraHigh` em todos os conjuntos (backup `LandMass.ini.bak-texdetail`). Com `Normal`, o motor carrega as texturas reduzidas. As opções gráficas do jogo podem regravar esses valores.
 - `LandMass.exe` reconstrói a linha de comando e a engine a recebe vazia (`Init: Command line:`): `-windowed`, `EXEC=`, `INI=` e `-server` não têm efeito.
 
 ## Testes automatizados com o cliente

@@ -47,6 +47,7 @@ flowchart LR
 | [running-client.md](operations/running-client.md) | Como iniciar o cliente contra o emulador, parâmetros obrigatórios, modo janela. |
 | [game-server.md](operations/game-server.md) | Cópia do servidor de partida (`servidor-partida`), patches, `servidor.bat` (porta 7777), partida lançada pelo emulador (modo por processo), roteiro de teste de uma partida com dois clientes e casos que devem falhar. |
 | [production.md](operations/production.md) | Deploy no Docker Swarm: imagem, stack, segredos, desligamento gracioso com aviso, saúde e logs, administração, backup e a limitação do servidor de partida (Windows). |
+| [textures.md](operations/textures.md) | Troca de textura num pacote `.lm`: limites, alfa, import pelo UCC do LandMass e transplante para o pacote do jogo. |
 | [testing.md](operations/testing.md) | Níveis de teste, fixtures de captura e gates de qualidade. |
 | [reverse-engineering.md](operations/reverse-engineering.md) | Ferramentas (REA, Ghidra), fontes de verdade e como registrar achados. |
 
