@@ -87,7 +87,7 @@ altura do JumpZ, com alcance horizontal do GroundSpeed), `b` booster (até 500 u
 
 Inicie o bake com a mesma linha de comando da partida (`hosting/command.py`), com
 `<mapa>?listen?game=LMEmu.LMEmuDeathMatch?lmemubake=1`, por `subprocess` do Python. Iniciado pelo
-`Start-Process` do PowerShell, o `LandMass.exe` sai na hora, sem log. Rotas geradas: só `ONS-Airport`.
+`Start-Process` do PowerShell, o `LandMass.exe` sai na hora, sem log. Rotas geradas: só `ONS-AirPort`. Use em `--mapa` o nome do mapa como na URL da partida.
 
 **Arquivo (D226).** `tools/routes/rotas.py --log <log do bake> --mapa <mapa> --ini <LMEmuRoutes.ini>` lê
 as linhas `LMEmuBake` e grava só a seção `[<mapa> LMEmuRoutes]`; as de outros mapas ficam. Imprime a
