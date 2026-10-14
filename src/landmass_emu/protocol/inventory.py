@@ -70,13 +70,14 @@ class CsGetMoratsOut:
 
     A chave de 103 é o gate do morat (`@0`): o cliente grava `sGate[chave].siIdx = chave`
     (inferido, dump de `GetMoratsInfoByGate`). Por isso só morat com gate é enviado.
-    Campos iguais ao 102; partes em @0x34..0x59 (`DEFAULT_PARTS`); sinalizador @0x5d."""
+    Campos iguais ao 102; partes em @0x34..0x59 (`parts`); sinalizador @0x5d."""
 
     gate_index: int
     catalog_id: int
     item_guid: str
     apply_flag: int
     apply_value: int
+    parts: tuple[int, ...] = DEFAULT_PARTS  # 19 valores: 16 peças (índice ou -1) e 3 skins
     opcode: ClassVar[int] = CsInventoryOp.GET_MORATS_OUT
     _FIXED = struct.Struct("<Hxxi37sBxxi19hxxxBxx")
 
@@ -87,7 +88,7 @@ class CsGetMoratsOut:
             _guid_bytes(self.item_guid),
             self.apply_flag,
             self.apply_value,
-            *DEFAULT_PARTS,
+            *self.parts,
             0,
         )
 

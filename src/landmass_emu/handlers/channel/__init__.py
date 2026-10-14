@@ -9,6 +9,7 @@ from landmass_emu.domain.rooms import Rooms
 from landmass_emu.domain.shop import ShopService
 from landmass_emu.handlers.channel.chat import ChatHandlers
 from landmass_emu.handlers.channel.entry import EntryHandlers
+from landmass_emu.handlers.channel.equipment import EquipmentHandlers
 from landmass_emu.handlers.channel.lists import ListHandlers
 from landmass_emu.handlers.channel.login import LoginHandlers
 from landmass_emu.handlers.channel.morat import MoratHandlers
@@ -17,7 +18,7 @@ from landmass_emu.handlers.channel.progression import ProgressionHandlers
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.handlers.channel.rooms import RoomHandlers
 from landmass_emu.handlers.channel.shop import ShopHandlers
-from landmass_emu.net.server import Reply, Router
+from landmass_emu.net.server import Handler, Reply, Router
 from landmass_emu.net.session import Session
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.inventory import InventoryRepository
@@ -48,6 +49,7 @@ class ChannelHandlers:
         accounts: AccountRepository,
         inventory: InventoryRepository,
         shop: ShopService,
+        equipment: EquipmentHandlers | None = None,
     ) -> None:
         records = ChannelRecords(lobby)
         room_handlers = RoomHandlers(lobby, rooms, records, match, maps, matches)
@@ -62,7 +64,7 @@ class ChannelHandlers:
         self._options = OptionHandlers(player_options)
         self._rooms = room_handlers
         self._shop = ShopHandlers(shop)
-        self.router: Router = {
+        routes: dict[int, Handler] = {
             CsShopOp.ITEM_BUY_IN: self._shop.item_buy,
             CsOp.HEARTBEAT: self.heartbeat,
             CsOp.IN_CHANNEL_SERVER: self._login.in_channel_server,
@@ -87,6 +89,9 @@ class ChannelHandlers:
             CsOp.REFRESH_ROOM_LIST: self._lists.refresh_room_list,
             CsInventoryOp.SET_REGULAR_IN: self._morats.set_regular,
         }
+        if equipment is not None:
+            routes.update(equipment.router)
+        self.router: Router = routes
 
     async def heartbeat(self, session: Session, payload: bytes) -> Sequence[Reply]:
         # O cliente responde com 2 ao heartbeat do servidor. Não respondemos: o eco faria um laço.

@@ -240,23 +240,23 @@ Envelope de erro (op 54, L96–108): `u16 @0` = opcode real; `i32 @4` = erro; se
 | 551 | `NotifyItemBuy` | `u16 @0` key; registro 0x34; `i32 @0x38` → +0x58 (iCash); `i32 @0x3c` → +0x5C (iPoint); `i32 @0x40` = resultado (0 aplica) | 550 | L692–719; `layouts_f0.md` §7.6 |
 | 552 | `NotifyMoratsBuy(CS_MORATS_BUY_OUT)` | `u16 @0` key; registro 0x5c; `i32 @0x5c` → +0x58; `i32 @0x60` → +0x5C; `i32 @0x64` = resultado | (gap; compra de morat) | L720–748 |
 | 553 | `NotifyItemUsedGate` | `u16 @0` key; `u16 @2` idx; `i32 @4` = resultado; se 0 remove item | (inferido) | L749–775 |
-| 554 | `NotifyItemUsedSystem` | `u16 @0` key; `u16 @0x34` índice (grava `*param_2` em `local_89c[idx+0x60]`); `i32 @0x38` = resultado (gate `== 0` aplica) e argumento do evento | (inferido) | L776–808 |
-| 556 | `NotifyItemDestroy` (guarda `== 0x22c`) | `u16 @0` key; `u16 @2` índice; `u8 @4` flag; `i32 @8` = resultado (o despacho grava o erro do envelope em @8; gate `== 0`); o evento recebe o corpo | 555 | L110–170 |
+| 554 | `NotifyItemUsedSystem` | `u16 @0` key (registro de 0x34 bytes, como 102); `u16 @0x34` slot de sistema (0 a 9, `sEventSlot`; grava `*param_2` em `local_89c[idx+0x60]`); `i32 @0x38` = resultado (gate `== 0` aplica) | 560 (`CsItemUsedSystemOut`, medido) | L776–808 |
+| 556 | `NotifyItemDestroy` (guarda `== 0x22c`) | `u16 @0` key (índice do item); `u16 @2` **gate** do morat (corrigido nesta revisão: não é índice); `u8 @4` flag (1 = estava montado); `i32 @8` = resultado (o despacho grava o erro do envelope em @8; gate `== 0`); o evento recebe o corpo | 555 | L110–170 |
 | 557 | `NotifyMoratsDestroy` | `u16 @0` key; `i32 @4` = resultado (gate `== 0` aplica); o evento recebe o corpo (`CS_MORATS_DESTROY_OUT`) | (inferido) | L2452–2468 |
-| 559 | `NotifyGetSystemItemState` + `NotifyItemDestroy` | `u16 @0` key; `u16 @2` índice (grava `0xff` no estado); `i32 @8` = resultado (gate `== 0`); `NotifyGetSystemItemState` recebe `pCVar16+0x60` (layout do estado (gap)) | (inferido) | L2469–2489 |
+| 559 | `NotifyGetSystemItemState` + `NotifyItemDestroy` | `u16 @0` key (índice); `u16 @2` slot de sistema (grava `0xff` no estado, liberando o slot); `u8 @4` = 1; `i32 @8` = resultado (gate `== 0`); `NotifyGetSystemItemState` recebe `pCVar16+0x60` (layout do estado (gap)) | 555 (item de sistema) | L2469–2489 |
 | 561 | `NotifyItemUsed` | `i32 @8` = resultado (o despacho grava o erro do envelope em @8) | 560 | L2490–2495 |
-| 562 | `NotifyItemUsed` | `u16 @0` key; `u16 @2` valor gravado em `local_8a4[0] + u16@6·2 + 0x44`; `i32 @8` = resultado (gate `== 0`) | 560 | L2496–2510 |
+| 562 | `NotifyItemUsed` | `u16 @0` gate; `u16 @2` índice do item montado (0 na recusa); `u16 @6` slot da peça (0 a 15, `SLOT_NAMES`), gravado em `local_8a4[0] + u16@6·2 + 0x44`; `i32 @8` = resultado (gate `== 0`) | 560 | L2496–2510 |
 | 565 | `NotifyItemUsed` | `u16 @0` key; `u16 @2` valor gravado em `+ u16@4·2 + 0x64`; `i32 @8` = resultado (gate `== 0`) | 560 | L2511–2525 |
 | 566 | `NotifyItemUsed` | `i32 @4` = resultado (sem gate; evento direto) | 560 | L2526–2528 |
 | 567 | `NotifyItemUsed` (cauda `LAB_1001fdb3`) | `u16 @0` key; `i32 @4` = resultado (gate `== 0`); evento recebe 100 (constante) ou `iVar13 = @4` (caminho de erro) | 560 | L2529–2555 |
 | 568 | `NotifyItemUsed` | `u16 @0` key; `i32 @4` = resultado (gate `== 0`); evento recebe 0x65 (constante) ou `iVar13 = @4` | 560 | L2556–2571 |
 | 569 | `NotifyChangeNest` | `u16 @0` key; `u8 @2` → nó `+0x30`; `i32 @4` = resultado (gate `== 0`) e argumento do evento | (inferido) | L2572–2586 |
 | 571 | `NotifyItemUnused` (sem caso próprio: `goto LAB_1001fb03`, cauda em L2631–2632) | (gap) | (inferido) | L2587–2601 |
-| 572 | `NotifyItemUnused` (via `goto LAB_1001fafc` e `goto LAB_1001fb03`) | (gap) | (inferido) | L2602–2615 |
-| 573 | `NotifyItemUnused` | `u16 @0` key; `u16 @4` índice (grava `0xffff`); `i32 @8` = resultado (gate `== 0`) e argumento do evento | 570 | L2616–2633 |
-| 581 | `NotifyItemExtend` (via `goto LAB_1001fbf8`, L2682–2683) | (gap) | 580 (inferido) | L2634–2656 |
-| 582 | `NotifyItemExtend` (fall-through de L2682–2683) | (gap) | (inferido) | L2657–2685 |
-| 585 | `NotifyItemEndtime` | `u8 @1` gate (`== 0` aplica); `u16 @2` key; o evento recebe o corpo (`CS_ITEM_ENDTIME_OUT`) | (inferido) | L2686–2704 |
+| 572 | `NotifyItemUnused` (via `goto LAB_1001fafc` e `goto LAB_1001fb03`) | desmontagem de peça (medido): `u16 @0` gate; `u16 @4` slot (0 a 15); `i32 @8` = resultado (gate `== 0` limpa a peça) | 570 | L2602–2615 |
+| 573 | `NotifyItemUnused` | caminho de skin (`CITEM_SKIN`): `u16 @0` key; `u16 @4` índice (grava `0xffff`); `i32 @8` = resultado (gate `== 0`). O F6 não emite | 570 | L2616–2633 |
+| 581 | `NotifyItemExtend` (via `goto LAB_1001fbf8`, L2682–2683) | caminho de morat (sem prazo). Não emitido: o F7 recusa a extensão de morat com 582 e `result` -4 | 580 | L2634–2656 |
+| 582 | `NotifyItemExtend` (fall-through de L2682–2683) | medido: `u16 @0` índice; `i32 @4` apply_value (fim em segundos Unix, REALTIME); `i32 @8` cash; `i32 @0xc` point (LD); `i32 @0x10` = resultado (gate `== 0` grava prazo e saldos) | 580 | L2657–2685 |
+| 585 | `NotifyItemEndtime` | `u8 @0` premium (0 no F7; o cliente não o lê, inferido); `u8 @1` bItem (1 = item, 0 = morat); `u16 @2` índice; o evento recebe o corpo (`CS_ITEM_ENDTIME_OUT`) | login e fim de prazo (inferido) | L2686–2704 |
 | 587 | `NotifyEnterHanger(bool)` | `i32 @0` = chave; o evento recebe `(i32 @0 == DAT_1005ada0)` (jogador atual) | 586 | L2705–2712 |
 | 589 | `NotifyLeaveHanger(bool)` | `i32 @0` = chave; `u8 @4` = 0x23 (condição); o evento recebe `(i32 @0 == DAT_1005ada0)` | 588 | L2713–2723 |
 | 590 | `NotifyItemUsedChangeMainMorats` | `u16 @0` key; `u8 @2` → nó `+0x98`; `i32 @4` = argumento do evento | (inferido) | L2724–2748 |
@@ -316,7 +316,7 @@ Observados no log do cliente (`re/NOTES.md`, `LandMass.log`) ou confirmados no c
 
 Pareados por +1 ou igual ao pedido, por rótulo e nome (inferido, salvo indicação):
 - Message: 140→141, 150→151, 152→153, 160→161/162, 170→171, 171→172, 174→175, 177→178, 190→191, 192→193, 194→195 (cabeçalho de pedido medido; caso de resposta existe no dispatcher; par não observado).
-- Channel: 100→101, 120→121, 122→123, 301→302, 311→312, 401→402, 500→501, 545→547, 546→548, 550→551, 555→556, 560→561, 570→573, 580→581, 600→601, 610→611, 612→613, 615→616, 642→643, 644→648, 655→656, 657→658, 659→659, 700→701.
+- Channel: 100→101, 120→121, 122→123, 301→302, 311→312, 401→402, 500→501, 545→547, 546→548, 550→551, 555→556 (559 para item de sistema; 557 para morat), 560→554/561/562 (561 na recusa), 570→572 (573 é de skin), 580→582 (581 é de morat, não emitido), 600→601, 610→611, 612→613, 615→616, 642→643, 644→648, 655→656, 657→658, 659→659, 700→701.
 - Pares por nome, sem +1 (inferido): 180→183, 182→184, 186→188, 187→189, 645→650, 646→651, 647→652.
 
 Sem par identificado: 451→452 (gap: sem `case 452`); 461 (convite enviado) não tem resposta direta, 463 é convite recebido; 540→541; 542→543; 464→151 (inferido por nome).
@@ -333,6 +333,7 @@ Sem par identificado: 451→452 (gap: sem `case 452`); 461 (convite enviado) nã
 6. Layouts C→S corrigidos pelos wrappers de `LM_Engine.dll` (`FUN_10017xxx` e `FUN_10023xxx`, mais `FUN_10026810` como roteador): 105 é `u8` + `u8` (não `u16`); 471 é `i32` + `u8` (não `u32` + `u32`); 555, 560, 570 e 580 têm `u16` e bytes zero, não `u32`; 615 tem nick em @6; 700 tem `u8` tipo + nick @1; 451 tem `@0` não inicializado e nick @1 (a linha anterior com '4 dwords' estava errada); 190/192/194 são `u8 count` + ids a partir de @4.
 7. Assinaturas de evento (UnrealScript `LM_ServerInterface`, `.u`): 332 `NotifyChangeRoomMaster(int room_guid, int client_guid)`; 342 `NotifyRemoveRoom(int room_guid)`; 462 `NotifyResultRoomInvite(int result)` (recebe o corpo; result = `i32 @0`); 543 `NotifyDetailPlayerInfo(int result, LM_PLAYER_DETAIL_INFO)` (result = erro do envelope `(int)pCVar16`; corpo = `param_2`); 421 `NotifyChangeRoomSlot(int client_guid, byte slot_num)` (confirmada).
 8. Duplicatas dos agregados: `+server_interface.dll/channel_helpers.c` e `channel_interface.c`, e `LM_Engine.dll/message_notify_wrappers.c`, são anotações manuais por endereço (não pseudocódigo completo). Os `.c` de `all/` nesses endereços foram mantidos (são o pseudocódigo do lote); o índice `_index.tsv` aponta o agregado na coluna `existing`.
+9. Correções medidas em F6 e F7 (dispatcher e wrappers): 556 tem `u16 @2` = gate (não índice); 585 tem `u8 @1` = bItem (não gate); 562 tem o slot em `u16 @6`; 572 tem o slot em `u16 @4`; 582 tem `i32` em @4, @8, @0xc e @0x10 (não `u32`); 570 é `u16` + `u16` (4 bytes) e 580 é `i32` + `u16` + `u8` + `u8` (8 bytes); 573 é de skin e 581 é de morat, e o F6 e o F7 não emitem nenhum dos dois. Layouts consolidados em §9.
 
 ---
 
@@ -341,7 +342,7 @@ Sem par identificado: 451→452 (gap: sem `case 452`); 461 (convite enviado) nã
 Fechado nesta revisão: layouts C→S prioritários por wrapper (§3.1 e §2.1), nick/amigo/bloqueio/clã (140, 152, 181, 182, 186, 187, 190, 192, 194); assinaturas de 332, 342, 462, 543; corpos S→C de 104, 554–573, 585–591, 613, 614, 616, 617; goto de 571, 572, 581, 582, 591, 656.
 
 Ordem de prioridade para o próximo ciclo de RE:
-1. **Corpos S→C ainda em gap** (coluna Corpo de §3.2, gerada automaticamente nesta revisão): 107, 108, 141, 142, 143, 144, 302, 312, 332, 543, 559, 571, 572, 581, 582, 591, 613, 614, 643, 648, 649, 650, 651, 652, 653, 654, 656, 658, 659, 660, 661, 662, (cauda).
+1. **Corpos S→C ainda em gap** (coluna Corpo de §3.2, gerada automaticamente nesta revisão): 107, 108, 141, 142, 143, 144, 302, 312, 332, 543, 571, 591, 613, 614, 643, 648, 649, 650, 651, 652, 653, 654, 656, 658, 659, 660, 661, 662, (cauda). Os de equipar e destruir (554 a 585) estão medidos desde F6 (§9).
 2. **Message 150 (CreateNickname)**: corpo 52+2+1 não decodificado. Ler o wrapper de `/CreateNickname` no roteador `FUN_10026810` (ver `message_server.md` §5.6).
 3. **Message 120 (InMessageServer)**: conteúdo do byte opcional (gap).
 4. **Channel 543**: nomes dos campos `i32 @0x14..@0x38` e semântica de `u8 @0x34` e do texto `@0x3c` (falta o tipo `LM_PLAYER_DETAIL_INFO` nos `.u`).
@@ -399,3 +400,47 @@ Classes `LM_*` dos pacotes `.u` do cliente (fonte embutida, `D:\landmass\cliente
 Interface nativa: `LM_ServerInterface` (`LM_Engine.u`) declara as `native function` (`GetItemInfo`, `GetRoomInfo`, `GetPlayerInfo`, `GetMyPlayerInfo`, `GetClanInfo`, `GetFriendPlayerInfo` …) e os eventos `NotifyDetailPlayerInfo`, `NotifyRankingInfo`, `NotifyRegister`, `NotifyGetGatchaPrize` que o `ULM_ServerInterface` dispara. Cada `Notify*` UnrealScript corresponde ao evento da seção 3.2 e 2.2.
 
 Nota: o mapeamento de classe a opcode é pelo nome do método UnrealScript, igual ao nome do método C++ (`Cchannel_interface::<nome>` ou `Cmessage_interface::<nome>`). A capitalização difere em `CreateNickName`/`CreateNickname` e `UpdateNickName`/`UpdateNickname`. Os opcodes da coluna da direita são inferidos a partir do nome, exceto quando a tabela §2.1/§3.1 traz o método diretamente. A extração das classes foi feita por varredura de strings do `.u`, sem decompilar o pacote; `WPGames.u` e `Engine.u` têm referências que não foram segmentadas por classe.
+
+---
+
+## 9. Dúvidas 8 e 9 resolvidas: layouts de equipar, destruir e estender (F6, F7)
+
+Resolve as dúvidas 8 (aridade de 570 e 580) e 9 (mapa `item_slot` → slot) de `07-progression.md` §8. Pedidos (C→S) vêm dos wrappers de `LM_Engine.dll`; respostas (S→C) vêm do dispatcher. Confirmar com captura no cliente real.
+
+| Opcode | Sentido | Campos (offset de corpo) | Corpo (bytes) | Fonte |
+|---|---|---|---|---|
+| 560 | C→S | `u16 index` @0; `u16 gate` @2; `i32 value` @4 (≠ 0 = `ItemUsedByValue`, recusado no F6) | 8 | wrapper `0x100181f0`; `0x10018260` |
+| 570 | C→S | `u16 index` @0; `u16 gate` @2 | 4 | wrapper `0x100182e0` |
+| 555 | C→S | `i32 id` @0; `u16 index` @4 | 8 (6 usados) | wrapper `0x10018190` |
+| 580 | C→S | `i32 id` @0; `u16 index` @4; `u8 point` @6 (1 = LD); `u8 option` @7 | 8 | wrapper `0x10018340` |
+| 554 | S→C | registro de 0x34 bytes (102); `u16 slot` @0x34; `i32 result` @0x38 | 60 | L776–808 |
+| 556 | S→C | `u16 index` @0; `u16 gate` @2; `u8 mounted` @4; `i32 result` @8 | 12 | L110–170 |
+| 557 | S→C | `u16 gate` @0; `i32 result` @4 | 8 | L2452–2468 |
+| 559 | S→C | `u16 index` @0; `u16 slot` @2; `u8` 1 @4; `i32 result` @8 | 12 | L2469–2489 |
+| 561 | S→C | `i32 result` @8 (sem chave nem registro) | 12 | L2490–2495 |
+| 562 | S→C | `u16 gate` @0; `u16 index` @2; `u16 slot` @6; `i32 result` @8 | 12 | L2496–2510 |
+| 572 | S→C | `u16 gate` @0; `u16 slot` @4; `i32 result` @8 | 12 | L2602–2615 |
+| 582 | S→C | `u16 index` @0; `i32 apply_value` @4; `i32 cash` @8; `i32 point` @0xc; `i32 result` @0x10 | 20 | L2657–2685 |
+| 585 | S→C | `u8 premium` @0 (0); `u8 bItem` @1 (1); `u16 index` @2 | 4 | L2686–2704 |
+
+**Dúvida 8 (resolvida).** 570 tem dois valores (`u16` índice e `u16` gate), 4 bytes. 580 tem quatro (`i32` id, `u16` índice, `u8` point, `u8` option), 8 bytes. A medição anterior de `u32` estava errada (§6, item 9).
+
+**Dúvida 9 (resolvida).** `Item_Equip.item_slot` é o índice de `SLOT_NAMES` (`domain/equipment.py`):
+
+| `item_slot` | `slot_name` |
+|---|---|
+| 0 | `main_weapon` |
+| 1 | `sub_weapon` |
+| 2 | `melee_weapon` |
+| 3, 4, 5 | `etc_weapon_00`, `etc_weapon_01`, `etc_weapon_02` |
+| 6 | `booster` |
+| 7 | `generator` |
+| 8 | `head` |
+| 9 | `body` |
+| 10 | `arm` |
+| 11 | `leg` |
+| 12 a 15 | `etc_item_00` a `etc_item_03` (aceitos pelo servidor; o wdb atual só traz 0 a 11) |
+
+O slot de sistema (`sEventSlot[10]`) fica no registro do jogador, em 0x50..0x59 do 101. Vazio é `0xFF`; o índice do item (até `0xFE`) é gravado como byte (inferido).
+
+**Códigos de resultado (inferidos, D68).** -1 sem gate (`NO_GATE`), -3 skin (`SKIN`), -4 genérico (`DENIED`), -7 requisito (`REQUIREMENT`). Os `CERR_*` não têm valor no dump.

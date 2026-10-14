@@ -17,6 +17,7 @@ from landmass_emu.db.clans import SqlClanRepository
 from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.item_catalog import ItemCatalog
 from landmass_emu.db.progression import SqlProgressionRepository
+from landmass_emu.db.quick_slots import SqlQuickSlotRepository
 from landmass_emu.domain.clan import ClanRules
 from landmass_emu.domain.inventory import InventoryService
 from landmass_emu.domain.progression import Grant, ProgressionService
@@ -119,7 +120,12 @@ class Cli:
 
     @staticmethod
     def _kit_admin(db: async_sessionmaker[AsyncSession], kit: StarterKit) -> StarterKitAdmin:
-        return StarterKitAdmin(SqlAccountRepository(db), SqlInventoryRepository(db), kit)
+        return StarterKitAdmin(
+            SqlAccountRepository(db),
+            SqlInventoryRepository(db),
+            kit,
+            SqlQuickSlotRepository(db),
+        )
 
 
 def _parser() -> argparse.ArgumentParser:

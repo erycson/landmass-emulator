@@ -114,6 +114,19 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 550 | C→S | `ITEM_BUY_IN` | 12 bytes: `i32 id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 nBuyOption` @5 (0 a 3) | implementado (F8): debita e cria a unidade numa transação; recusa com result ≠ 0 |
 | 551 | S→C | `ITEM_BUY_OUT` | 68 bytes: registro de 102 em @0..0x33, `i32 cash` @0x38, `i32 point` @0x3c, `i32 result` @0x40 | implementado (F8): sucesso manda 551, 102, 900 e 902; recusa vai sem registro e com saldos zero |
 | 552 | S→C | `MORATS_BUY_OUT` | 104 bytes: registro de 103 em @0..0x5b, `i32 cash` @0x5c, `i32 point` @0x60, `i32 result` @0x64 | implementado (F8): sucesso manda 552, 103, 900 e 902 |
+| 554 | S→C | `ITEM_USED_SYSTEM_OUT` | 60 bytes: registro de 102 em @0..0x33, `u16 slot` @0x34 (0 a 9), `i32 result` @0x38 | implementado (F6): item de sistema vai ao `sEventSlot` |
+| 555 | C→S | `ITEM_DESTROY_IN` | 8 bytes (6 usados): `i32 id` @0, `u16 index` @4 | implementado (F7) |
+| 556 | S→C | `ITEM_DESTROY_OUT` | 12 bytes: `u16 index` @0, `u16 gate` @2, `u8 mounted` @4, `i32 result` @8 | implementado (F7); recusa com result ≠ 0 (ex.: último morat) |
+| 557 | S→C | `MORATS_DESTROY_OUT` | 8 bytes: `u16 gate` @0, `i32 result` @4 | implementado (F7) |
+| 559 | S→C | `ITEM_DESTROY_SYSTEM_OUT` | 12 bytes: `u16 index` @0, `u16 slot` @2, `u8` 1 @4, `i32 result` @8 | implementado (F7) |
+| 560 | C→S | `ITEM_USED_IN` | 8 bytes: `u16 index` @0, `u16 gate` @2, `i32 value` @4 | implementado (F6); `value` ≠ 0 (`ItemUsedByValue`) recusa com 561 |
+| 561 | S→C | `ITEM_USED_REFUSED_OUT` | 12 bytes: `i32 result` @8 | implementado (F6): recusa, sem registro |
+| 562 | S→C | `ITEM_USED_PIECE_OUT` | 12 bytes: `u16 gate` @0, `u16 index` @2, `u16 slot` @6 (0 a 15), `i32 result` @8 | implementado (F6) |
+| 570 | C→S | `ITEM_UNUSED_IN` | 4 bytes: `u16 index` @0, `u16 gate` @2 | implementado (F6); item de sistema recusa com -4 |
+| 572 | S→C | `ITEM_UNUSED_PIECE_OUT` | 12 bytes: `u16 gate` @0, `u16 slot` @4, `i32 result` @8 | implementado (F6) |
+| 580 | C→S | `ITEM_EXTEND_IN` | 8 bytes: `i32 id` @0, `u16 index` @4, `u8 point` @6 (1 = LD), `u8 option` @7 | implementado (F7); morat recusa com -4 |
+| 582 | S→C | `ITEM_EXTEND_OUT` | 20 bytes: `u16 index` @0, `i32 apply_value` @4 (fim em segundos Unix), `i32 cash` @8, `i32 point` @0xc, `i32 result` @0x10 | implementado (F7) |
+| 585 | S→C | `ITEM_ENDTIME_OUT` | 4 bytes: `u8 0` @0, `u8 bItem` @1 (1), `u16 index` @2 | implementado (F7): no login, para item vencido |
 | 700 | C→S | `EXPEL_PLAYER` | `u8 kind`, nick de 17 bytes | só codec: não executado (console) |
 | 701 | S→C | `EXPEL_PLAYER_OUT` | `i32` 0 | só codec: nenhum handler envia |
 | 464 | C→S | `GET_CHANNEL_PLAYER_INFO` | vazio | implementado: responde 151 a quem está no lobby e fora de sala (D67) |

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from landmass_emu.db.item_catalog import ItemCatalog, LazyItemCatalog
+from landmass_emu.domain.equipment import EquipSpec, MoratStats
 from landmass_emu.domain.shop import Requirements, SaleInfo
 
 WDB_CLIENTE = Path("D:/landmass/cliente/system/landmass.wdb")
@@ -27,6 +28,17 @@ def _criar_wdb(caminho: Path) -> Path:
         conn.execute("INSERT INTO Morats VALUES ('101000001', 'name', CAST(X'B0A1' AS TEXT))")
         conn.execute("INSERT INTO Morats VALUES ('101000001', 'buy_point[0]', '5000')")
         conn.execute("INSERT INTO Morats VALUES ('101000001', 'buy_cash[0]', '2000')")
+        conn.execute("INSERT INTO Item_Equip VALUES ('2', 'item_slot', '3')")
+        conn.execute("INSERT INTO Item_Equip VALUES ('2', 'item_required_class', '1111')")
+        conn.execute("INSERT INTO Item_Equip VALUES ('2', 'item_required_power', '40')")
+        for chave, valor in (
+            ("required_class", "1"),
+            ("power", "138"),
+            ("strength", "185"),
+            ("agility", "185"),
+            ("precision", "200"),
+        ):
+            conn.execute("INSERT INTO Morats VALUES ('101000001', ?, ?)", (chave, valor))
         conn.commit()
     return caminho
 
@@ -86,6 +98,28 @@ def test_id_sem_chave_de_venda_nao_tem_venda(wdb: Path) -> None:
     catalogo = ItemCatalog.open(wdb)
     assert catalogo.sale(2) is None
     assert catalogo.sale(999) is None
+
+
+def test_equip_spec_da_peca_com_slot_mascara_e_energia(wdb: Path) -> None:
+    assert ItemCatalog.open(wdb).equip_spec(2) == EquipSpec(
+        slot=3,
+        class_mask=1111,
+        power=40,
+        strength=0,
+        agility=0,
+        precision=0,
+        requirements=Requirements(),
+    )
+
+
+def test_item_sem_item_slot_nao_tem_equip_spec(wdb: Path) -> None:
+    assert ItemCatalog.open(wdb).equip_spec(1) is None
+
+
+def test_morat_stats_com_classe_e_atributos(wdb: Path) -> None:
+    assert ItemCatalog.open(wdb).morat_stats(101000001) == MoratStats(
+        morat_class=1, power=138, strength=185, agility=185, precision=200
+    )
 
 
 def test_caminho_inexistente_levanta(tmp_path: Path) -> None:

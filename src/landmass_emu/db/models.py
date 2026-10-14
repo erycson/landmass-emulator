@@ -1,7 +1,8 @@
 """Modelo SQLAlchemy: `accounts` (marco 1, progressão em F2 e F3, regular em F5), `account_options`
-(F1), `account_morats` (F5), `account_items` (F4), `friends` e `blocks` (F12), `matches` e
-`match_players` (histórico de partidas). Nomes seguem a convenção Laravel (D11). Colunas de
-`account_options` na ordem de `LmRegisterInfo`."""
+(F1), `account_morats` (F5), `account_items` (F4), `account_quick_slots` (D73), `friends` e
+`blocks` (F12), `matches` e `match_players` (histórico de partidas), `clans` e `clan_members` (F13).
+Nomes seguem a convenção Laravel (D11). Colunas de `account_options` na ordem de
+`LmRegisterInfo`."""
 
 from datetime import datetime
 
@@ -108,6 +109,27 @@ class AccountItemRow(Base):
     apply_flag: Mapped[int] = mapped_column(Integer, server_default="0")
     apply_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class AccountQuickSlotRow(Base):
+    __tablename__ = "account_quick_slots"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["account_id"], ["accounts.id"], name="account_quick_slots_account_id_foreign"
+        ),
+        UniqueConstraint(
+            "account_id", "slot_index", name="account_quick_slots_account_id_slot_index_unique"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(Integer)
+    slot_index: Mapped[int] = mapped_column(Integer)
+    enabled: Mapped[int] = mapped_column(Integer, server_default="0")
+    memo: Mapped[str] = mapped_column(String(8), server_default="")
+    gate_index: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

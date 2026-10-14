@@ -27,6 +27,9 @@ def _item(row: AccountItemRow) -> ItemUnit:
         apply_flag=ApplyFlag(row.apply_flag),
         apply_value=row.apply_value,
         expires_at=_aware(row.expires_at),
+        account_morat_id=row.account_morat_id,
+        slot_name=row.slot_name,
+        system_slot=row.system_slot,
     )
 
 
@@ -40,6 +43,7 @@ def _morat(row: AccountMoratRow) -> MoratUnit:
         apply_flag=ApplyFlag(row.apply_flag),
         apply_value=row.apply_value,
         expires_at=_aware(row.expires_at),
+        id=row.id,
     )
 
 

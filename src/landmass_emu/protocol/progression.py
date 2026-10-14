@@ -25,7 +25,8 @@ class PlayerRecord:
     """Campos de progressão do registro de 0xa8 bytes do 101 (`LM_PLAYER_INFO`, copiado para o nó).
 
     @0x28 iTutorialClear (nó+0x38), @0x2c iTotalExp (nó+0x3c), @0x48 iCash (nó+0x58),
-    @0x4c iPoint (nó+0x5c). @0x90 e @0xa0 são o id do jogador (chave da lista e do nó).
+    @0x4c iPoint (nó+0x5c). @0x50..0x59 é o `sEventSlot[10]` (índice do item de sistema, 0xFF
+    vazio). @0x90 e @0xa0 são o id do jogador (chave da lista e do nó).
     Os demais campos ficam zero, exceto nest (@0x20, ucNest) e os sGate (@0x5a + 4·g: siIdx = g e
     bEnable = 1), que vêm do inventário (F5).
 
@@ -39,6 +40,7 @@ class PlayerRecord:
     point: int = 0
     nest: int = 0
     morat_gates: tuple[int, ...] = ()
+    system_slots: tuple[int | None, ...] = ()  # índice do item por slot de sistema; None = vazio
     SIZE: ClassVar[int] = 0xA8
 
     def pack(self, client_guid: int) -> bytes:
@@ -53,6 +55,12 @@ class PlayerRecord:
         ):
             struct.pack_into("<i", buf, offset, value)
         buf[0x20] = self.nest
+        buf[0x50:0x5A] = b"\xff" * 10
+        for slot, index in enumerate(self.system_slots):
+            if index is not None:
+                if not 0 <= index <= 0xFE:
+                    raise ValueError(f"índice de sistema fora de 0 a 254: {index}")
+                buf[0x50 + slot] = index
         for gate in self.morat_gates:
             if not 0 <= gate < GATE_COUNT:
                 raise ValueError(f"gate fora da faixa: {gate}")

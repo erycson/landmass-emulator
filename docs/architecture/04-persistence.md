@@ -47,8 +47,8 @@ Fonte: `D:\landmass\servidor\db\LM_account.sql`. Modelo: `db/models.py`. Migraç
 - `username` não é FK para `users`: é o próprio login da conta.
 - Único em `nickname`: regra de nickname do jogo (`CheckNickname`, 140, responde "nome disponível").
 - Único em `token_hash`: é a chave de busca do login.
-- Colunas de progressão (F2 e F3): `tutorial_clear`, `total_exp`, `ld` e `cash`, todas `Integer NOT NULL` com padrão `0`. Migrações `01ad613f288a` e `31c91374dcba`. Regras em [07-progression §4.3](07-progression.md). Colunas de morat regular (F5): `regular_nest_id` e `regular_morat_class`, migração `ff38814bc227`. Tabelas `account_items` (migração `0d72e556d5d3`) e `account_morats` (migração `2100454de3ec`), com regras em [07-progression §4.4 e §4.5](07-progression.md).
-- As demais colunas do original (estatísticas, opções, quickslot, morats) entram nos marcos que as usam.
+- Colunas de progressão (F2 e F3): `tutorial_clear`, `total_exp`, `ld` e `cash`, todas `Integer NOT NULL` com padrão `0`. Migrações `01ad613f288a` e `31c91374dcba`. Regras em [07-progression §4.3](07-progression.md). Colunas de morat regular (F5): `regular_nest_id` e `regular_morat_class`, migração `ff38814bc227`. Tabelas `account_items` (migração `0d72e556d5d3`, com as colunas de montagem `account_morat_id`, `slot_name` e `system_slot`) e `account_morats` (migração `2100454de3ec`), com regras em [07-progression §4.4 e §4.5](07-progression.md).
+- As demais colunas do original (estatísticas) entram nos marcos que as usam. O quickslot é a tabela `account_quick_slots` (D73, seção abaixo).
 
 ## Tabela `account_options` (F1)
 
@@ -64,6 +64,24 @@ Fonte: [07-progression.md §4.6](07-progression.md). Modelo: `db/models.py` (`Op
 - Constraints: `account_options_account_id_foreign` (FK) e `account_options_account_id_unique`.
 - Upsert portável: leitura e depois insert ou update, sob `asyncio.Lock` do repositório. Sem `ON CONFLICT`, que é específico de fornecedor.
 - Conta sem linha: o repositório devolve zeros. A linha nasce no primeiro 544.
+
+## Tabela `account_quick_slots` (F6 e F7, D73)
+
+Fonte: [07-progression](07-progression.md) (tabela de legado `tbl_quickslot`, D73). Modelo: `db/models.py` (`AccountQuickSlotRow`). Migração: `db/migrations/versions/4b7e1d2a9c60_create_account_quick_slots_table.py`.
+
+| Coluna | Tipo | Nulo | Padrão | Uso |
+|--------|------|------|--------|-----|
+| `id` | `Integer` PK, autoincremento | não | — | Id da linha. |
+| `account_id` | `Integer` | não | — | FK `accounts.id`. |
+| `slot_index` | `Integer` | não | — | Slot de 0 a 4. |
+| `enabled` | `Integer` | não | `0` | 1 = atalho ligado. |
+| `memo` | `String(8)` | não | `""` | Texto do atalho. |
+| `gate_index` | `Integer` | não | — | Gate do atalho; -1 = sem gate. |
+| `created_at`, `updated_at` | `DateTime(timezone=True)` | não | — | Criação e última gravação. |
+
+- Constraints: `account_quick_slots_account_id_foreign` (FK) e `account_quick_slots_account_id_slot_index_unique`.
+- Semeadura: `DEFAULT_QUICK_SLOTS` (`domain/quick_slots.py`) grava as cinco linhas padrão: slots 0 e 1 ligados (gates 0 e 1), 2 e 3 desligados (gates 2 e 3), 4 desligado sem gate. Acontece na criação da conta e em `account kit apply`. Repetir não duplica (índice único).
+- O cliente não tem opcode para ler ou gravar atalhos (`re/features.md` §4): nenhum pacote do protocolo lê a tabela.
 
 ## Tabelas `friends` e `blocks` (F12)
 

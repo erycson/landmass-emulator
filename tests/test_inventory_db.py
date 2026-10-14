@@ -1,6 +1,7 @@
 """Banco real do inventário (SQLite via `open_database`): esquema, repositórios e conflitos."""
 
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -147,7 +148,7 @@ async def test_morat_ida_e_volta(db: async_sessionmaker[AsyncSession]) -> None:
     inv = SqlInventoryRepository(db)
     morat = _morat(conta.id, 2, 2, _guid(10))
     await inv.add_morat(morat)
-    assert await inv.morats(conta.id) == [morat]
+    assert [replace(m, id=None) for m in await inv.morats(conta.id)] == [morat]
 
 
 async def test_inventario_e_separado_por_conta(db: async_sessionmaker[AsyncSession]) -> None:

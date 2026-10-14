@@ -52,7 +52,9 @@ def test_in_channel_server_out_tamanho_e_offsets() -> None:
     assert len(raw) == 0xB0
     assert struct.unpack_from("<i", raw, 0x90) == (7,)
     assert struct.unpack_from("<i", raw, 0xA0) == (7,)
-    assert raw[0x00:0x90] == bytes(0x90)
+    assert raw[0x00:0x50] == bytes(0x50)
+    assert raw[0x50:0x5A] == b"\xff" * 10  # sEventSlot vazio
+    assert raw[0x5A:0x90] == bytes(0x36)
     assert raw[0x94:0xA0] == bytes(0x0C)
     assert raw[0xA4:0xA8] == bytes(4)
     assert struct.unpack_from("<i", raw, 0xA8) == (0,)

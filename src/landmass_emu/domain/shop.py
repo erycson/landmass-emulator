@@ -4,7 +4,6 @@
 Fonte: docs/architecture/07-progression.md §5.2 (preço), §5.3 (compra) e §8 (decisões do usuário).
 """
 
-import asyncio
 import logging
 from dataclasses import dataclass
 from enum import IntEnum
@@ -12,6 +11,7 @@ from typing import Protocol
 
 from landmass_emu.domain.currency import Currency
 from landmass_emu.domain.inventory import GATE_COUNT, InventoryService, ItemUnit, MoratUnit
+from landmass_emu.domain.locks import AccountLocks
 from landmass_emu.domain.progression import Level, RankTable
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.inventory import InventoryConflict, InventoryRepository
@@ -143,6 +143,7 @@ class ShopService:
         accounts: AccountRepository,
         progression: ProgressionRepository,
         purchases: ShopRepository,
+        locks: AccountLocks | None = None,
     ) -> None:
         self._catalog = catalog
         self._levels = levels
@@ -151,12 +152,12 @@ class ShopService:
         self._accounts = accounts
         self._progression = progression
         self._purchases = purchases
-        self._locks: dict[int, asyncio.Lock] = {}
+        self._locks = locks or AccountLocks()
 
     async def buy(
         self, account_id: int, catalog_id: int, currency: Currency, option: int
     ) -> Purchase:
-        async with self._locks.setdefault(account_id, asyncio.Lock()):
+        async with self._locks.of(account_id):
             try:
                 return await self._buy(account_id, catalog_id, currency, option)
             except ValueError as e:

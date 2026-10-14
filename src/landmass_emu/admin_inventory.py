@@ -3,9 +3,11 @@ pelo repositório. Conta é buscada pelo usuário (login); nada é criado implic
 
 from landmass_emu.domain.account import Account
 from landmass_emu.domain.inventory import InventoryService, ItemUnit, MoratUnit
+from landmass_emu.domain.quick_slots import DEFAULT_QUICK_SLOTS
 from landmass_emu.domain.starter_kit import StarterKit
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.inventory import InventoryRepository
+from landmass_emu.ports.quick_slots import QuickSlotRepository
 
 
 async def _find_account(accounts: AccountRepository, username: str) -> Account:
@@ -44,17 +46,19 @@ class InventoryAdmin:
 
 class StarterKitAdmin:
     """Kit inicial: na criação (`account create`) e em conta existente (`account kit apply`).
-    Gate ocupado é pulado, então aplicar de novo não duplica."""
+    Gate ocupado é pulado, e slot de atalho já gravado também, então aplicar de novo não duplica."""
 
     def __init__(
         self,
         accounts: AccountRepository,
         inventory: InventoryRepository,
         kit: StarterKit,
+        quick_slots: QuickSlotRepository | None = None,
     ) -> None:
         self._accounts = accounts
         self._inventory = inventory
         self._kit = kit
+        self._quick_slots = quick_slots
 
     async def apply(self, username: str) -> int:
         account = await _find_account(self._accounts, username)
@@ -63,4 +67,6 @@ class StarterKitAdmin:
         units = self._kit.plan(account.id, used)
         for unit in units:
             await self._inventory.add_morat(unit)
+        if self._quick_slots is not None:
+            await self._quick_slots.seed(account.id, DEFAULT_QUICK_SLOTS)
         return len(units)

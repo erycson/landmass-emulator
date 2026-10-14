@@ -35,7 +35,7 @@ Cada linha registra a regra que sobrevive. O mecanismo do legado não é reprodu
 | `tbl_ranking` e `usp_renew_ranking` (job que recalcula cópia) | Consulta sobre `accounts` | Ranking em tempo real ([D18](../decisions/README.md)). |
 | `SaveAccountInfo`, `SaveAccountInfoItem`, `SaveAccountNestRecord`, `SaveAccountRecord` (regravam o estado inteiro) | Atualização por campo, no repositório da conta | Grava só o que mudou. |
 | `SavePointCash`, `SavePromotion`, `SavePromotionNest`, `SaveOperator`, `SaveEngineer`, `SaveCostume`, `SaveClanMasterLevel` | Operações de domínio | Saldo via serviço econômico (§5.1). Patente derivada, não gravada (§5.8). |
-| `tbl_quickslot` | Não migrar | Quickslot removido do cliente (features §4). |
+| `tbl_quickslot` | Migrada para `account_quick_slots` ([D73](../decisions/README.md)) | Cinco linhas por conta, semeadas na criação e em `account kit apply`. O cliente não tem opcode para ler ou gravar atalho (features §4): nada no protocolo a lê. |
 | `tbl_temp_user`, `usp_insert_morats_temp`, `tbl_tool_patch` | Não migrar | Sem uso no cliente. |
 | `tbl_option_list` | Não migrar | Descrições de opções não são lidas pelo servidor. |
 | `ssn_first`, `ssn_second`, `userpw`, `userid` (cópia de login) | Não gravar CPF/SSN; login é `username`, senha é token | Privacidade e [authentication.md](../protocol/authentication.md). |
@@ -196,7 +196,7 @@ Inventário, implementado em F4. Uma linha por unidade ([D22](../decisions/READM
 | `apply_value` | `Integer` | sim | Usado por SIZE, PLAYTIME e ENABLE. Nulo em REALTIME. |
 | `expires_at` | `DateTime(tz)` | sim | Usado por REALTIME. Nulo = não iniciado (contrato: `iApplyValue = 0`) ou sem prazo. |
 
-Índice: `account_items_account_morat_id_index`. Na montagem de item em morat, `ON DELETE SET NULL` (inferido): destruir a morat desmonta as partes.
+Índice: `account_items_account_morat_id_index`. Destruir a morat zera `account_morat_id` e `slot_name` das partes na mesma transação ([D76](../decisions/README.md)). Não depende de `ON DELETE`, porque o SQLite não aplica chave estrangeira sem `PRAGMA foreign_keys`.
 
 ### 4.5 `account_morats`
 
@@ -323,23 +323,23 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-USE-01 | `ItemUsed(index, gate)` (560, corpo de 8 bytes, dois `u32`): item com `inventory_index = index` é montado no gate `gate` (0 a 7). Se o item é morat (grupo 1), ocupa o gate. Se é parte (grupo 2), vira `account_items.account_morat_id` da morat do gate, com `slot_name` derivado (dúvida 9). Gate sem morat recusa a montagem. | features §3.2 (inferido nos detalhes) |
+| R-USE-01 | `ItemUsed(index, gate)` (560, corpo de 8 bytes: `u16 index` @0, `u16 gate` @2, `i32 value` @4): item com `inventory_index = index` é montado no gate `gate` (0 a 7). Peça (`Item_Equip`, grupo 2) vira `account_items.account_morat_id` da morat do gate, com `slot_name` pelo `item_slot` (D70; dúvida 9 resolvida). A resposta 562 leva gate, índice e slot. Gate sem morat responde 561 com -1. Morat (grupo 1) não entra por 560: recusa com -4. Skin recusa com -3 (F6 não cobre). | features §3.2 (inferido nos detalhes) |
 | R-USE-02 | Gates: 8 por jogador (`sGate[8]`, `LM_GATE_SLOT`: `siIdx`, `bEnable`). Slots de sistema: 10 (`sEventSlot[10]`). | `LM_Engine.u` `LM_PLAYER_INFO` |
 | R-USE-03 | Slots de `slot_name` (de `LM_MORATS_INFO`): `main_weapon`, `sub_weapon`, `melee_weapon`, `etc_weapon_00..02`, `booster`, `generator`, `head`, `body`, `arm`, `leg`, `etc_item_00..03`, `skin_00..02`. | `LM_Engine.u` `LM_MORATS_INFO` |
-| R-USE-04 | Item de sistema (grupo 3, classe 8) vai para `system_slot` livre, de 0 a 9. Tipo ONCE (1) é consumido no uso. Tipo BUFF (2) permanece até expirar. | features §0.3, §3.2 (inferido nos detalhes) |
-| R-USE-05 | `ItemUnused(index, gate)` (570) remove a montagem: zera `account_morat_id`, `slot_name` e `system_slot`. O corpo medido tem 4 bytes (um `u32`), mas a UI passa dois valores. | `channel_server.md` §2; dúvida 8 |
-| R-USE-06 | Morat principal: `ItemUsedByValue` não tem método na DLL. O cliente não consegue enviar a troca. `main_gate_index` fica sem escrita até decisão. | features §3.2 (dúvida 7) |
+| R-USE-04 | Item de sistema (grupo 3, classe 8) vai para `system_slot` livre, de 0 a 9 (554 leva o slot). Sem slot livre, recusa com -4 (D74). Fica no slot até ser destruído (559 libera). ONCE e BUFF não são distinguidos: o wdb não traz `item_type` para item de sistema (gap, dúvida 25). | features §0.3, §3.2 (inferido nos detalhes) |
+| R-USE-05 | `ItemUnused(index, gate)` (570, corpo de 4 bytes: `u16 index` @0, `u16 gate` @2) remove a peça: zera `account_morat_id` e `slot_name`, e responde 572 com gate e slot. Item de sistema não desmonta por 570: recusa com -4 (D74). | `channel_server.md` §2; dúvida 8 (resolvida, `re/protocol_full.md` §9) |
+| R-USE-06 | Morat principal: `ItemUsedByValue` (560 com `value` ≠ 0) existe no wrapper `0x10018260`, mas o F6 o recusa com 561 e -4 (D75). A troca de morat principal (590 e `ChangeMoratsItemID`) fica fora do F6; `main_gate_index` não é escrito. | features §3.2; dúvida 7 |
 | R-USE-07 | Usar item que não pertence à conta, ou item já montado no mesmo slot, responde erro sem alterar nada. | (inferido) |
 
 ### 5.5 Destruição e extensão (555, 556, 580, 582, 585)
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-DEST-01 | `ItemDestroy(id, index)` (555) remove a linha por `DELETE`, sem histórico (D12). Se o item estava montado, a resposta informa o gate usado (`nUsedGate`) para o cliente atualizar. | features §3.3; `channel_server.md` §3.2 |
-| R-DEST-02 | Destruir morat desmonta as partes (R-USE-01 e `ON DELETE SET NULL`). | (inferido) |
-| R-EXT-01 | `ItemExtend` (580) tem o mesmo preço de R-PRC-01. Se `expires_at` está no futuro, soma os dias a partir dele. Se é nulo ou vencido, parte de agora. | features §3.3; (inferido) |
-| R-EXT-02 | Resposta `582` (`NotifyItemExtend(result, nIndex, bItem)`). | features §3.3 |
-| R-EXP-01 | Item REALTIME com `expires_at <= agora` gera o push `585` (`NotifyItemEndtime(nIndex, bItem, premium)`), que abre a tela de renovação. O item fica até renovação ou destruição. Remoção automática não definida (dúvida 5). | features §3.3 (inferido nos detalhes) |
+| R-DEST-01 | `ItemDestroy(id, index)` (555: `i32 id` @0, `u16 index` @4) remove a linha por `DELETE`, sem histórico (D12). A resposta 556 leva o gate do morat (`u16 gate` @2) e `u8 mounted` @4, para o cliente tirar a peça. Item de sistema responde 559 com o slot. | features §3.3; `re/protocol_full.md` §9 |
+| R-DEST-02 | Destruir morat (557) zera as peças em `account_items` (`account_morat_id` e `slot_name`) e apaga a linha, na mesma transação (D76). Não destrói o último morat da conta (D69): recusa com -4. | (inferido); D69, D76 |
+| R-EXT-01 | `ItemExtend` (580: `i32 id` @0, `u16 index` @4, `u8 point` @6, `u8 option` @7) usa o preço e o prazo da tabela de compra (R-PRC-01). Se `expires_at` está no futuro, soma os dias a partir dele; se é nulo ou vencido, parte de agora (D71). Morat não tem prazo: recusa com -4. Saldo insuficiente recusa com o código de D51 e nada é debitado (D72). | features §3.3; (inferido) |
+| R-EXT-02 | Resposta 582 (`NotifyItemExtend`): `u16 index` @0; `i32 apply_value` @4 (fim do prazo em segundos Unix, REALTIME); `i32 cash` @8; `i32 point` @0xc; `i32 result` @0x10. A extensão de morat (581) não é emitida. | features §3.3; `re/protocol_full.md` §9 |
+| R-EXP-01 | Item REALTIME com `expires_at <= agora` gera o push `585` (`NotifyItemEndtime(nIndex, bItem, premium)`), que abre a tela de renovação. O item fica até renovação ou destruição. No login, item vencido recebe 585 com `bItem` = 1 (F7). Remoção automática não definida (dúvida 5). | features §3.3 (inferido nos detalhes) |
 | R-VAL-01 | `apply_value` por flag: REALTIME usa `expires_at` (inferido: `apply_value` com segundos absolutos, `0` quando `expires_at` é nulo); SIZE, PLAYTIME e ENABLE usam `apply_value` direto. | `LM_Engine.u` `ITEM_APPLY`; `XInterface` 36788–36798 (inferido nos valores) |
 
 ### 5.6 Presente (615, 616, 610, 611, 612, 613)
@@ -449,15 +449,16 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 550 | C→S | Compra (LD ou Cash) | `account_items`, `account_morats`, `accounts` | completo: `i32 @0` id, `u8 @4` bPoint (1 LD, 0 Cash), `u8 @5` opção 0 a 3; corpo de 12 | implementado (F8) |
 | 551 | S→C | Resultado da compra de item | — | registro de 102 em @0..0x33, `i32 @0x38` cash, `@0x3c` LD, `@0x40` result; corpo de 0x44 | implementado (F8) |
 | 552 | S→C | Resultado da compra de morat | — | registro de 103 em @0..0x5b, `@0x5c` cash, `@0x60` LD, `@0x64` result; corpo de 0x68 | implementado (F8) |
-| 555 | C→S | Destruir | `account_items`, `account_morats` | parcial: 8 bytes (2 `u32`) | falta |
-| 556 / 557 / 559 | S→C | Resultados de destruir | — | falta | falta |
-| 560 | C→S | Equipar | `account_items`, `account_morats` | parcial: 8 bytes (2 `u32`) | falta |
-| 561–568 | S→C | Resultados de equipar | — | falta (blocos 2490–2571) | falta |
-| 570 | C→S | Desequipar | `account_items` | parcial: 4 bytes (1 `u32`); conflito com dois parâmetros (dúvida 8) | falta |
-| 573 | S→C | Resultado de desequipar | — | falta | falta |
-| 580 | C→S | Renovar | `account_items`, `account_morats` | parcial: 8 bytes (2 `u32`); conflito com quatro parâmetros (dúvida 8) | falta |
-| 582 | S→C | Resultado de renovar | — | falta | falta |
-| 585 | S→C (push) | Fim de prazo | `account_items`, `account_morats` | falta | falta |
+| 554 | S→C | Item de sistema montado | `account_items` | registro de 102 (0x34 bytes), `u16 slot` @0x34, `i32 result` @0x38 | implementado (F6) |
+| 555 | C→S | Destruir | `account_items`, `account_morats` | 8 bytes: `i32 id` @0, `u16 index` @4 | implementado (F7) |
+| 556 / 557 / 559 | S→C | Resultados de destruir | `account_items`, `account_morats` | 556: `u16 index` @0, `u16 gate` @2, `u8 mounted` @4, `i32 result` @8; 557: `u16 gate` @0, `i32 result` @4; 559: `u16 index` @0, `u16 slot` @2, `u8` 1 @4, `i32 result` @8 | implementado (F7) |
+| 560 | C→S | Equipar | `account_items`, `account_morats` | 8 bytes: `u16 index` @0, `u16 gate` @2, `i32 value` @4 (≠ 0 recusa, D75) | implementado (F6) |
+| 561 / 562 | S→C | Resultados de equipar | `account_items` | 561: `i32 result` @8; 562: `u16 gate` @0, `u16 index` @2, `u16 slot` @6, `i32 result` @8 | implementado (F6); 565–568 falta |
+| 570 | C→S | Desequipar | `account_items` | 4 bytes: `u16 index` @0, `u16 gate` @2 | implementado (F6) |
+| 572 | S→C | Resultado de desequipar | `account_items` | `u16 gate` @0, `u16 slot` @4, `i32 result` @8 | implementado (F6); 573 é de skin, não emitido |
+| 580 | C→S | Estender | `account_items` | 8 bytes: `i32 id` @0, `u16 index` @4, `u8 point` @6, `u8 option` @7 | implementado (F7); morat recusa com -4 |
+| 582 | S→C | Resultado de estender | `account_items` | `u16 index` @0, `i32 apply_value` @4, `i32 cash` @8, `i32 point` @0xc, `i32 result` @0x10 | implementado (F7); 581 (morat) não emitido |
+| 585 | S→C (push) | Fim de prazo | `account_items` | `u8 0` @0, `u8 bItem` @1 (1 = item), `u16 index` @2 | implementado (F7): no login, para item vencido |
 | 586 / 587 | C→S / S→C | Entrar no hangar | `account_items`, `account_morats` | corpo vazio; 587 é `bool` (features §3.1) | falta |
 | 588 | C→S | Sair do hangar | — | sem chamador na UI | — |
 | 590 | S→C (push) | Troca de morat principal | `accounts` | falta | falta |
@@ -532,8 +533,8 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F3 (implementada) | `total_exp`, `ld`, `cash`; patente derivada; push 900/902; CLI `account grant --exp --ld --cash`. | F0 (151/317/900/902) | `grant --exp 2800 --ld 1000`: cliente mostra LD 1000, patente "Praça" e progresso. `grant --cash 500`: Cash 500 na loja. |
 | F4 (implementada) | `account_items`; 102; CLI `account item add --catalog <id> --days <n>`. | F0 (102) | Item da CLI aparece no hangar com nome e validade; some após `DELETE` e reconexão. |
 | F5 (implementada) | `account_morats`; 103; 105/104; CLI `account morat add --catalog <id> --gate <n>`. | F0 (103) | Morat aparece no gate indicado; classe regular persiste após reconexão. |
-| F6 | Equipar e desequipar (560, 570, 573); montagem de parte e de item de sistema. | F4, F5 | Equipar arma no gate; reconectar; continua montada. Buff vai para `system_slot`. |
-| F7 | Destruir e estender (555, 556, 580, 582, 585). | F4 | Destruir some do hangar após reconexão. Estender muda o prazo exibido. Vencido abre renovação. |
+| F6 (implementada, sem teste no cliente real) | Equipar e desequipar (560, 570; respostas 554, 561, 562, 572); montagem de parte e de item de sistema. | F4, F5 | Equipar arma no gate; reconectar; continua montada. Buff vai para `system_slot`. |
+| F7 (implementada, sem teste no cliente real) | Destruir e estender (555; respostas 556, 557, 559; 580; resposta 582; push 585 no login). | F4 | Destruir some do hangar após reconexão. Estender muda o prazo exibido. Vencido abre renovação. |
 | F8 (implementada, sem teste no cliente real) | Compra por LD e Cash (550, 551, 552). | F3, F4; dúvida 1 (resolvida) | Item comprado com LD debita `ld` pelo preço do wdb e cria a linha; saldo 902 atualiza. Saldo insuficiente: resultado ≠ 0 e nada muda. |
 | F9 | Recompensa de partida DM e OP (R-REW-*), buffs e PC-room. | Marco 4 (resultado GS_*); F0 (512); dúvidas 13, 14, 17 | Partida DM e OP com 2 jogadores: exp e LD do placar batem com a fórmula (tolerância de 1 por arredondamento). Buff de EXP ativo multiplica por 1.5. |
 | F10 | Presente (615, 616, 610, 611). | F8; dúvidas 2, 3 | A envia item a B por nick; B vê na lista paginada de 12; resgate conforme dúvida 3. |
@@ -559,12 +560,13 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 4. **Opções 8 e 9 (em aberto).** Chegam como opção 0, então cobram o prazo de 1 dia (R-PRC-02). Duração: 1 dia, sem prazo, ou outra?
 5. **Início da validade [bloqueia F6, F7].** Na F8 a validade começa na compra (inferido). Confirmar: começa na compra ou no uso? Como `apply_value` deve ser preenchido para cada `ITEM_APPLY`? Remoção automática de vencidos?
 6. **Efeito dos itens não-buff.** Não localizados: `308010001` (Queima de Arquivo), `308010002` (Reconstituir), `308010003` (Alistar), `308010004` (Troca de Função), `308010005` (Adicionar Hangar), `308020003` (Ressurreição). Sorteio do gacha também não existe no cliente [bloqueia F11].
-7. **Morat principal.** `ItemUsedByValue` não tem método na DLL. O cliente não envia a troca. Aceitar essa limitação?
-8. **Aridade de 570 e 580.** Medido: 570 tem um `u32` (4 bytes); 580 tem dois `u32` (8 bytes). A UI passa, respectivamente, dois e quatro valores. Confirmar com captura [bloqueia F6, F7].
-9. **Mapa `item_slot` → `slot_name`.** `Item_Equip.item_slot` tem valores 0 a 11. Não há tabela que o relacione aos slots de morat [bloqueia F6].
+7. **Morat principal (recusa, D75).** `ItemUsedByValue` existe (wrapper `0x10018260`, 560 com `value`). O F6 recusa com 561 e -4. A troca de morat principal fica fora. Aceitar essa limitação?
+8. **Aridade de 570 e 580 (resolvida, `re/protocol_full.md` §9).** 570 é `u16 index` + `u16 gate` (4 bytes); 580 é `i32 id` + `u16 index` + `u8 point` + `u8 option` (8 bytes). Medido nos wrappers. Confirmar com captura.
+9. **Mapa `item_slot` → `slot_name` (resolvida).** `item_slot` é o índice de `SLOT_NAMES` (`domain/equipment.py`), de 0 (`main_weapon`) a 11 (`leg`). Tabela completa em `re/protocol_full.md` §9. O slot de sistema vem do índice do item (inferido).
 10. **Requisitos na compra (resolvida, D51).** O servidor valida patente e nest e recusa os demais requisitos sem fonte (R-REQ-01).
 11. **Nível para escolher nest.** Exigir "Praça" (`SelectNestExp = 2800`) em `SetRegular`? O cliente não bloqueia.
 12. **Códigos de erro** de uso, extensão e presente: o mapa de `msg_error` não foi identificado para essas ações. A compra usa os códigos de `NotifyItemBuy` (R-BUY-03).
+25. **ONCE e BUFF (gap, não bloqueia F6).** O wdb não traz `item_type` nem `item_effect` para item de sistema (são 0). O servidor não distingue consumível de buff. Confirmar a regra no cliente real.
 13. **Arredondamento** de exp e LD (float para inteiro): proposta, truncar. Confirmar.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
 15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
@@ -592,3 +594,12 @@ Registradas em [decisions/README.md](../decisions/README.md):
 - **D31** Morats do kit inicial entram sem itens, com peças em -1 (padrão do cliente); conta sem morat fica sem solução server-side (dúvida 24).
 - **D50** Emenda a D19: catálogo carregado na primeira compra (carga lazy); o canal sobe sem o wdb.
 - **D51** Compra: morat cobra `buy_point[0] × 5` e ignora a opção; gate automático; requisitos conferidos; códigos de resultado de `NotifyItemBuy`.
+- **D68** Códigos genéricos de uso e extensão: -4 (`DENIED`) e -7 (`REQUIREMENT`) são inferidos; -1 e -3 seguem o `switch` do cliente.
+- **D69** O último morat da conta não é destruído (-4): sem morat a sala trava (dúvida 24).
+- **D70** O equipar valida dono, prazo, gate, classe, atributos, patente e nest, que o cliente não confere antes do 560. Serializado pela trava da conta.
+- **D71** Extensão soma a partir do prazo atual se ele ainda vale, senão a partir de agora (R-EXT-01). Morat não tem prazo e é recusado (inferido).
+- **D72** Uma trava por conta (`AccountLocks`) para compra, uso, destruição e extensão. O débito é o `debit` de `db/shop.py`, com UPDATE condicional.
+- **D73** `tbl_quickslot` vira `account_quick_slots` (cinco linhas por conta, `InitializeQuickSlot`), semeadas na criação e em `account kit apply`. Sem opcode no cliente, então só são gravadas.
+- **D74** Item de sistema vai para o `sEventSlot` livre (0 a 9). Não se desmonta por 570 (-4). Destruir libera o slot (559). Sem slot livre, recusa com -4 (inferido).
+- **D75** `ItemUsedByValue` (560 com `value` ≠ 0) é recusado com 561 e -4. O método existe; a troca de morat principal fica fora do F6 (dúvida 7).
+- **D76** Destruir morat zera as peças na mesma transação, sem depender de `ON DELETE SET NULL` (SQLite sem `PRAGMA foreign_keys`).

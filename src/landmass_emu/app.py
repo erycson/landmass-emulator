@@ -10,6 +10,7 @@ from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
 from landmass_emu.db.clans import SqlClanRepository
 from landmass_emu.db.engine import Migrator
+from landmass_emu.db.equipment import SqlEquipmentRepository
 from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.item_catalog import LazyItemCatalog
 from landmass_emu.db.matches import SqlMatchRepository
@@ -19,13 +20,17 @@ from landmass_emu.db.ranking import SqlRankingRepository
 from landmass_emu.db.shop import SqlShopRepository
 from landmass_emu.db.social import SqlSocialRepository
 from landmass_emu.domain.channel import Channel
+from landmass_emu.domain.equipment import EquipService
 from landmass_emu.domain.inventory import InventoryService
+from landmass_emu.domain.lifecycle import DestroyService, ExtendService
 from landmass_emu.domain.lobby import Lobby
+from landmass_emu.domain.locks import AccountLocks
 from landmass_emu.domain.presence import MessagePresence
 from landmass_emu.domain.rooms import Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.domain.shop import ShopService
 from landmass_emu.handlers.channel import ChannelHandlers
+from landmass_emu.handlers.channel.equipment import EquipmentHandlers
 from landmass_emu.handlers.message import MessageHandlers
 from landmass_emu.hosting.fixed import FixedMatchHost
 from landmass_emu.hosting.process import ProcessHostConfig, ProcessMatchHost
@@ -148,6 +153,7 @@ async def channel_server(
     inventory: InventoryRepository,
     shop: ShopService,
     matches: MatchRepository,
+    equipment: EquipmentHandlers,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
@@ -165,6 +171,7 @@ async def channel_server(
         accounts,
         inventory,
         shop,
+        equipment=equipment,
     )
     server = await Service(
         net_code=CHANNEL_NET_CODE,
@@ -194,35 +201,68 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         social = SqlSocialRepository(db)
         clans = SqlClanRepository(db)
         ranking = SqlRankingRepository(db)
-        shop = _shop_service(settings, accounts, progression, inventory, SqlShopRepository(db))
+        shop, equipment = _game_services(settings, db, accounts, progression, inventory)
         matches = SqlMatchRepository(db)
         async with (
             message_server(
                 settings, sessions, accounts, options, social, clans, ranking
             ) as message,
             channel_server(
-                settings, sessions, options, progression, accounts, inventory, shop, matches
+                settings,
+                sessions,
+                options,
+                progression,
+                accounts,
+                inventory,
+                shop,
+                matches,
+                equipment,
             ) as channel,
         ):
             yield message, channel
 
 
-def _shop_service(
+def _game_services(
     settings: Settings,
+    db: async_sessionmaker[AsyncSession],
     accounts: AccountRepository,
     progression: ProgressionRepository,
     inventory: InventoryRepository,
-    purchases: SqlShopRepository,
-) -> ShopService:
-    """Catálogo lido na primeira compra (LazyItemCatalog): o canal sobe sem o wdb."""
+) -> tuple[ShopService, EquipmentHandlers]:
+    """Compra e F6/F7 com o mesmo catálogo (LazyItemCatalog, o canal sobe sem o wdb) e a mesma trava
+    por conta: uma conta não compra e equipa ao mesmo tempo."""
     wdb = settings.client_dir / "landmass.wdb"
     catalog = LazyItemCatalog(wdb)
-    return ShopService(
+    levels = WdbCatalog(wdb)
+    locks = AccountLocks()
+    equipment = SqlEquipmentRepository(db)
+    shop = ShopService(
         catalog=catalog,
-        levels=WdbCatalog(wdb),
+        levels=levels,
         inventory=InventoryService(catalog),
         repository=inventory,
         accounts=accounts,
         progression=progression,
-        purchases=purchases,
+        purchases=SqlShopRepository(db),
+        locks=locks,
     )
+    handlers = EquipmentHandlers(
+        equip=EquipService(
+            catalog=catalog,
+            levels=levels,
+            inventory=inventory,
+            equipment=equipment,
+            accounts=accounts,
+            progression=progression,
+            locks=locks,
+        ),
+        destroy=DestroyService(inventory=inventory, equipment=equipment, locks=locks),
+        extend=ExtendService(
+            catalog=catalog,
+            inventory=inventory,
+            equipment=equipment,
+            progression=progression,
+            locks=locks,
+        ),
+    )
+    return shop, handlers

@@ -49,6 +49,10 @@ class ItemUnit:
     apply_flag: ApplyFlag
     apply_value: int | None
     expires_at: datetime | None
+    # Montagem (F6): morat dono e slot de peça (`SLOT_NAMES`), ou slot de sistema (0 a 9).
+    account_morat_id: int | None = None
+    slot_name: str | None = None
+    system_slot: int | None = None
 
     def wire_apply_value(self) -> int:
         return _wire_apply_value(self.apply_flag, self.apply_value, self.expires_at)
@@ -64,12 +68,14 @@ class MoratUnit:
     apply_flag: ApplyFlag
     apply_value: int | None
     expires_at: datetime | None
+    # Chave da linha em `account_morats`; None até gravar. Liga as peças montadas (F6).
+    id: int | None = None
 
     def wire_apply_value(self) -> int:
         return _wire_apply_value(self.apply_flag, self.apply_value, self.expires_at)
 
 
-def _utc_now() -> datetime:
+def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
@@ -84,7 +90,7 @@ class InventoryService:
         self,
         catalog: Catalog,
         *,
-        clock: Callable[[], datetime] = _utc_now,
+        clock: Callable[[], datetime] = utc_now,
         new_guid: Callable[[], str] = _new_guid,
     ) -> None:
         self._catalog = catalog

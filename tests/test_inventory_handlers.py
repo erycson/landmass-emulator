@@ -3,6 +3,7 @@
 import argparse
 import uuid
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -28,6 +29,7 @@ from landmass_emu.hosting.fixed import FixedMatchHost
 from landmass_emu.net.session import Session
 from landmass_emu.ports.match_host import GameEndpoint
 from landmass_emu.protocol.channel import CsInChannelServerIn, CsInChannelServerOut, CsOp
+from landmass_emu.protocol.equipment import CsEquipOp
 from landmass_emu.protocol.inventory import (
     CsGetItemOut,
     CsGetMoratsOut,
@@ -187,6 +189,7 @@ async def test_login_manda_101_com_nest_e_gates_depois_102_e_103(
         CsInventoryOp.GET_ITEM_OUT,
         CsInventoryOp.GET_MORATS_OUT,
         CsInventoryOp.GET_MORATS_OUT,
+        CsEquipOp.ITEM_ENDTIME_OUT,  # PRAZO (2026-01-04) já venceu: 585 depois dos 102 e 103
     ]
     login = replies[0]
     assert isinstance(login, CsInChannelServerOut)
@@ -366,7 +369,7 @@ async def test_admin_grava_item_e_morat(db: async_sessionmaker[AsyncSession]) ->
     morat = await admin.add_morat("ana", MORAT, 0)
     inv = SqlInventoryRepository(db)
     assert await inv.items(ana.id) == [item]
-    assert await inv.morats(ana.id) == [morat]
+    assert [replace(m, id=None) for m in await inv.morats(ana.id)] == [morat]
 
 
 async def test_admin_conta_inexistente_levanta(db: async_sessionmaker[AsyncSession]) -> None:

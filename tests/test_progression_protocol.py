@@ -25,7 +25,8 @@ def test_player_record_tamanho_e_offsets_de_progressao() -> None:
     # Os campos fora de progressão ficam zero.
     assert raw[0x00:0x28] == bytes(0x28)
     assert raw[0x30:0x48] == bytes(0x18)
-    assert raw[0x50:0x90] == bytes(0x40)
+    assert raw[0x50:0x5A] == b"\xff" * 10  # sEventSlot vazio
+    assert raw[0x5A:0x90] == bytes(0x36)
 
 
 def test_player_record_padrao_so_leva_o_id() -> None:
