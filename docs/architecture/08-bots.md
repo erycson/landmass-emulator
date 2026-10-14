@@ -85,6 +85,10 @@ teto e passagem pelo raio. Arestas: `w` andar (degrau até 40 uu), `f` queda (at
 altura do JumpZ, com alcance horizontal do GroundSpeed), `b` booster (até 500 uu). Sai ao terminar, com
 `LMEmuBake fim`. O bake é fatiado por Timer (40 expansões por tick) e tem teto de 20000 nós.
 
+Inicie o bake com a mesma linha de comando da partida (`hosting/command.py`), com
+`<mapa>?listen?game=LMEmu.LMEmuDeathMatch?lmemubake=1`, por `subprocess` do Python. Iniciado pelo
+`Start-Process` do PowerShell, o `LandMass.exe` sai na hora, sem log. Rotas geradas: só `ONS-Airport`.
+
 **Arquivo (D226).** `tools/routes/rotas.py --log <log do bake> --mapa <mapa> --ini <LMEmuRoutes.ini>` lê
 as linhas `LMEmuBake` e grava só a seção `[<mapa> LMEmuRoutes]`; as de outros mapas ficam. Imprime a
 contagem por flag e se as bases (time 0 e time 1) se alcançam nos dois sentidos. Sem linhas de bake, o
