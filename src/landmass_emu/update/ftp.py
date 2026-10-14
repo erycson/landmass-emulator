@@ -9,6 +9,7 @@ Desligado por padrão (`LANDMASS_UPDATE_PORT`).
 import asyncio
 import contextlib
 import hmac
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -17,6 +18,8 @@ IDLE_SECONDS = 300.0
 DATA_TIMEOUT = 30.0
 MAX_LINE = 4096
 CHUNK = 65536
+
+log = logging.getLogger(__name__)
 
 _Stream = tuple[asyncio.StreamReader, asyncio.StreamWriter]
 
@@ -46,6 +49,7 @@ class FtpServer:
         return await asyncio.start_server(self._serve, host, port)
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        log.info("FTP: conexão de %s", writer.get_extra_info("peername"))
         session = FtpSession(self, reader, writer)
         try:
             await session.run()
@@ -115,6 +119,7 @@ class FtpSession:
             self._listener = None
 
     async def _dispatch(self, verb: str, arg: str) -> bool:
+        log.info("FTP: %s %s", verb, "***" if verb == "PASS" else arg)
         handler = self._commands.get(verb)
         if handler is None:
             await self._reply(502, "Comando não implementado")
@@ -125,6 +130,7 @@ class FtpSession:
         return await handler(arg)
 
     async def _reply(self, code: int, text: str) -> None:
+        log.info("FTP: -> %d %s", code, text)
         self._writer.write(f"{code} {text}\r\n".encode("utf-8", errors="replace"))
         await self._writer.drain()
 
