@@ -11,8 +11,8 @@ from dataclasses import dataclass
 
 from landmass_emu.domain.rooms import MAX_SPECTATORS, Room
 
-# Classes do pacote LMEmu (`unreal/build_lmemu.py`). Herdam das de XGame e leem o equipamento de
-# cada jogador do `LMEmu.ini` pela chave `?lmemu=` (D190).
+# Classes do pacote LMEmu (`tools/unreal/build_lmemu.py`). Herdam das de XGame e leem o
+# equipamento de cada jogador do `LMEmu.ini` pela chave `?lmemu=` (D190).
 GAME_DEATHMATCH = "LMEmu.LMEmuDeathMatch"
 # LM_TeamGame herda BecomeSpectator=false de LM_DeathMatch e trava o respawn em TDM (D170).
 GAME_TEAM = "LMEmu.LMEmuTeamDeathMatch"

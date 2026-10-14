@@ -96,16 +96,16 @@ Não use `Launcher.exe`: ele tenta FTP de patch inexistente. Inicie `LandMass.ex
 - Máximo de 4 instâncias simultâneas. Duas instâncias não compartilham pasta (`LandMass.log`, `User.ini`, `Running.ini`): use `D:\landmass\cliente` e `D:\landmass\cliente2`.
 - O cliente encaminha a linha de comando para uma instância já aberta (janela de classe `WLog` com a propriedade `IsBrowser`) e fecha. No `LandMass.exe` da segunda pasta, troque o byte do offset `0x209E4` de `0x57` (`W`) para `0x58` (`X`); o original fica em `LandMass.exe.orig`.
 - AFK do cliente (`User.ini`, `GameAfkLimit`, `RoomAfkLimit`, `HangerAfkLimit`; padrão 3): o próprio cliente expulsa quem fica sem entrada, e da partida isso sai como deserção (500). Em teste com dois clientes, o que não está em foco fica parado e é expulso depois de 3 minutos. O limite fica no padrão: mexa no cliente parado de tempos em tempos.
-- `scripts/launch.ps1 cliente:teste cliente2:teste2` fecha os clientes abertos e inicia cada pasta pelo seu `jogar_<usuário>.bat`.
+- `tools/scripts/launch.ps1 cliente:teste cliente2:teste2` fecha os clientes abertos e inicia cada pasta pelo seu `jogar_<usuário>.bat`.
 - Captura do Windows (GDI/`PrintWindow`) sai branca com o swapchain D3D11. Use o screenshot do próprio jogo (`F11` = `shot`, grava em `..\ScreenShots`).
 - O cursor da GUI é movido por deltas (DirectInput), não por `SetCursorPos`, e não é limitado às bordas.
-- Ferramenta: `scripts/gui.py` (malha fechada: screenshot → localiza o cursor → delta).
+- Ferramenta: `tools/scripts/gui.py` (malha fechada: screenshot → localiza o cursor → delta).
 
 ```
-uv run --no-project --with pillow python -I scripts/gui.py shot saida.png [--pid N]
-uv run --no-project --with pillow python -I scripts/gui.py click <x> <y> [--double] [--pid N]
-uv run --no-project --with pillow python -I scripts/gui.py type <texto> [--pid N]
-uv run --no-project --with pillow python -I scripts/gui.py key 0x0D [--pid N]
+uv run --no-project --with pillow python -I tools/scripts/gui.py shot saida.png [--pid N]
+uv run --no-project --with pillow python -I tools/scripts/gui.py click <x> <y> [--double] [--pid N]
+uv run --no-project --with pillow python -I tools/scripts/gui.py type <texto> [--pid N]
+uv run --no-project --with pillow python -I tools/scripts/gui.py key 0x0D [--pid N]
 ```
 
 - `key` recebe o virtual-key code. O cursor fica oculto enquanto há texto em edição; use `key` direto após `type`.

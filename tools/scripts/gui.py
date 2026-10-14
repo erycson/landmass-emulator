@@ -4,10 +4,10 @@ O UE2 lê o mouse por deltas (DirectInput); SetCursorPos não move o cursor da G
 limitado às bordas, então posiciona em malha fechada: screenshot -> localiza a ponta -> delta.
 
 Uso:
-  uv run --no-project --with pillow python -I scripts/gui.py shot <saida.png> [--pid N]
-  uv run --no-project --with pillow python -I scripts/gui.py click <x> <y> [--double] [--pid N]
-  uv run --no-project --with pillow python -I scripts/gui.py type <texto> [--pid N]
-  uv run --no-project --with pillow python -I scripts/gui.py key <vk> [--pid N]
+  uv run --no-project --with pillow python -I tools/scripts/gui.py shot <saida.png> [--pid N]
+  uv run --no-project --with pillow python -I tools/scripts/gui.py click <x> <y> [--double]
+  uv run --no-project --with pillow python -I tools/scripts/gui.py type <texto> [--pid N]
+  uv run --no-project --with pillow python -I tools/scripts/gui.py key <vk> [--pid N]
 """
 
 import argparse

@@ -6,7 +6,7 @@ Substitui uma textura de um pacote `.lm` (por exemplo, a pele de um morat) por o
 
 - umodel: `D:\landmass\tools\umodel\umodel.exe`, para exportar e conferir.
 - UCC do LandMass corrigido, no ambiente `D:\landmass\build` (ver [game-server.md](game-server.md), `build_lmemu.py`).
-- `unreal/transplant_texture.py`, para gravar a textura no pacote do jogo.
+- `tools/unreal/transplant_texture.py`, para gravar a textura no pacote do jogo.
 
 ## Limites
 
@@ -17,7 +17,7 @@ Substitui uma textura de um pacote `.lm` (por exemplo, a pele de um morat) por o
 ## Passos
 
 1. Exporte a original com o umodel. Gere a versão ampliada em TGA RGBA, com o alfa da original redimensionado.
-2. Em `D:\landmass\build\LMTexImport\Classes\LMTexImport.uc`, coloque a linha abaixo. `NAME` e `GROUP` são os da textura no pacote de destino.
+2. Copie `tools/unreal/LMTexImport` para `D:\landmass\build\LMTexImport` e, no `Classes\LMTexImport.uc`, coloque a linha abaixo. `NAME` e `GROUP` são os da textura no pacote de destino.
 
    ```
    #exec TEXTURE IMPORT NAME=<Nome> FILE=<tga> GROUP=<Grupo> MIPS=1 DXT=5 LODSET=2
@@ -34,7 +34,7 @@ Substitui uma textura de um pacote `.lm` (por exemplo, a pele de um morat) por o
 4. Rode o transplante:
 
    ```
-   uv run python unreal/transplant_texture.py <pacote.lm> D:\landmass\build\System\LMTexImport.u <Grupo>.<Nome> <saída.lm>
+   uv run python tools/unreal/transplant_texture.py <pacote.lm> D:\landmass\build\System\LMTexImport.u <Grupo>.<Nome> <saída.lm>
    ```
 
    O script confere que reproduz byte a byte a export original e a nova antes de gravar.

@@ -4,10 +4,10 @@ Status: cópia montada, patches aplicados, partidas testadas com clientes reais.
 
 ## Montagem da cópia
 
-Use o `D:\landmass\Server Patch`. O `aplicar.ps1` copia o cliente sem o que o servidor não usa, aplica os dois patches abaixo conferindo os bytes originais e instala o `LMEmu.u`:
+Use o [`tools/server-patch`](../../tools/server-patch/LEIA-ME.md). O `aplicar.ps1` copia o cliente sem o que o servidor não usa, aplica os dois patches abaixo conferindo os bytes originais e instala o `LMEmu.u`:
 
 ```
-powershell -ExecutionPolicy Bypass -File "D:\landmass\Server Patch\aplicar.ps1" -Cliente D:\landmass\cliente -Destino D:\landmass\servidor-partida
+powershell -ExecutionPolicy Bypass -File tools\server-patch\aplicar.ps1 -Cliente D:\landmass\cliente -Destino D:\landmass\servidor-partida
 ```
 
 O `build_lmemu.py` atualiza o `LMEmu.u` do Server Patch junto com o servidor e os clientes.
@@ -90,7 +90,7 @@ Com `LANDMASS_MATCH_SERVER_DIR`, o canal sobe um `LandMass.exe` por sala que ini
 
 O equipamento de cada jogador vai para `LMEmu.ini`, na mesma pasta `system\`, em uma seção `[m<8 hex> LMEmuLoadout]` por partida. A seção é gravada antes do lançamento e tirada no fim, na falha de início e na queda (D190).
 
-Pré-requisito: o pacote `LMEmu` precisa estar em `servidor-partida\system`. Gere-o a partir da raiz de `emulador\` com `uv run python unreal/build_lmemu.py --landmass D:/landmass`. O script compila com o UCC 3369 ajustado e copia `LMEmu.u` para essa pasta. Sem o pacote, a classe `LMEmu.*` não existe no motor (inferido, não testado).
+Pré-requisito: o pacote `LMEmu` precisa estar em `servidor-partida\system`. Gere-o a partir da raiz de `emulador\` com `uv run python tools/unreal/build_lmemu.py --landmass D:/landmass`. O script compila com o UCC 3369 ajustado e copia `LMEmu.u` para essa pasta. Sem o pacote, a classe `LMEmu.*` não existe no motor (inferido, não testado).
 
 Configuração (PowerShell, na raiz de `emulador\`). O valor de `login_num` vem do `jogar_teste.bat`; não o escreva em arquivo versionado:
 
