@@ -260,7 +260,15 @@ Método: instâncias próprias de `LandMass.exe -server` em `servidor-partida\sy
 
 - A partida DM não usa `GS_*` (D85). Os handlers `GS_*` ficariam sem chamador.
 - O resultado não é lido. O servidor escreve o bloco no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador encerra o processo sem saída limpa, e o log pode não ter sido descarregado (D86). As métricas ficam `NULL`.
-- Para fechar: com dois clientes e `TimeLimit` curto (ou `GoalScore` baixo), confirmar se o `EndGame` acontece por tempo ou pontuação e se o bloco `GameEnded` aparece no `LandMass.log` antes de qualquer `kill`. Sem saída limpa nem flush, a mudança exige alterar o processo de partida, fora deste escopo.
+- Para fechar: com dois clientes e `TimeLimit` curto (ou `GoalScore` baixo), confirmar se o `EndGame` acontece por tempo ou pontuação e se o bloco `GameEnded` aparece no `LandMass.log` antes de qualquer `kill`. A saída limpa existe (§11.7); falta a prova com dois clientes.
+
+### 11.7 Captura do bloco pelo console (verificação de 13/10/2026)
+
+- `exit` digitado na janela `LandMassUnrealWLog` (filho `LandMassUnrealWEditTerminal`) fecha o servidor com código 0 em 0,1 s. O motor grava "Log file closed" no `LOG=`, que foi de 8749 para 11199 bytes. O `terminate` derruba o processo com o buffer ainda dentro do motor.
+- Sem o terminal para digitar, ou se o motor não sai em 8 s, o emulador cai no `terminate` (`hosting/process.py`, `ProcessMatchHost.end`).
+- Verificado com `LOG=` próprio e o `LandMass.exe` real na porta 7955: a partida ficou pronta, `end` levou 0,16 s e `on_exit` não disparou.
+- Não reproduzido: o bloco `GameEnded`. A instância de teste não teve jogador, e o motor só o escreve no `EndGame`. Falta a prova com dois clientes (D153).
+- O filtro é só o PID da partida. Os servidores do usuário na faixa 7800-7899 têm a mesma classe de janela.
 4. Prazo próprio de partida (não há).
 
 ## 12. Teclas, movimento e animações na partida (verificação de 2026-10-13)

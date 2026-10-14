@@ -8,4 +8,4 @@
 | Render D3D minimizado | Testes de aceitação automatizados falham | média | Janela pequena fora de foco; ver [operations/running-client.md](operations/running-client.md). |
 | NAT/firewall dos jogadores | Conexão externa falha | média | Configurar `LANDMASS_PUBLIC_HOST`; documentar portas a abrir. |
 | Vazamento de `.bat` com token | Acesso indevido à conta | baixa | Token por jogador; regerar invalida o anterior. |
-| Resultado da partida não lido: o bloco `GameEnded` pode não ser descarregado, pois o emulador encerra o processo sem saída limpa | Histórico sem métricas; F9 bloqueada | confirmado | D86; testar com dois clientes se o bloco aparece no log antes de qualquer `kill`, por tempo ou pontuação (`re/game_server_host.md`, §11). |
+| Resultado da partida não lido: o bloco `GameEnded` pode não sair no log se o servidor cair antes do `exit` | Histórico sem métricas; F9 sem prova no cliente | mitigado (D153) | Captura pelo console com `LOG=` próprio. Falta testar com dois clientes que o bloco aparece antes do `exit` (`re/game_server_host.md`, §11.7). |

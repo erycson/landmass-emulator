@@ -37,11 +37,11 @@ A partida acaba em um de três casos (D48):
 2. O último jogador em jogo sai da sala sem ter mandado 500.
 3. O processo do servidor cai depois de pronto (`on_exit`).
 
-Nos três casos o canal faz o mesmo: encerra o processo (`MatchHost.finish`), volta a sala à espera (412 WAITING ao lobby, 402 sem pronto para cada membro, o dono incluído (D77), 317 à sala) e grava o histórico uma vez (D52). Sala que esvazia no meio da partida é encerrada sem gravar.
+Nos três casos o canal faz o mesmo: encerra o servidor pelo console (`MatchHost.end`, digita `exit` e espera o `LOG=`, D153), volta a sala à espera (412 WAITING ao lobby, 402 sem pronto para cada membro, o dono incluído (D77), 317 à sala) e grava o histórico uma vez (D52). Sala que esvazia no meio da partida é encerrada sem gravar.
 
-Quem entra de novo na própria sala depois da partida (311) recebe 312, 314 e 317 só para si (D49).
+Quem entra de novo na própria sala depois da partida (311) recebe 312, 314 e 317 só para si (D49). Esse 311 também tira o jogador da partida: quando o último em jogo volta assim, a partida acaba sem 500 e grava com `end_reason` `return_to_room` (D150).
 
-O bloco `GameEnded` do log não é lido. O servidor o escreve no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador encerra a partida com `terminate` ao receber 500 de todos, sem saída limpa. Por isso o log pode não trazer o bloco. Métricas ficam nulas (D86; `re/game_server_host.md`, seções 11.4 e 11.5).
+O bloco `GameEnded` é lido ao fim da partida. O servidor o escreve no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador pede a saída pelo console (`exit`), espera o motor gravar o `LOG=` da partida e só então derruba o processo (D153). `hosting/game_end.py` lê o último bloco completo e os jogadores casam pelo nick (D154). Quem não aparece no bloco fica com métricas nulas e sem recompensa (`re/game_server_host.md`, seções 11.4 e 11.7).
 
 ## Partida em memória
 
@@ -76,7 +76,9 @@ Este contrato só seria necessário se a validação de jogador fosse feita pelo
 ## Riscos e pendências
 
 - Partida real não testada no jogo: a porta por `PORT=` (UDP aberta com o PID, §11.2), o 403 atrasado, o 500 como fim e o 501 com valor 0 dependem do cliente real.
-- Estatísticas de partida: o bloco `GameEnded` não é lido (D86). As métricas ficam nulas (ver `04-persistence.md`).
+- Volta à sala pelo 311 como fim da partida é inferido (D150); não validado no cliente real.
+- Depósito: 588 responde 589 (D151); o botão Terminar não foi testado no cliente real.
+- Estatísticas de partida: o bloco `GameEnded` é lido ao fim da partida (D153, D154). Falta a prova com dois clientes; sem o bloco, as métricas ficam nulas (ver `04-persistence.md`).
 - Matching de `map_num` com `RecordIndex` e unidades de `TimeLimit` são inferidos (D53).
 - Um cliente que nunca manda 500 com o servidor vivo mantém a sala em jogo até o processo cair. Sem prazo próprio de partida (ver `operations/game-server.md`).
 - Modo fixo também precisa do `landmass.wdb` e do mapa da sala: sem eles o 401 devolve 241000201. Antes do marco 4 o 403 saía sem consultar o catálogo, então é uma mudança de comportamento.

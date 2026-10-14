@@ -402,8 +402,8 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 | R-REW-07 | `playRate` tem duas definições: DM usa tempo (`(ElapsedTime − StartTime) / ElapsedTime`, ~16349); OP usa rodadas (`JoinRound`, ~6698). Cada modo usa a sua. | `XGame` (dúvida 14) |
 | R-REW-08 | Ordem após o cálculo base: (1) `× ExpMult` e `× MoneyMult` se > 0 (ambos 1); (2) bônus PC-room com `pc_room`: `exp += exp × PCRoomBonusExp` e `money += money × PCRoomBonusPoint` (valor 1 = +100%, inferido); (3) bônus de evento: `exp += exp × BonusExpMult` e `money += money × BonusMoneyMult` (origem não localizada); (4) buffs: `exp × 1.5` se `bExpIncrement` (item `308020001`) e `money × 1.5` se `bLDIncrement` (item `308020002`). | `XGame` 6625–6640, 16296–16311; `ApplySysItmValue` 16852 |
 | R-REW-09 | Tipo de vitória: time vencedor (OP e TDM) ou ranking 1 (DM). Não há campo de vitória no cliente; a regra é (inferido). | (inferido) |
-| R-REW-10 | Gravação: uma transação por partida que soma `total_exp`, `ld`, `total_gamecount` e `total_win`/`total_lose`/`total_kill`/`total_death` de cada jogador. Os valores float são convertidos para inteiro (regra de arredondamento: dúvida 13). | (inferido; D20) |
-| R-REW-11 | O resultado do DM não passa por GS_*. Sai no bloco `GameEnded` do log, que não é lido (D86). Quem grava exp e LD na conta não foi identificado (dúvida 17). | `re/game_server_host.md` §11 |
+| R-REW-10 | Gravação: uma transação por partida que soma `total_exp` e `ld` de cada jogador com dado (D155). `total_gamecount`, `total_win`, `total_lose`, `total_kill` e `total_death` não são somados: a ficha lê `match_players` (D107). Os valores float são convertidos para inteiro (regra de arredondamento: dúvida 13). | (inferido; D20) |
+| R-REW-11 | O resultado do DM não passa por GS_*. Sai no bloco `GameEnded` do log, lido ao fim da partida (D153, D154). Quem grava exp e LD na conta é `SqlMatchRepository.save` (D155). | `re/game_server_host.md` §11 |
 
 ### 5.10 Tutorial (600, 601)
 
@@ -483,7 +483,7 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 582 | S→C | Resultado de estender | `account_items` | `u16 index` @0, `i32 apply_value` @4, `i32 cash` @8, `i32 point` @0xc, `i32 result` @0x10 | implementado (F7); 581 (morat) não emitido |
 | 585 | S→C (push) | Fim de prazo | `account_items` | `u8 0` @0, `u8 bItem` @1 (1 = item), `u16 index` @2 | implementado (F7): no login, para item vencido |
 | 586 / 587 | C→S / S→C | Entrar no hangar | `account_items`, `account_morats` | corpo vazio; 587 é `bool` (features §3.1) | falta |
-| 588 | C→S | Sair do hangar | — | sem chamador na UI | — |
+| 588 | C→S | Sair do hangar | vazio | o cliente envia; o emulador responde 589 (D151) | 589 |
 | 590 | S→C (push) | Troca de morat principal | `accounts` | falta | falta |
 | 591 | S→C (push) | Prêmio de gacha (resposta ao 560 com `308010006`) | `account_items`, `accounts` | `u16 key` @0, `i32` quantidade @4, `i32` resultado @8, registros de 0x110 a partir de @0xC | implementado (F11); até 2 prêmios |
 | 600 | C→S | Marcar passo do tutorial | `accounts` | `u8 @0` (passo 0 a 2) | implementado (F2) |
@@ -543,7 +543,7 @@ O opcode **171** vale nas duas direções: C→S pede os dados do clã (responde
 
 ### 6.3 Pontos de contato com a partida
 
-- A recompensa (R-REW-*) é calculada pelo servidor no `EndGame` e gravada no log (bloco `GameEnded`). No DM, nada chega ao canal por GS_* (`re/game_server_host.md` §11). Sem a leitura do log, a fatia F9 não começa (D86).
+- A recompensa (R-REW-*) é calculada pelo servidor no `EndGame` e gravada no log (bloco `GameEnded`). No DM, nada chega ao canal por GS_* (`re/game_server_host.md` §11). O emulador lê o bloco ao fim da partida e aplica exp e LD (D153 a D155); a prova com dois clientes é pendente.
 - O cliente de partida usa `GameRewardConstant` e o próprio `XGame`. O servidor reimplementa as fórmulas; não existe, no cliente, cálculo autoritativo fora da partida.
 
 ## 7. Ordem de implementação
@@ -597,7 +597,7 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
 15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
 16. **Opcodes não medidos (parcial, F12 e F13):** os de amigo e bloqueio (181, 182, 186, 187) foram medidos nos wrappers e no dispatcher. Os pedidos de clã (171, 174, 177, 194) têm cabeçalho medido, mas os pares de resposta não foram observados em captura. Faltam o corpo de 152 e `NotifyFriendLog`, que não tem opcode.
-17. **Resultado da partida:** o DM não envia resultado por GS_*. O resultado está só no log (bloco `GameEnded`), que não é lido (D86). Quem grava exp e LD na conta não foi identificado Enquanto isso, nada grava `won` nem as métricas, e a ficha sai com zero nesses campos (D105, D107) [bloqueia F9]. Limite de amigos e de bloqueados.
+17. **Resultado da partida:** o DM não envia resultado por GS_*. O resultado está no log (bloco `GameEnded`), lido desde o D153. Quem grava exp e LD é `SqlMatchRepository.save` (D155). `won` continua sem fonte no DM (D105). Limite de amigos e de bloqueados.
 18. **Clã:** criação e gestão só pela CLI (`landmass-emu clan`, D55), porque o cliente não tem pedido para isso. Confirmar com o usuário.
 19. **Índice de inventário (resolvida em F4/F5, [D30](../decisions/README.md)):** `account_items` e `account_morats` têm namespaces separados. Morat usa o gate como índice; item começa em 1. Inferido do dump de `GetMoratsInfoByGate`: confirmar no cliente real.
 20. **Campo de exp e saldo no registro do jogador:** qual pacote (151, 317 ou 549) entrega `iTotalExp`, `iPoint` e `iCash` ao cliente [bloqueia F3]. **Resolvida em F3 (inferido, confirmar no cliente real):** o 101 entrega `iTutorialClear`, `iTotalExp`, `iCash` e `iPoint` (`@0x28`, `@0x2c`, `@0x48`, `@0x4c`), pelo layout de `LM_PLAYER_INFO`. O 121 de quem entra entrega `iTotalExp` em `@4`. 151, 317 e 549 também trazem `iTotalExp` (`R+0x04`): quem implementar salas precisa preenchê-lo, senão zera o nó do próprio jogador.

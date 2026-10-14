@@ -115,13 +115,15 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 462 | S→C | `ROOM_INVITE_OUT` | `i32 result` | implementado |
 | 463 | S→C | `ROOM_INVITE_NOTIFY` | 21 bytes | implementado (shortcut: nick de @4 inferido) |
 | 471 | C→S | `ROOM_INVITE_ANSWER` | `i32 room_id`, `u8 accept` | implementado |
-| 500 | C→S | `EXIT_PLAY` | sem corpo | implementado (shortcut: fim da partida quando todos saem, D48; o cliente real não confirmou) |
+| 500 | C→S | `EXIT_PLAY` | sem corpo | implementado (shortcut: fim da partida quando todos saem, D48; o cliente real não confirmou). O 311 de quem volta à sala também encerra a partida para o último em jogo (D150) |
 | 501 | S→C | `EXIT_PLAY_OUT` | `i32 result` | implementado (shortcut: `result` 0 não confirmado no cliente) |
 | 542 | C→S | `PLAYER_DETAIL_IN` | `char nick[17]` | implementado (D107): responde 543 |
 | 543 | S→C | `PLAYER_DETAIL_OUT` | 77 bytes | implementado (D107): valores do banco; shortcut: tamanho do nick e do clã inferido |
 | 549 | S→C | `ROOM_ENTRY_OUT` | entrada de jogador, 48 bytes | implementado (shortcut: divisão com 312) |
 | 586 | C→S | `ENTER_HANGAR` | vazio | implementado (D78): só quem está em sala |
 | 587 | S→C | `ENTER_HANGAR_OUT` | `i32 client_guid` @0 | implementado (D78): só ao pedinte |
+| 588 | C→S | `LEAVE_HANGAR` | vazio | implementado (D151): só quem está em sala |
+| 589 | S→C | `LEAVE_HANGAR_OUT` | `i32 client_guid` @0, `u8` 0x23 @4 (8 bytes) | implementado (D151): só ao pedinte |
 | 550 | C→S | `ITEM_BUY_IN` | 12 bytes: `i32 id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 nBuyOption` @5 (0 a 3) | implementado (F8): debita e cria a unidade numa transação; recusa com result ≠ 0 |
 | 551 | S→C | `ITEM_BUY_OUT` | 68 bytes: registro de 102 em @0..0x33, `i32 cash` @0x38, `i32 point` @0x3c, `i32 result` @0x40 | implementado (F8): sucesso manda 551, 102, 900 e 902; recusa vai sem registro e com saldos zero |
 | 552 | S→C | `MORATS_BUY_OUT` | 104 bytes: registro de 103 em @0..0x5b, `i32 cash` @0x5c, `i32 point` @0x60, `i32 result` @0x64 | implementado (F8): sucesso manda 552, 103, 900 e 902 |

@@ -160,7 +160,7 @@ Migração `a3d9e6f1c402` (sobre `a3c7e915d2b4`). Modelo `GiftRow` em `db/models
 - Modelos: `db/models.py` (`MatchRow`, `MatchPlayerRow`). Migração: `db/migrations/versions/887ad86230f6_create_matches_and_match_players_tables.py`.
 - Constraints: `match_players_match_id_foreign` (FK) e `match_players_match_id_account_id_unique` (um jogador por partida).
 - Gravação: uma vez, no fim da partida, com `end_reason` (D48, D52). Não há tabela de eventos nem registro durante a partida.
-- Hoje só a identidade e a sala são gravadas. Métricas de jogador ficam `NULL` até o bloco `GameEnded` ser lido, o que depende de saída limpa do servidor (D86; `re/game_server_host.md`, seção 11). A ficha (D107) lê essas colunas e sai com zero enquanto isso.
+- Gravado: identidade, sala, `uuid` (D152), tempo jogado do canal e, quando o log traz o bloco `GameEnded`, kills, colocação, exp e LD (D153, D154). Sem o bloco, essas métricas ficam `NULL`. A ficha (D107) lê essas colunas.
 - Contrato de resultado (D105): jogos, vitórias e derrotas contam só partidas com `won` não nulo em alguma linha. Quem não tem `won` nessa partida conta como jogo sem vitória nem derrota. No DM, o log não traz `Winner` (ver a disponibilidade abaixo).
 
 Tabela `matches` (uma linha por partida):
@@ -178,7 +178,8 @@ Tabela `matches` (uma linha por partida):
 | `time_limit` | `Integer` | não | Tempo limite da partida. |
 | `goal_score` | `Integer` | não | Pontuação para vencer (`GoalScore` da URL). |
 | `started_at`, `ended_at` | `DateTime(timezone=True)` | não | Início e fim da partida. |
-| `end_reason` | `String(32)` | não | Motivo do fim: `exit_play` (todos saíram ou o último em jogo saiu) ou `server_exit` (processo caiu depois de pronto), D48. |
+| `end_reason` | `String(32)` | não | Motivo do fim: `exit_play` (todos saíram ou o último em jogo saiu), `return_to_room` (o último em jogo voltou à sala, D150) ou `server_exit` (processo caiu depois de pronto), D48. |
+| `uuid` | `String(36)` | sim | Identificador da partida, único (`matches_uuid_unique`). Partidas anteriores à migração `5c1e8a3f7b92` ficam sem uuid (D152). |
 | `created_at`, `updated_at` | `DateTime(timezone=True)` | não | Criação e última gravação. |
 
 Tabela `match_players` (uma linha por jogador por partida):
@@ -193,18 +194,21 @@ Tabela `match_players` (uma linha por jogador por partida):
 | `team` | `Integer` | sim | Time; nulo quando o modo não define time. |
 | `is_master` | `Boolean` | não | Se era o mestre da sala. |
 | `kills`, `deaths`, `assists`, `ranking`, `headshots`, `bullets`, `hits`, `damage`, `exp`, `money` | `Integer` | sim | Métricas da partida; disponibilidade na tabela abaixo. |
-| `played_percent` | `Float` | sim | Percentual do tempo jogado, de 0 a 100. |
+| `played_percent` | `Float` | sim | Percentual do tempo jogado, de 0 a 100, derivado do canal (D152). |
+| `played_seconds` | `Integer` | sim | Tempo jogado em segundos: do início até a saída da partida ou o fim. Vem do canal (D152). |
 | `won` | `Boolean` | sim | Vitória; disponibilidade na tabela abaixo. |
 | `created_at`, `updated_at` | `DateTime(timezone=True)` | não | Criação e última gravação. |
 
-Disponibilidade das métricas: o que o jogo produz, segundo o RE do `XGame` e o bloco `GameEnded` (não reproduzido no log neste ambiente). O emulador não lê esse bloco (D86), então hoje todas as métricas ficam `NULL`.
+Recompensa (R-REW-10, D155): na mesma transação da gravação, `accounts.total_exp` e `accounts.ld` somam o exp e o LD de cada jogador que os tem.
+
+Disponibilidade das métricas: o que o jogo produz, segundo o RE do `XGame` e o bloco `GameEnded`. O emulador lê o bloco ao fim da partida (D153, D154); sem o bloco, as métricas ficam `NULL`.
 
 | Métrica | O que o jogo produz | Situação |
 |---------|---------------------|----------|
-| `kills` | `Kills`, por jogador, nos blocos de DM e de OP/time. | Consta do RE; não coletado. |
-| `ranking` | `Ranking`, no bloco de DM. | Consta do RE; não coletado. |
-| `played_percent` | `Played%`, no bloco de DM, em fração. A conversão para 0 a 100 fica com o parser. | Consta do RE; não coletado. |
-| `exp`, `money` | Exp e LD ganhos, por jogador, no bloco de DM. | Consta do RE; não coletado. |
+| `kills` | `Kills`, por jogador, nos blocos de DM e de OP/time. | Lido do bloco `GameEnded` quando ele sai (D154). |
+| `ranking` | `Ranking`, no bloco de DM. | Lido do bloco `GameEnded` quando ele sai (D154). |
+| `played_percent` | Não vem do bloco: o `Played` do log não é usado. | Derivado do canal (`with_played`, D152). |
+| `exp`, `money` | Exp e LD ganhos, por jogador, no bloco de DM. | Lido do bloco `GameEnded` quando ele sai (D154). |
 | `won` | `Winner`, no bloco de OP/time. Não há no DM, e a semântica (time ou jogador) não foi confirmada. | Parcial; não coletado. |
 | `deaths` | `PRI.Deaths` é incrementado em `Killed()`, mas não entra no bloco. | Não produzido: fica `NULL`. |
 | `assists` | Só `m_iAssistScore` (critical frag de time). Não é assistência de CS. | Não existe: fica `NULL`. |

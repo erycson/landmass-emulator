@@ -127,7 +127,7 @@ Os logs do servidor de partida (`servidor-partida\system\LandMass.log`) só são
 
 - A partida não foi jogada por agente. Os passos 5 a 10 dependem do cliente real.
 - Não há prazo próprio de partida. Se um cliente nunca manda 500 e o servidor não cai, a sala fica jogando até alguém sair.
-- As métricas de jogador ficam nulas. O bloco `GameEnded` não é lido (D86: o servidor o escreve no `EndGame`, que pode ocorrer por tempo, pontuação ou último jogador; o processo é encerrado sem saída limpa, e o log pode não ter sido descarregado; `re/game_server_host.md` §11.4 e §11.5) (ver `04-persistence.md`, "Histórico de partidas").
+- As métricas de jogador ficam nulas quando o log não traz o bloco `GameEnded` (D153, D154; `re/game_server_host.md` §11.4 e §11.7) (ver `04-persistence.md`, "Histórico de partidas").
 - Salas e partidas em andamento são só de memória: reiniciar o emulador zera as salas.
 
 ## Riscos e pendências
@@ -137,4 +137,4 @@ Os logs do servidor de partida (`servidor-partida\system\LandMass.log`) só são
 - Saídas precoces (~20 ms, sem log) ainda sem causa comprovada; podem afetar o servidor.
 - A conexão com o Channel (`GS_*`, `CServerRoom`) não está no caminho desta cópia. Um LOGIN recusado não vem do `LM_Engine.dll`.
 - Os patches são binários de 2008 alterados à mão. Restaure com os arquivos `.orig` se algo se comportar de forma estranha.
-- Log por partida: `LOG=<nome>.log` antes de `-log` gera um arquivo por partida (verificado, `re/game_server_host.md` §11.5). O emulador ainda não usa: todas as salas gravam em `system\LandMass.log`.
+- Log por partida: `LOG=partida-<porta>-<id>.log` antes de `-log` gera um arquivo por partida (verificado, `re/game_server_host.md` §11.5; D153). Os arquivos ficam em `system\`. O `LandMass.log` deixa de ser o log das partidas do emulador.
