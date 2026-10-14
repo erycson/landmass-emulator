@@ -18,7 +18,10 @@ const ROUTE_AT = 150.0;      // perto o bastante do nó para pular a partir dele
 const ROUTE_STALL = 3.0;     // segundos sem sair do lugar antes de trocar de destino
 const ROUTE_MOVED = 250.0;    // deslocamento que conta como sair do lugar
 const ROUTE_HUNT = 8.0;      // segundos até refazer o alvo de caça (o inimigo se move)
-const ROUTE_EXPLORE = 0.25;  // chance de ir a um nó sorteado em vez de atrás de um inimigo
+const ROUTE_PUSH = 0.6;      // chance de atacar o território inimigo (só time) em vez de caçar (D249)
+const ROUTE_EXPLORE = 0.2;   // chance de ir a um nó sorteado do mapa
+const ROUTE_PUSH_TIME = 30.0; // segundos até refazer um alvo de ataque: ele não desiste no meio do mapa
+const ROUTE_DEEP = 0.45;     // território inimigo: distância à base inimiga abaixo disto x distância entre as bases
 const BOOST_DIST = 1500.0;   // liga o booster com o destino a mais que isto
 const BOOST_ON = 0.6;        // carga mínima (0 a 1) para ligar o booster
 const BOOST_OFF = 0.15;      // carga em que o booster desliga
@@ -378,23 +381,58 @@ function int RandomGoal(int cur)
     return Rand(Pos.Length);
 }
 
-// Alvo de caça: onde o inimigo atual foi visto por último; sem inimigo, um inimigo vivo sorteado; às vezes,
-// ou sem ninguém para caçar, um nó sorteado.
-function int PickGoal(Bot B, int cur)
+// Nó sorteado no território do time inimigo (base, túneis e corredores do lado de lá), longe do bot. -1 fora
+// de jogo de time ou sem as duas bases.
+function int AttackGoal(Bot B, int cur)
+{
+    local int k, n, own, foe;
+    local float span;
+
+    if (!Level.Game.bTeamGame || B.PlayerReplicationInfo == None || B.PlayerReplicationInfo.Team == None)
+        return -1;
+    own = BaseNode[B.PlayerReplicationInfo.Team.TeamIndex];
+    foe = BaseNode[1 - B.PlayerReplicationInfo.Team.TeamIndex];
+    if (own < 0 || foe < 0)
+        return -1;
+    span = NodeDist(own, foe);
+    for (k = 0; k < 32; k++)
+    {
+        n = Rand(Pos.Length);
+        if (NodeDist(n, foe) < ROUTE_DEEP * span && NodeDist(cur, n) > 1000.0)
+            return n;
+    }
+    return -1;
+}
+
+// Alvo de caça: onde o inimigo atual foi visto por último. Sem inimigo: em 60% das vezes um nó do território
+// inimigo (ataque, prazo maior em Prazo), senão um inimigo vivo sorteado; às vezes, ou sem ninguém para caçar,
+// um nó sorteado.
+function int PickGoal(Bot B, int cur, out float Prazo)
 {
     local Controller C;
     local array<Pawn> Alvos;
     local vector P;
-    local float d;
+    local float d, r;
     local int n;
 
+    Prazo = ROUTE_HUNT;
+    r = FRand();
     if (B.Enemy != None)
     {
         P = B.LastSeenPos;
         if (P == vect(0,0,0))
             P = B.Enemy.Location;
     }
-    else if (FRand() >= ROUTE_EXPLORE)
+    else if (r < ROUTE_PUSH)
+    {
+        n = AttackGoal(B, cur);
+        if (n >= 0)
+        {
+            Prazo = ROUTE_PUSH_TIME;
+            return n;
+        }
+    }
+    else if (r < 1.0 - ROUTE_EXPLORE)
     {
         for (C = Level.ControllerList; C != None; C = C.NextController)
         {
@@ -416,10 +454,10 @@ function int PickGoal(Bot B, int cur)
 }
 
 // Novo destino do bot i e o A* até ele. Falso (sem destino) se não há caminho.
-function bool NewGoal(Bot B, int i, int cur, int G)
+function bool NewGoal(Bot B, int i, int cur, int G, float Prazo)
 {
     Goal[i] = -1;
-    HuntAt[i] = Level.TimeSeconds + ROUTE_HUNT;
+    HuntAt[i] = Level.TimeSeconds + Prazo;
     if (G < 0 || G == cur || !Plan(i, cur, G))
         return false;
     Goal[i] = G;
@@ -470,8 +508,8 @@ function Melee(Bot B, bool bPerto)
 // Roaming) e o resultado é verdadeiro. Falso também fora da rede: o motor decide.
 function bool Assign(Bot B)
 {
-    local int i, cur, nxt, e;
-    local float d;
+    local int i, cur, nxt, e, G;
+    local float d, Prazo;
     local LMEmuMarker M;
 
     if (B == None || B.Pawn == None || B.Pawn.Health <= 0 || Pos.Length < 2)
@@ -495,7 +533,9 @@ function bool Assign(Bot B)
     }
     if (cur == Goal[i] || Level.TimeSeconds >= HuntAt[i])
         Goal[i] = -1;
-    if (Goal[i] < 0 && !NewGoal(B, i, cur, PickGoal(B, cur)) && !NewGoal(B, i, cur, RandomGoal(cur)))
+    if (Goal[i] < 0)
+        G = PickGoal(B, cur, Prazo);
+    if (Goal[i] < 0 && !NewGoal(B, i, cur, G, Prazo) && !NewGoal(B, i, cur, RandomGoal(cur), ROUTE_HUNT))
         return false;
     nxt = HopFrom(i, cur, Goal[i]);
     if (nxt < 0 && Plan(i, cur, Goal[i]))
@@ -521,7 +561,7 @@ function bool Assign(Bot B)
         Log("LMEmu: bot" @ B.PlayerReplicationInfo.PlayerName @ "trocou de destino no no" @ string(cur) @ "para" @ string(nxt));
         Stall[i] = Level.TimeSeconds;
         StallPos[i] = B.Pawn.Location;
-        if (!NewGoal(B, i, cur, RandomGoal(cur)))
+        if (!NewGoal(B, i, cur, RandomGoal(cur), ROUTE_HUNT))
             return false;
         nxt = HopFrom(i, cur, Goal[i]);
         if (nxt < 0)

@@ -96,10 +96,11 @@ classe do morat (`class_allows`); o teste com o wdb real faz o mesmo com 30 seme
 partida, 16 bytes com o prefixo, sem caractere fora de ASCII. O prefixo `[BOT]` é recusado no cadastro
 (`account create`) e no pedido de contato, sem diferenciar caixa (`tests/test_account.py`).
 
-## Comportamento (D244 a D248)
+## Comportamento (D244 a D249)
 
 - Combate: o motor do UT2004 (TacticalMove, RangedAttack, Charging) com personalidade e notas de arma do LMEmu.
 - Caça e deslocamento: rota do mapa até onde está o inimigo, com penalidade nas arestas que travam e booster em trecho longo.
+- Ataque (TDM, D249): sem inimigo, 60% das decisões mandam o bot a um nó do território inimigo (base, túneis), alvo de 30 s.
 - Time: todo bot é freelance; nenhum segue o humano.
 - Trava: o `LMEmuMarker` de cada bot chama o `WhatToDoNext` se o bot fica 4 s parado sem inimigo à vista (D248).
 - Medição: `LMEmu: ia` no log (flags, personalidade e notas), `LMEmuRec` com `bRecord=True`.
