@@ -17,6 +17,12 @@ function InitGameReplicationInfo()
     GameReplicationInfo.GameClass = "XGame.xBombingRun";
 }
 
+event PostBeginPlay()
+{
+    Super.PostBeginPlay();
+    class'LMEmuRecorder'.static.Start(Level);
+}
+
 event PlayerController Login(string Portal, string Options, out string Error)
 {
     if (Loadout != None)

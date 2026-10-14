@@ -3,7 +3,7 @@
 Bots de DeathMatch e TeamDeathMatch no servidor de partida (`LandMass.exe`), com equipamento e morat
 sorteados pelo emulador. Não há bot no emulador nem no cliente: o bot só existe no processo do servidor
 de partida, e a sala do emulador conta só humanos. Decisões: D220 (configuração e linhas), D221 (sorteio),
-D222 (mecanismo no motor) e D223 (comandos do dono e vaga).
+D222 (mecanismo no motor), D223 (comandos do dono e vaga) e D225 a D227 (rotas, seção própria).
 
 ## Como entram
 
@@ -74,6 +74,50 @@ Uma execução de DeathMatch com bots (`bots-dm.log`) não processou o `exit` e 
 (`bots-dm2.log`) fechou normalmente. O motivo não foi achado: é intermitente, e o emulador já derruba o
 processo depois de 8 s (`EXIT_GRACE_SECONDS`), com o log possivelmente sem o trecho final.
 
+## Rotas (D225 a D227)
+
+Os bots andam pela rota do mapa quando não têm inimigo. A rota vem da geometria, não de gravação de humanos.
+
+**Geração (`LMEmuBake`, D225).** Com `?lmemubake=1` na URL, o servidor de teste (sem bots) faz um flood-fill
+a partir dos `PlayerStart` numa grade de 160 uu. Cada célula candidata é varrida de cima para baixo: o
+piso vale se a normal Z é de pelo menos 0,7 e o ponto não tem água, volume de dano ou KillZ, e há folga de
+teto e passagem pelo raio. Arestas: `w` andar (degrau até 40 uu), `f` queda (até 600 uu), `j` pulo (até a
+altura do JumpZ, com alcance horizontal do GroundSpeed), `b` booster (até 500 uu). Sai ao terminar, com
+`LMEmuBake fim`. O bake é fatiado por Timer (40 expansões por tick) e tem teto de 20000 nós.
+
+**Arquivo (D226).** `tools/routes/rotas.py --log <log do bake> --mapa <mapa> --ini <LMEmuRoutes.ini>` lê
+as linhas `LMEmuBake` e grava só a seção `[<mapa> LMEmuRoutes]`; as de outros mapas ficam. Imprime a
+contagem por flag e se as bases (time 0 e time 1) se alcançam nos dois sentidos. Sem linhas de bake, o
+script usa as `LMEmuRec` de `LMEmuRecorder` (`bRecord=True` no `LMEmu.ini`, complemento).
+
+**Seguimento (D227).** `LMEmuRoutes` carrega `[<mapa> LMEmuRoutes]` no primeiro uso. O alvo do bot é a base
+mais longe dele (nó mais próximo do centro dos `PlayerStart` de cada time), então ele vai e volta entre as
+duas. O caminho é A* com custo de distância (`j` vale 2x, `b` 3x) e heurística de distância reta; o plano
+fica guardado por bot e é refeito se o bot sai dele. Pulo só no chão, a até 150 uu do nó, pela aresta `j`.
+Arestas `b` ficam fora do A* (`ROUTE_BOOST=false`) até o booster do bot ser ligado. Com inimigo, o squad
+volta ao combate normal.
+
+**Validação em ONS-Airport (headless, sem cliente):**
+
+- Bake: 2953 nós e 18420 arestas (`w` 16091, `f` 1151, `j` 511, `b` 667). Termina em 29,7 s de jogo (59 s de
+  processo, contando carga e saída). Teto não atingido. Nenhuma célula barrada por água (o teste é
+  conservador: volume que toca a esfera do pawn conta).
+- Conectividade: as bases time 0 e time 1 estão no mesmo componente. Time 0 para time 1 em 79 passos; de
+  time 1 para time 0 em 58.
+- Descartes do último bake: 814 pisos sob teto, 13630 na passagem, 24 no meio do caminho de `w`.
+- Teste de bot (TDM e DM, um bot, `?QuickStart=1`): o bot sai do nó 22 com plano até o nó 830 (base time 0),
+  mas não se move. O `Assign` roda uma vez e o estado fica em `Roaming`. No DM nem chega a planejar. O log
+  de posições (`LMEmuRec` com `bRecordBots`) fica parado em todas as amostras.
+
+**Não verificado nesta fase:**
+
+- O bot andando pela rota no servidor headless. O motor não tem fonte no repositório, e não foi possível
+  confirmar por que o `Roaming` não move o pawn (a IA sem humano pode estar parada). Ver a próxima etapa.
+- Pulo e booster em jogo. Os limites de pulo e de subida são os do motor (`JumpZ`, `GroundSpeed`, `Gravity`),
+  não medidos com pawn.
+- Tolerâncias do bake (folga, degrau, raio) sem conferência contra o cliente: o traço é pontual, então uma
+  parede muito fina pode passar.
+
 ## Não verificado (exige cliente ou humano)
 
 - Placar: o código do XInterface trata `bBot` (`LM_DMScoreBoardPage` e a linha de squad, com o ping
@@ -87,4 +131,4 @@ processo depois de 8 s (`EXIT_GRACE_SECONDS`), com o log possivelmente sem o tre
 
 ## Fora desta fase
 
-Pulo e booster da IA, navegação entre pontos e Onslaught/OP/BR com bots (só DM e TDM).
+Booster no seguimento de rota (aresta `b`), combate com a rota e Onslaught/OP/BR com bots (só DM e TDM).

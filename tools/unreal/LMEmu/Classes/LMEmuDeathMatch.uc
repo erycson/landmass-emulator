@@ -4,10 +4,13 @@ class LMEmuDeathMatch extends LM_DeathMatch;
 
 var LMEmuLoadout Loadout;
 var LMEmuBots Botset;
+var LMEmuRoutes Routes;
+var bool bBake;
 
 event InitGame(string Options, out string Error)
 {
     Super.InitGame(Options, Error);
+    bBake = class'LMEmuBake'.static.Wanted(Options);
     Loadout = class'LMEmuLoadout'.static.Open(ParseOption(Options, "lmemu"));
     if (Loadout != None)
         Botset = class'LMEmuBots'.static.Open(Loadout);
@@ -16,6 +19,14 @@ event InitGame(string Options, out string Error)
 event PostBeginPlay()
 {
     Super.PostBeginPlay();
+    if (bBake)
+    {
+        class'LMEmuBake'.static.Start(Level);
+        return;
+    }
+    class'LMEmuRecorder'.static.Start(Level);
+    if (Botset != None)
+        Routes = class'LMEmuRoutes'.static.Open(Level, class'LMEmuRoutes'.static.MapOf(Level));
     if (Botset != None && Loadout.Owner != "")
         InstallChat();
 }
@@ -91,4 +102,9 @@ function AddDefaultInventory(pawn PlayerPawn)
         return;
     }
     Super.AddDefaultInventory(PlayerPawn);
+}
+
+defaultproperties
+{
+    DMSquadClass=class'LMEmuRouteDMSquad'
 }

@@ -1,0 +1,113 @@
+// Gravação de posições para as rotas dos bots (D225). Ligada pela chave [LMEmuRecorder] bRecord=True
+// no System\LMEmu.ini; sem ela a classe não cria nada. A cada 0,5 s, uma linha por pawn humano vivo no
+// log da partida (LOG=). bRecordBots=True inclui os bots, só para teste sem humano. Só servidor.
+class LMEmuRecorder extends Info
+    config(LMEmu);
+
+var config bool bRecord;
+var config bool bRecordBots;
+
+var string MapName;
+var array<Controller> Ctl;   // controlador já visto (mesmo índice de Last e Lives)
+var array<Pawn> Last;        // pawn atual de cada controlador; troca de pawn é nova vida
+var array<int> Lives;
+
+static function Start(LevelInfo L)
+{
+    if (default.bRecord)
+        L.Spawn(class'LMEmuRecorder');
+}
+
+event PostBeginPlay()
+{
+    MapName = class'LMEmuRoutes'.static.MapOf(Level);
+    SetTimer(0.5, true);
+    Log("LMEmu: gravacao de posicoes ligada em" @ MapName);
+}
+
+event Timer()
+{
+    local Controller C;
+    local Pawn P;
+    local int i;
+
+    for (C = Level.ControllerList; C != None; C = C.nextController)
+    {
+        P = C.Pawn;
+        if (P == None || P.Health <= 0 || !Tracked(C))
+            continue;
+        i = Slot(C, P);
+        Log(Line(C, P, Lives[i]));
+    }
+}
+
+function bool Tracked(Controller C)
+{
+    if (PlayerController(C) != None)
+        return true;
+    return default.bRecordBots && Bot(C) != None;
+}
+
+function int Slot(Controller C, Pawn P)
+{
+    local int i;
+
+    for (i = 0; i < Ctl.Length; i++)
+        if (Ctl[i] == C)
+            break;
+    if (i == Ctl.Length)
+    {
+        Ctl.Length = i + 1;
+        Last.Length = i + 1;
+        Lives.Length = i + 1;
+        Ctl[i] = C;
+        Last[i] = None;
+        Lives[i] = 0;
+    }
+    if (Last[i] != P)
+    {
+        Last[i] = P;
+        Lives[i] = Lives[i] + 1;
+    }
+    return i;
+}
+
+function string Line(Controller C, Pawn P, int Vida)
+{
+    local int Id;
+
+    Id = -1;
+    if (C.PlayerReplicationInfo != None)
+        Id = C.PlayerReplicationInfo.PlayerID;
+    return "LMEmuRec map=" $ MapName $ " t=" $ string(Level.TimeSeconds) $ " pid=" $ string(Id)
+        $ " vida=" $ string(Vida) $ " x=" $ string(P.Location.X) $ " y=" $ string(P.Location.Y)
+        $ " z=" $ string(P.Location.Z) $ " fis=" $ PhysName(P) $ " vz=" $ string(P.Velocity.Z)
+        $ " boost=" $ BoostOn(P);
+}
+
+function string PhysName(Pawn P)
+{
+    if (P.Physics == PHYS_Walking)
+        return "walk";
+    if (P.Physics == PHYS_Falling)
+        return "fall";
+    if (P.Physics == PHYS_Flying)
+        return "fly";
+    return "other";
+}
+
+function string BoostOn(Pawn P)
+{
+    local LM_Pawn X;
+
+    X = LM_Pawn(P);
+    if (X != None && X.Booster != None && X.Booster.bIsEnabled)
+        return "1";
+    return "0";
+}
+
+defaultproperties
+{
+    RemoteRole=ROLE_None
+    bHidden=true
+}
