@@ -15,6 +15,7 @@ from landmass_emu.domain.account import (
     hash_token,
     new_token,
 )
+from landmass_emu.domain.passwords import PasswordHasher, check_password
 from landmass_emu.domain.progression import Grant, ProgressionService, RankTable
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.progression import ProgressionRepository
@@ -65,15 +66,30 @@ class AccountAdmin:
             raise ValueError(f"conta {username!r} não existe")
         return account
 
-    async def create(self, username: str, nickname: str, client_dir: Path) -> Path:
+    async def create(
+        self, username: str, nickname: str, client_dir: Path, password: str | None = None
+    ) -> Path:
         check_username(username)
         check_nickname(nickname)
+        if password is not None:
+            check_password(password)
         self._check_client_dir(client_dir)
         if await self._accounts.find_by_username(username) is not None:
             raise ValueError(f"conta {username!r} já existe; use 'account token' para novo token")
         token = new_token()
-        await self._accounts.create(username, nickname, hash_token(token))
+        account = await self._accounts.create(username, nickname, hash_token(token))
+        if password is not None:
+            await self._accounts.set_password_hash(account.id, PasswordHasher.hash(password))
         return self._write_launcher(client_dir, username, token)
+
+    async def password(self, username: str, password: str) -> str:
+        """Define a senha do login por formulário (D240). Vale no próximo login, sem aviso ao
+        servidor em execução (D27). Não mexe no token nem no `.bat`."""
+        check_username(username)
+        check_password(password)
+        account = await self._account(username)
+        await self._accounts.set_password_hash(account.id, PasswordHasher.hash(password))
+        return f"{username}: senha definida (vale no próximo login)"
 
     async def rotate_token(self, username: str, client_dir: Path) -> Path:
         check_username(username)

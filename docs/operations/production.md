@@ -8,7 +8,7 @@ Instalação, subida, desligamento gracioso, saúde, logs, administração e bac
 - Python e `uv`, como no desenvolvimento ([README](../../README.md)).
 - Servidor de partida montado com o **Server Patch** ([`tools/server-patch/README.md`](../../tools/server-patch/README.md)): uma cópia do cliente com os patches de `Core.dll` e `LandMass.exe` e o `LMEmu.u`.
 - Firewall:
-  - TCP 7313 e 7314, para o emulador.
+  - TCP 7313 e 7314, para o emulador. Se `LANDMASS_UPDATE_PORT` estiver definida, a porta do FTP de atualização também (D241).
   - UDP 7800 a 7899, para as partidas (`LandMass.exe`).
 
 ## Configuração

@@ -45,7 +45,7 @@ Detalhes e como desfazer: [`tools/client-patch/README.md`](tools/client-patch/RE
 
 O administrador do servidor cria a conta e entrega um `jogar_<usuário>.bat`. Copie esse arquivo para a pasta `system` do cliente e execute.
 
-Não use o `Launcher.exe`, porque ele procura um servidor de atualização que não existe mais.
+O `Launcher.exe` só serve se o servidor tiver o FTP de atualização ligado: rode `uv run landmass-emu launcher` (D242). Sem isso, use o `.bat`. Também dá para entrar com usuário e senha pelo formulário do jogo ([running-client.md](docs/operations/running-client.md)).
 
 O `.bat` contém o seu token de login. Trate-o como senha.
 

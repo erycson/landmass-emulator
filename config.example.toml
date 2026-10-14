@@ -44,6 +44,11 @@ control_file = "data/control/shutdown.json"
 log_level = "INFO"
 log_json = false
 
+# FTP de atualização para o Launcher (D241). Desligado sem update_port; só leitura de update_dir.
+# update_port = 7412
+# update_dir = "data/update"
+# Usuário e senha são segredos: prefira LANDMASS_UPDATE_USER e LANDMASS_UPDATE_PASSWORD_FILE.
+
 # Canais anunciados. `address` e `port` são opcionais; ausentes usam public_host e channel_port.
 [[channels]]
 name = "Canal 1"

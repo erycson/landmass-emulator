@@ -12,6 +12,7 @@ Notas do que se sabe do cliente e do servidor original do LandMass. É daqui que
 | [`rooms.md`](rooms.md) | Salas: slots, times, pronto, convite. |
 | [`features.md`](features.md) | Mapa das funções do jogo. |
 | [`game_server_host.md`](game_server_host.md) | Servidor de partida: linha de comando, patches, fim de partida. |
+| [`launcher.md`](launcher.md) | `Launcher.exe`: FTP de atualização (`update_server` do wdb), `Patcher.exe` e abertura do jogo. |
 | [`game_movement.md`](game_movement.md) | Movimento, pulo e booster. |
 | [`cmdline.md`](cmdline.md), [`fullscreen.md`](fullscreen.md), [`windowed.md`](windowed.md), [`widescreen.md`](widescreen.md) | Linha de comando e vídeo. |
 

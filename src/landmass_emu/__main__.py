@@ -11,7 +11,7 @@ from landmass_emu.admin import AccountAdmin, ProgressionAdmin
 from landmass_emu.admin_clan import ClanAdmin
 from landmass_emu.admin_inventory import InventoryAdmin, StarterKitAdmin
 from landmass_emu.admin_shop import ShopAdmin
-from landmass_emu.app import game_servers, open_accounts, open_database
+from landmass_emu.app import game_servers, open_accounts, open_database, update_server
 from landmass_emu.audit import EconomyAudit
 from landmass_emu.control import discard_request, write_request
 from landmass_emu.db.accounts import SqlAccountRepository
@@ -33,6 +33,7 @@ from landmass_emu.ports.clans import ClanConflict
 from landmass_emu.ports.inventory import InventoryConflict
 from landmass_emu.settings import Settings, load_settings
 from landmass_emu.shutdown import Shutdown, install_signals, watch_control
+from landmass_emu.update.client import point_client
 
 MAX_SHUTDOWN_AFTER = 86400  # 24 h: maior prazo que o comando aceita
 MAX_SHUTDOWN_MESSAGE = 80  # bytes em cp1252; com o texto padrão, cabe no limite do cliente
@@ -51,7 +52,7 @@ class Cli:
         discard_request(self._settings.control_file)  # pedido de execução anterior não vale
         restaura = install_signals(shutdown, self._settings.shutdown_grace_seconds)
         try:
-            async with game_servers(self._settings, shutdown):
+            async with game_servers(self._settings, shutdown), update_server(self._settings):
                 vigia = asyncio.create_task(watch_control(self._settings.control_file, shutdown))
                 try:
                     await shutdown.run()
@@ -59,6 +60,30 @@ class Cli:
                     vigia.cancel()
         finally:
             restaura()
+
+    def aponta_launcher(self) -> str:
+        """`launcher`: aponta o FTP de patch e o Message do `landmass.wdb` (D242)."""
+        s = self._settings
+        porta = s.update_port
+        if porta is None:
+            raise ValueError(
+                "defina LANDMASS_UPDATE_PORT: o FTP de atualização não está ligado (D241)"
+            )
+        user = s.update_user or "anonymous"  # sem usuário configurado, o FTP aceita qualquer login
+        point_client(
+            s.client_dir / "landmass.wdb",
+            s.update_dir,
+            message_host=s.public_host,
+            message_port=s.message_port,
+            update_host=s.public_host,
+            update_port=porta,
+            user=user,
+            password=s.update_password or "anonymous",
+        )
+        return (
+            f"landmass.wdb apontado para ftp://{s.public_host}:{porta} (usuário {user}) "
+            f"e Message em {s.public_host}:{s.message_port}; original em landmass.wdb.antes-patch"
+        )
 
     def agenda_desligamento(self, args: argparse.Namespace) -> str:
         """`shutdown --in N --message M`: grava o pedido para o processo em execução (D203)."""
@@ -99,6 +124,10 @@ class Cli:
         if args.action == "unban":
             async with open_accounts(self._settings) as accounts:
                 return await AccountAdmin(accounts, self._settings).unban(args.user)
+        if args.action == "password":
+            async with open_accounts(self._settings) as accounts:
+                admin = AccountAdmin(accounts, self._settings)
+                return await admin.password(args.user, args.password)
         if args.action == "access":
             audit = EconomyAudit.open(self._settings.audit_log)
             async with open_accounts(self._settings) as accounts:
@@ -162,7 +191,7 @@ class Cli:
         kit = StarterKit(self._inventory_service())
         async with open_database(self._settings) as db:
             admin = AccountAdmin(SqlAccountRepository(db), self._settings)
-            bat = await admin.create(args.user, args.nickname, client_dir)
+            bat = await admin.create(args.user, args.nickname, client_dir, args.password)
             await self._kit_admin(db, kit).apply(args.user)
         return str(bat)
 
@@ -220,15 +249,23 @@ def _parser() -> argparse.ArgumentParser:
     )
     desliga.add_argument("--message", default="", help="aviso aos jogadores (até 80 bytes)")
     sub.add_parser("health", help="conecta nas portas de escuta; sai com 1 se alguma recusar")
+    sub.add_parser(
+        "launcher",
+        help="aponta o landmass.wdb para o FTP de atualização e o Message deste servidor (D242)",
+    )
     account = sub.add_parser("account", help="contas e tokens de login")
     actions = account.add_subparsers(dest="action", required=True)
     create = actions.add_parser("create", help="cria conta, gera token e grava o .bat")
     create.add_argument("--user", required=True)
     create.add_argument("--nickname", required=True)
     create.add_argument("--client-dir", type=Path)
+    create.add_argument("--password", help="também define a senha do login por formulário")
     token = actions.add_parser("token", help="regenera o token (invalida o anterior)")
     token.add_argument("--user", required=True)
     token.add_argument("--client-dir", type=Path)
+    password = actions.add_parser("password", help="define a senha do login por formulário")
+    password.add_argument("--user", required=True)
+    password.add_argument("--password", required=True)
     grant = actions.add_parser("grant", help="soma exp, LD e Cash à conta (sem aviso ao servidor)")
     grant.add_argument("--user", required=True)
     grant.add_argument("--exp", type=int, default=0)
@@ -333,6 +370,8 @@ def main() -> None:
                     saida = asyncio.run(cli.shop(args))
                 elif args.cmd == "shutdown":
                     saida = cli.agenda_desligamento(args)
+                elif args.cmd == "launcher":
+                    saida = cli.aponta_launcher()
                 elif args.cmd == "health":
                     saida = asyncio.run(cli.health())
                 else:

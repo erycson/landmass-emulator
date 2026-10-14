@@ -20,6 +20,7 @@ def _to_domain(row: AccountRow) -> Account:
         token_hash=row.token_hash,
         banned_until=_aware(row.banned_until),
         access_level=row.access_level,
+        password_hash=row.password_hash,
     )
 
 
@@ -74,6 +75,14 @@ class SqlAccountRepository:
                 update(AccountRow)
                 .where(AccountRow.id == account_id)
                 .values(banned_until=until, updated_at=datetime.now(UTC))
+            )
+
+    async def set_password_hash(self, account_id: int, password_hash: str) -> None:
+        async with self._sessions.begin() as session:
+            await session.execute(
+                update(AccountRow)
+                .where(AccountRow.id == account_id)
+                .values(password_hash=password_hash, updated_at=datetime.now(UTC))
             )
 
     async def set_access_level(self, account_id: int, level: int) -> None:

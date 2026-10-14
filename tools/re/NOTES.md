@@ -7,12 +7,12 @@ Protocolo consolidado (opcodes C→S/S→C, layouts, pares e lacunas): `tools/re
 ## Linha de comando do LandMass.exe (`tools/re/LandMass.exe/main_loop.c`)
 
 - `version=<n>` **obrigatório** — sem ele o jogo fecha. Vira `LocalVersion()`.
-- `login_num=<guid>` **obrigatório** — sem ele o jogo fecha. Vira `LoginGUID()`.
+- `login_num=<guid>` **obrigatório** — sem ele o jogo fecha. Vira `LoginGUID()`. Só o texto antes de `version=` mantém a caixa; depois, vira minúsculas (`main_loop.c` 74-161; [game_server_host.md](game_server_host.md) §2). Ver [docs/protocol/authentication.md](../../docs/protocol/authentication.md).
 - `login_server=<ip>:<porta>` — define `MessageServerAddr/Port` (sobrepõe o endereço do Message Server).
 - `SERVER` — liga `GIsClient=0` (modo servidor/dedicado).
 - Parâmetros são extraídos com `Parse()` e removidos da linha antes do `appInit`.
 
-O Launcher monta: `LandMass.exe %s%s?%s%I64d?%s%s` com `login_server=`, `version=`, `login_num=`.
+O Launcher monta o Play com `LandMass.exe %s%s?%s%I64d?%s%s` (três pares chave=valor). A ordem dos pares está em conflito entre fontes: ver [launcher.md](launcher.md).
 
 ## Tela cheia x janela (`tools/re/fullscreen.md`)
 
@@ -26,7 +26,7 @@ O Launcher monta: `LandMass.exe %s%s?%s%I64d?%s%s` com `login_server=`, `version
 ## Config do cliente
 
 `system\landmass.wdb` é SQLite comum. Tabelas úteis: `message_server` (idx, name, address, port),
-`update_server` (FTP de patch), `launcher`, `maps`, `item`, `Item_Equip`, `LevelList`, `msg_error`, ...
+`update_server` (FTP de patch; `landmass-emu launcher` aponta para o servidor, D242), `launcher`, `maps`, `item`, `Item_Equip`, `LevelList`, `msg_error`, ...
 Os demais `.wdb` (magic `f7 db 00 00 72 f3 31 01`) são tabelas proprietárias (`Cdb_table`).
 
 ## Game server (partida)
@@ -62,6 +62,6 @@ Os demais `.wdb` (magic `f7 db 00 00 72 f3 31 01`) são tabelas proprietárias (
 
 ## Login no cliente (UnrealScript em `XInterface.u`, fonte embutida)
 
-- `login_num=DEVELOPERGUID` (const em `Core.u`) → mostra o formulário e faz `NetLogin(id, senha)`.
+- `login_num=DEVELOPERGUID` (const em `Core.u`) → mostra o formulário e faz `NetLogin(id, senha)`. Precisa vir antes de `version=` (ver linha de `login_num` acima).
 - Qualquer outro `login_num` → login automático por token (`NetGuidLogin`), sem formulário.
 - Os `.u` trazem o código-fonte UnrealScript; extrair strings UTF-16 é suficiente para ler.

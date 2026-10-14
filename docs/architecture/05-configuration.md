@@ -22,6 +22,10 @@ Segredos com `_FILE` (o valor vem de um arquivo): `LANDMASS_DATABASE_URL_FILE` e
 | `LANDMASS_RECV_TIMEOUT` | `300` | Segundos sem tráfego antes de desconectar, em Message e Channel. Mínimo `60`. | 1, 2 |
 | `LANDMASS_CHANNELS` | `[{"name": "Canal 1", "max_clients": 100}]` | Lista JSON de canais. `address` (máx. 15) e `port` são opcionais; ausentes usam `LANDMASS_PUBLIC_HOST` e `LANDMASS_CHANNEL_PORT`. `name` tem no máximo 35 caracteres. `mode` é o `channel_mode` do canal (0 normal; 6 clã, D199). Entre 1 e 255 canais. | 1 |
 | `LANDMASS_SERVER_NAME` | `Norian` | Nome do servidor exibido no cliente. | 2 |
+| `LANDMASS_UPDATE_PORT` | não definida | Porta do FTP de atualização para o Launcher (D241). Sem ela, o FTP não sobe. `landmass-emu launcher` aponta o cliente para este servidor (D242). | — |
+| `LANDMASS_UPDATE_DIR` | `data/update` | Pasta servida pelo FTP, só leitura. O `remote_path` do wdb (`balance`) vira subpasta dela. | — |
+| `LANDMASS_UPDATE_USER` | vazio | Usuário do FTP (máximo 32). Vazio aceita qualquer login. | — |
+| `LANDMASS_UPDATE_PASSWORD` | vazio | Senha do FTP (máximo 64), exige usuário. O `landmass-emu launcher` a grava no `landmass.wdb` do cliente, que aceita 20 bytes. Use `LANDMASS_UPDATE_PASSWORD_FILE`. | — |
 | `LANDMASS_GAME_HOST` | `127.0.0.1` | Endereço do servidor de partida anunciado no 403 (`NotifyStartGame`). Máximo 15 caracteres (campo `char[16]` NUL-terminado). Mínimo 1. Com `LANDMASS_MATCH_SERVER_DIR`, é o endereço do 403 de toda partida. | 3, 4 |
 | `LANDMASS_GAME_PORT` | `7777` | Porta do servidor de partida anunciada no 403 quando a partida é fixa (sem `LANDMASS_MATCH_SERVER_DIR`). Entre 1 e 65535. | 3, 4 |
 | `LANDMASS_GAME_SERVER_PASSWORD` | `4567` | Senha que o Game Server Host apresenta ao Channel (`ch_pw`). Não usada no caminho por processo (D46). | 4 |

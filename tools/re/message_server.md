@@ -156,7 +156,17 @@ Tamanho total do corpo = `44 + id_len + pw_len`. Cabeçalho = `(100 << 5) | 13`.
 
 Evidência: `Login` @0x10003d90 passa `id_len + pw_len` como `param_4`; `FUN_10003b10` escreve `param_4 + 0x2e` bytes no total. O `login_num` aparece no pacote; a origem (`LoginGUID()`, NOTES.md) não foi rastreada até o envio **(inferido)**.
 
-**GuidLogin:** XInterface `NetGuidLogin(guid, forced)` → `ServerInterface.GuidLogin` → comando `/GuidLogin` (LM_Engine.u linhas 2078-2085) → roteador `FUN_10026810` (não decompilado). `_core_network`/`+server_interface` exporta apenas `Cmessage_interface::Login` para o opcode 100. Conclusão **(inferido)**: GuidLogin também envia opcode 100 com `MS_LOGIN_IN`; o formato exato dos campos (id/pw/login_num para o caso GUID) não foi confirmado.
+**GuidLogin (`/GuidLogin` → `FUN_10026230`, LM_Engine.dll @0x10026230):** `id_len = 0` e `pw_len = 0`; `login_num` recebe o GUID do parâmetro (copiado para o buffer de 33 bytes @0x08); byte @41 = 1; byte @42 = `forced_login` (param+0x11A... `atoi` do segundo parâmetro). Depois, `Cmessage_interface::Login`. Evidência: `tools/re/LM_Engine.dll/all/10026230_FUN_10026230.c`.
+
+**Formulário (`/Login` → `FUN_10025F40`, LM_Engine.dll @0x10025F40):** é o caminho usado quando `GetLoginGuid()` é vazio ou `DEVELOPER_GUID` (XInterface `LM_LoginPanel`, `Core.u`: `const DEVELOPER_GUID = "DEVELOPERGUID"`). Campos:
+
+- `id` e `senha` **não vão em texto puro**: `FUN_10028120` (LM_Engine.dll @0x10028120) os codifica. É um base64 com alfabeto próprio, `MRjxSTYZab67uvQc!N8U#OwVWX5Pkst4defghiyz0G23lmnHCqr=DEFIJKL1opAB` (64 caracteres), mais `9` como preenchimento. O caractere de saída `n` (base 0) é o valor de 6 bits rotacionado à esquerda `(n + 1) % 6` posições e indexado no alfabeto. Tamanho codificado = 4 × ⌈n/3⌉. O código do servidor é `src/landmass_emu/protocol/form_codec.py`; os vetores `ab` → `CXR9` e `abc` → `CXbJ` foram conferidos à mão contra o pseudocódigo (não rodados no cliente).
+- `id_len` e `pw_len` são os tamanhos **codificados** (não o `strlen` do texto).
+- `login_num` (@0x08) **não é escrito** por `FUN_10025F40`: sai com lixo de pilha. Só vale quando `id_len == 0`.
+- Byte @41 = 0 e byte @42 = `forced_login` (vem do parâmetro `forced` de `Login(id, pw, forced)`).
+- Campos de `FUN_10025F40`: `id_len` @0, `pw_len` @4, depois `id` e `pw` codificados, ambos no mesmo bloco de `malloc(id_len + pw_len)`.
+
+Códigos de resposta do formulário (`Core.u`, `const DBERR_*`): `-501` `DBERR_PASSWORD_ERROR`, `-602` `DBERR_USERID_MISSING`, `-603` `DBERR_PASSWORD_MISSING`, `-607` `DBERR_ACCOUNT_IS_LOGIN`. O `LM_LoginPage.OnLogin` (XInterface.u) trata `-602`, `-603`, `-607` e `-600`..`-610` em `switch`; `-501` cai no ramo padrão (mensagem 112000901) e depois em `NetOutAllServer` (desconecta sem fechar o jogo). `-607` com `forced = 0` abre a pergunta "conta já logada"; OK reenvia com `forced = 1`. Evidência: XInterface.u (fonte embutida) linhas 38125–38220 e `LM_LoginPage.OnCloseNetOut`.
 
 ### 5.2 Register (opcode 110) — `Cmessage_interface::Register` @0x10003dc0
 

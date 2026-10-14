@@ -2,19 +2,32 @@
 
 ## Comportamento do cliente
 
-- O `LandMass.exe` exige `version=` e `login_num=` na linha de comando; sem eles encerra.
-- O executável converte a linha de comando para minúsculas antes de ler `login_num`.
-- Com `login_num` diferente de `DEVELOPERGUID`, o UnrealScript (`XInterface.u`, `NetGuidLogin`) envia o login automaticamente, sem formulário.
-- Como a conversão para minúsculas impede `DEVELOPERGUID`, o formulário de usuário/senha é inalcançável.
+- O `LandMass.exe` exige `version=` e `login_num=` na linha de comando; sem eles encerra (`main_loop.c`, `Parse` falha e vai para `LAB_109111e2`).
+- A linha de comando é reescrita a cada chave lida (`version=`, `login_server=`, `login_num=`). O texto antes da chave mantém a caixa original. O texto depois dela vem da cópia em minúsculas (`main_loop.c`, linhas 76-92 e 124-134; a mesma regra está em [game_server_host.md](../../tools/re/game_server_host.md) §2).
+- Por isso, `login_num` escrito antes de `version=` chega com a caixa original. Depois de `version=` ou `login_server=`, chega em minúsculas.
+- Com `login_num` diferente de `DEVELOPERGUID`, a tela de login (`LM_LoginPage`, `XInterface.u`) envia o login automaticamente por `NetGuidLogin`, sem formulário.
+- Com `login_num=DEVELOPERGUID` (a constante `DEVELOPER_GUID` de `Core.u`), a tela mostra o formulário de usuário e senha e chama `NetLogin(id, senha)`. O valor precisa vir antes de `version=`. Não testado no cliente real (D240).
 
-Evidência: [`../../tools/re/LandMass.exe/main_loop.c`](../../tools/re/LandMass.exe/main_loop.c), [`../../tools/re/NOTES.md`](../../tools/re/NOTES.md).
+Evidência: `tools/re/LandMass.exe/main_loop.c` (pseudocódigo local, fora do git), [`tools/re/NOTES.md`](../../tools/re/NOTES.md), [`tools/re/message_server.md`](../../tools/re/message_server.md) §5.1.
 
 ## Modelo adotado
 
-- `login_num` é a credencial do jogador: token de 32 caracteres hexadecimais minúsculos (`secrets.token_hex(16)`).
-- Armazene `sha256(token)`; compare com `hmac.compare_digest`. Token de alta entropia dispensa hash lento.
-- Uma conta pode ter um token ativo; regerar o token invalida o anterior.
-- O fluxo `id`/`pw` do `MS_LOGIN_IN` permanece no codec. Se usado, armazene senha com `argon2id`.
+- Token (`login_num` do `.bat`): 32 caracteres hexadecimais minúsculos (`secrets.token_hex(16)`). Armazene `sha256(token)` e compare com `hmac.compare_digest`. Token de alta entropia dispensa hash lento. Uma conta tem um token ativo; regerar o token invalida o anterior.
+- Senha do formulário (D240): `hashlib.scrypt` (n=2^14, r=8, p=1, sal de 16 bytes), na coluna `accounts.password_hash`. Até 32 bytes em cp1252. Substitui o argon2id que D8 previa para senhas.
+- Com conta já logada no Message, um novo login sem confirmação recebe -607 (`ACCOUNT_IS_LOGIN`). O cliente pergunta; se o jogador confirmar, entra com `forced_login = 1`.
+
+## Login por formulário (usuário e senha)
+
+Linha de comando para o formulário (não testada no cliente real). Note a ordem: `login_num=` antes de `version=`.
+
+```
+LandMass.exe login_num=DEVELOPERGUID?version=1245776779?login_server=<ip>:7313
+```
+
+- O `MS_LOGIN_IN` (opcode 100) vem com `id_len` e `pw_len` maiores que zero. O cliente não preenche o campo `login_num` (sobra lixo da pilha) e o servidor não o lê. O byte 41 é 0 e `forced_login` fica no byte 42.
+- `id` e senha vão codificados pelo alfabeto próprio de `FUN_10028120` (`LM_Engine.dll`), com pad `9`. Implementação em `src/landmass_emu/protocol/form_codec.py`.
+- Códigos devolvidos (`Core.u`): -602 usuário vazio, -603 senha vazia, -501 senha errada ou conta inexistente, -607 conta já logada, -160 conta banida. O formulário só tem texto próprio para -602, -603, -605, -607 e -600 a -610. Qualquer outro código, incluindo -501, mostra a mensagem 112000901 e desconecta (`NetOutAllServer`), sem fechar o jogo.
+- Não verificado: se o formulário volta a aparecer depois de um login recusado (o `NetOutAllServer` pode desligar a tela), e se `DEVELOPERGUID` passa pelo `Parse` como valor.
 
 ## Chave de sessão (Message → Channel)
 
@@ -62,7 +75,9 @@ sequenceDiagram
   end
 ```
 
+No formulário (D240), o `MS_LOGIN_IN` vem com `id` e senha codificados em vez do token, e o servidor confere a senha com scrypt. Presumido, não observado: depois do `101` com `result = 0`, o cliente segue com `110` e `111` como no token.
+
 ## Distribuição aos jogadores
 
-- Gere um `.bat` por jogador; nunca reutilize token entre jogadores.
-- Trate o `.bat` como segredo: quem o possui entra na conta.
+- Por token: gere um `.bat` por jogador; nunca reutilize token entre jogadores. Trate o `.bat` como segredo: quem o possui entra na conta.
+- Por senha: `account create --password` ou `account password --user <u> --password <p>`. A senha não vai para o `.bat`; o jogador digita no formulário.

@@ -69,9 +69,19 @@ uv run landmass-emu shop price 1000100 1 --cash 50
 | `cliente\system\jogar_local.bat` | Desenvolvimento: aponta para `127.0.0.1:7313`. Substitua `TROQUE_PELO_TOKEN` por um token. |
 | `cliente\system\jogar_<user>.bat` | Gerado pela CLI `account`; contém o token do jogador (CRLF). |
 
+## Login com usuário e senha (formulário, D240)
+
+Sem o `.bat`, abra o jogo com:
+
+```
+LandMass.exe login_num=DEVELOPERGUID?version=1245776779?login_server=<ip>:7313
+```
+
+`login_num=` precisa vir antes de `version=`. Depois de `version=`, o valor vira minúsculas e o jogo não reconhece o formulário. Digite usuário e senha. O administrador define a senha com `landmass-emu account password --user <u> --password <p>`. Não testado no cliente real.
+
 ## Launcher
 
-Não use `Launcher.exe`: ele tenta FTP de patch inexistente. Inicie `LandMass.exe` diretamente.
+O `Launcher.exe` só passa da atualização se o servidor tiver o FTP de atualização ligado (`LANDMASS_UPDATE_PORT`, D241) e o `landmass.wdb` do cliente apontar para ele. Rode `uv run landmass-emu launcher` (D242): faz a troca e guarda o original em `landmass.wdb.antes-patch`. Não testado no cliente real: ver [tools/re/launcher.md](../../tools/re/launcher.md).
 
 ## Vídeo
 

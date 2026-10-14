@@ -51,6 +51,8 @@ class AccountRow(Base):
     gate_count: Mapped[int] = mapped_column(Integer, server_default="4")
     # Nível de acesso GM (D193): 0 jogador; 9 ou mais tem comandos de GM. Gravado pela CLI.
     access_level: Mapped[int] = mapped_column(Integer, server_default="0")
+    # Senha do login por formulário (D240): hash scrypt; nulo até `account create --password`.
+    password_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
 
 
 class AccountMoratRow(Base):
