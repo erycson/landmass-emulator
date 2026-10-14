@@ -183,7 +183,7 @@ Tabela `matches` (uma linha por partida):
 | `time_limit` | `Integer` | não | Tempo limite da partida. |
 | `goal_score` | `Integer` | não | Pontuação para vencer (`GoalScore` da URL). |
 | `started_at`, `ended_at` | `DateTime(timezone=True)` | não | Início e fim da partida. |
-| `end_reason` | `String(32)` | não | Motivo do fim: `exit_play` (todos saíram ou o último em jogo saiu), `return_to_room` (o último em jogo voltou à sala, D150) ou `server_exit` (processo caiu depois de pronto), D48. |
+| `end_reason` | `String(32)` | não | Motivo do fim: `exit_play` (todos saíram ou o último em jogo saiu), `return_to_room` (o último em jogo voltou à sala, D150) ou `server_exit` (processo caiu depois de pronto), D48, ou `server_shutdown` (o desligamento encerrou a partida no prazo, D202). |
 | `uuid` | `String(36)` | sim | Identificador da partida, único (`matches_uuid_unique`). Partidas anteriores à migração `5c1e8a3f7b92` ficam sem uuid (D152). |
 | `created_at`, `updated_at` | `DateTime(timezone=True)` | não | Criação e última gravação. |
 

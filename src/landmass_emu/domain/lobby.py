@@ -62,6 +62,9 @@ class Lobby:
     def is_member(self, guid: int) -> bool:
         return guid in self._members
 
+    def size(self) -> int:
+        return len(self._members)
+
     def broadcast(
         self, body: bytes, *, exclude: Recipient | None = None, skip: Iterable[int] = ()
     ) -> None:

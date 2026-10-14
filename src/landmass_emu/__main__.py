@@ -12,6 +12,7 @@ from landmass_emu.admin_clan import ClanAdmin
 from landmass_emu.admin_inventory import InventoryAdmin, StarterKitAdmin
 from landmass_emu.admin_shop import ShopAdmin
 from landmass_emu.app import game_servers, open_accounts, open_database
+from landmass_emu.control import discard_request, write_request
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
 from landmass_emu.db.clans import SqlClanRepository
@@ -28,6 +29,10 @@ from landmass_emu.ports.accounts import AccountConflict
 from landmass_emu.ports.clans import ClanConflict
 from landmass_emu.ports.inventory import InventoryConflict
 from landmass_emu.settings import Settings, load_settings
+from landmass_emu.shutdown import Shutdown, install_signals, watch_control
+
+MAX_SHUTDOWN_AFTER = 86400  # 24 h: maior prazo que o comando aceita
+MAX_SHUTDOWN_MESSAGE = 80  # bytes em cp1252; com o texto padrão, cabe no limite do cliente
 
 
 class Cli:
@@ -37,8 +42,31 @@ class Cli:
         self._settings = settings
 
     async def serve(self) -> None:
-        async with game_servers(self._settings) as (message, channel):
-            await asyncio.gather(message.serve_forever(), channel.serve_forever())
+        """Serve até o desligamento (D202): SIGINT/SIGTERM ou `landmass-emu shutdown`."""
+        shutdown = Shutdown(self._settings.shutdown_notice_seconds)
+        discard_request(self._settings.control_file)  # pedido de execução anterior não vale
+        restaura = install_signals(shutdown, self._settings.shutdown_grace_seconds)
+        try:
+            async with game_servers(self._settings, shutdown):
+                vigia = asyncio.create_task(watch_control(self._settings.control_file, shutdown))
+                try:
+                    await shutdown.run()
+                finally:
+                    vigia.cancel()
+        finally:
+            restaura()
+
+    def agenda_desligamento(self, args: argparse.Namespace) -> str:
+        """`shutdown --in N --message M`: grava o pedido para o processo em execução (D203)."""
+        if not 0 <= args.segundos <= MAX_SHUTDOWN_AFTER:
+            raise ValueError(f"--in fora da faixa 0 a {MAX_SHUTDOWN_AFTER}")
+        if len(args.message.encode("cp1252", errors="replace")) > MAX_SHUTDOWN_MESSAGE:
+            raise ValueError(f"--message passa de {MAX_SHUTDOWN_MESSAGE} bytes em cp1252")
+        write_request(self._settings.control_file, args.segundos, args.message)
+        return (
+            f"desligamento pedido: saída em {args.segundos} s ({self._settings.control_file}); "
+            "o servidor lê o pedido em até 1 s"
+        )
 
     async def account(self, args: argparse.Namespace) -> str:
         """Ações de conta; devolve o texto a imprimir."""
@@ -162,6 +190,17 @@ def _parser() -> argparse.ArgumentParser:
     serve = sub.add_parser("serve", help="sobe o Message (TCP 7313) e o Channel (TCP 7314)")
     # SUPPRESS: sem `--config` aqui, vale o do nível principal, sem sobrescrevê-lo.
     serve.add_argument("--config", type=Path, default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+    desliga = sub.add_parser(
+        "shutdown", help="agenda o desligamento do servidor em execução (avisos e prazo)"
+    )
+    desliga.add_argument(
+        "--in",
+        dest="segundos",
+        type=int,
+        required=True,
+        help="segundos até a saída (0 a 86400)",
+    )
+    desliga.add_argument("--message", default="", help="aviso aos jogadores (até 80 bytes)")
     account = sub.add_parser("account", help="contas e tokens de login")
     actions = account.add_subparsers(dest="action", required=True)
     create = actions.add_parser("create", help="cria conta, gera token e grava o .bat")
@@ -262,6 +301,8 @@ def main() -> None:
                     saida = asyncio.run(cli.clan(args))
                 elif args.cmd == "shop":
                     saida = asyncio.run(cli.shop(args))
+                elif args.cmd == "shutdown":
+                    saida = cli.agenda_desligamento(args)
                 else:
                     saida = asyncio.run(cli.account(args))
             except (ValueError, AccountConflict, InventoryConflict, ClanConflict) as e:

@@ -45,6 +45,7 @@ class Service:
         on_close: Callable[[Session], None] | None = None,
         heartbeat: Reply | None = None,
         heartbeat_every: float = 10.0,
+        accepting: Callable[[], bool] | None = None,
     ) -> None:
         self._net_code = net_code
         self._router = router
@@ -52,6 +53,9 @@ class Service:
         self._on_close = on_close
         self._heartbeat = heartbeat
         self._heartbeat_every = heartbeat_every
+        # Falso: a conexão nova é fechada logo depois do accept. O socket continua aberto, para o
+        # health por TCP seguir verde durante o desligamento (D204).
+        self._accepting = accepting
 
     async def start(self, host: str, port: int) -> asyncio.Server:
         server = await asyncio.start_server(self._serve, host, port)
@@ -60,6 +64,14 @@ class Service:
         return server
 
     async def _serve(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        if self._accepting is not None and not self._accepting():
+            log.info(
+                "[%s] conexão recusada: desligamento em curso", writer.get_extra_info("peername")
+            )
+            writer.close()
+            with contextlib.suppress(OSError):
+                await writer.wait_closed()
+            return
         session = Session(peer=str(writer.get_extra_info("peername")))
         log.info("[%s] conectou", session.peer)
         tasks = [asyncio.create_task(self._pump(session, writer))]
