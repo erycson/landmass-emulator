@@ -334,6 +334,8 @@ def test_wdb_real_classes_das_pecas_e_nove_morats_com_registro() -> None:
     bots = BotLoadout(catalog=catalogo, records=PlayerRecordFile(UPL_REAL), rng=random.Random(12))
     for linha in bots.lines(20):
         campos = _campos(linha)
+        # Valor sem espaço, `?`, `|` nem `=`: o formato do LMEmu.ini não comporta.
+        assert all(not set(valor) & set(" ?|=") for valor in campos.values())
         assert int(campos["Morat"]) in com_registro
         assert campos["Record"] == registros[campos["Species"].lower()]
         for peca in ("MainWeapon", "SubWeapon", "MeleeWeapon", "Booster", "Generator"):

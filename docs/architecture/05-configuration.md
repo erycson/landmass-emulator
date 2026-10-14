@@ -49,7 +49,7 @@ Regras:
   ```
   Bots=?Name=Bot1?Skill=3?Species=XGame.SPECIES_AssaultB?Morat=101000002?MainWeapon=XGame.LM_AssaultRifle_AB?MainWeaponId=201030002?SubWeapon=XGame.LM_BigGun_AC?SubWeaponId=201070003?MeleeWeapon=XGame.LM_SpecialMelee_SsA?MeleeWeaponId=201130001?EtcWeapon1=XGame.LM_SmokeLauncher_AA?EtcWeapon1Id=201010007?EtcWeapon2=XGame.LM_GLauncher_AB?EtcWeapon2Id=201010002?EtcWeapon3=none?EtcWeapon3Id=0?Booster=XGame.LM_PartsDataBoosterA?BoosterId=203000001?Generator=XGame.LM_PartsDataGeneratorB?GeneratorId=202000002?Record=M_Assault02_0
 
-  (Exemplo real, sorteio com semente 2026 sobre o `landmass.wdb` e o `MORATS.upl` do cliente de referência.)
+  (Exemplo real: sorteio com semente 2026 sobre o `landmass.wdb` do cliente e o `MORATS.upl` da pasta do servidor de partida.)
   ```
 
   Morat e peças são sorteados por bot (`domain/bots.py`, `random.Random` injetado). O morat sai entre os do wdb cuja espécie tem registro de jogador no `MORATS.upl` da pasta do servidor de partida (lido na primeira partida com bots; sem o arquivo, a partida sobe sem bots e loga aviso). `Record` é o registro de time 0 da espécie. A classe de cada peça é a seção de `Item_Equip` cuja linha `item_id` traz o próprio id; munição do mesmo id fica de fora, e três ids com `item_slot` e sem `item_id` ficam de fora do sorteio. Peça sem candidato de classe e slot vem do `DefaultSet` do morat, se o id existe no catálogo; senão `none` com id `0`. Cabeça, corpo, braço, perna e pintura não são sorteados nesta fase.
