@@ -50,6 +50,8 @@ Fonte: `D:\landmass\servidor\db\LM_account.sql`. Modelo: `db/models.py`. Migraç
 - Único em `token_hash`: é a chave de busca do login.
 - Colunas de progressão (F2 e F3): `tutorial_clear`, `total_exp`, `ld` e `cash`, todas `Integer NOT NULL` com padrão `0`. Migrações `01ad613f288a` e `31c91374dcba`. Regras em [07-progression §4.3](07-progression.md). Colunas de morat regular (F5): `regular_nest_id` e `regular_morat_class`, migração `ff38814bc227`. Tabelas `account_items` (migração `0d72e556d5d3`, com as colunas de montagem `account_morat_id`, `slot_name` e `system_slot`) e `account_morats` (migração `2100454de3ec`), com regras em [07-progression §4.4 e §4.5](07-progression.md).
 - As estatísticas do original não são colunas de `accounts`: a ficha as calcula de `match_players` (D107). O quickslot é a tabela `account_quick_slots` (D73, seção abaixo).
+- Gates (F10): `gate_count`, `Integer` NOT NULL com padrão 4, na migração `a3d9e6f1c402` (junto com `gifts`). Regra em [07-progression R-GATE-01](07-progression.md).
+
 
 ## Tabela `account_options` (F1)
 
@@ -109,6 +111,10 @@ Fonte: [07-progression.md §4.8](07-progression.md). Modelos: `db/models.py` (`C
 - Uma conta, um clã (D60). O mestre entra como membro de grau 0 (D61).
 - Apagar o clã remove os membros e depois o clã, numa transação (D59). Sair apaga a linha do membro.
 
+## Tabela `gifts` (F10)
+
+Migração `a3d9e6f1c402` (sobre `4b7e1d2a9c60`). Modelo `GiftRow` em `db/models.py`. Colunas, chaves e regras em [07-progression §4.9](07-progression.md). Sem tabela de log: envio, resgate e gacha vão ao log de economia (D99, D120).
+
 ## Repositório
 
 - Contrato: `ports/accounts.py` (`AccountRepository`, Protocol). Handlers e CLI dependem só dele.
@@ -117,6 +123,8 @@ Fonte: [07-progression.md §4.8](07-progression.md). Modelos: `db/models.py` (`C
 - Progressão: `ports/progression.py` (`ProgressionRepository`) e `db/progression.py` (`SqlProgressionRepository`). O tutorial é um `UPDATE` com OR no banco (`bitwise_or`), sem leitura antes da escrita. O grant soma no próprio `UPDATE`.
 - Clãs: `ports/clans.py` (`ClanRepository`) e `db/clans.py` (`SqlClanRepository`). Violação de unicidade vira `ClanConflict`.
 - Ranking: `ports/ranking.py` (`RankingRepository`) e `db/ranking.py` (`SqlRankingRepository`), uma consulta sobre `accounts` sem tabela (D18).
+- Presentes: `ports/gifts.py` (`GiftRepository`) e `db/gifts.py` (`SqlGiftRepository`). O envio debita pelo `debit` de `db/shop.py` na mesma transação que cria a linha; o resgate grava a unidade e marca `claimed_at` juntos.
+- Uso de item especial (560): `ports/use.py` (`UseRepository`) e `db/use.py` (`SqlUseRepository`). Consumo, crédito de LD, prêmios e contagem de gates numa transação.
 - Leitura do `landmass.wdb`: `db/catalog.py` (`WdbCatalog`), somente leitura, `mode=ro`, textos em cp1252.
 
 ## Origem do schema

@@ -7,7 +7,7 @@ Inferido: ver re/layouts_f0.md §8 e D30.
 """
 
 import uuid
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import IntEnum
@@ -15,6 +15,8 @@ from enum import IntEnum
 from landmass_emu.ports.catalog import Catalog
 
 GATE_COUNT = 8
+# Gates de início (inferido: o kit dá 4 morats; o Adicionar Hangar diz "até 8").
+BASE_GATE_COUNT = 4
 # 102 e 103 mandam o índice como u16 (`*(short*)param_2` no dispatcher).
 MAX_INVENTORY_INDEX = 0xFFFF
 # Índice 0 não resolve como peça no cliente (`GetItemInfoByID(0)` falha em GetWeaponInfo), então
@@ -149,3 +151,9 @@ class InventoryService:
         if index > MAX_INVENTORY_INDEX:
             raise ValueError("inventário cheio: sem índice livre de 16 bits")
         return index
+
+
+def enabled_gates(gate_count: int, morat_gates: Iterable[int]) -> tuple[int, ...]:
+    """Gates com bEnable no 101: os da contagem da conta e os já ocupados por morat (R-GATE-01)."""
+    top = max((gate + 1 for gate in morat_gates), default=0)
+    return tuple(range(min(max(gate_count, top), GATE_COUNT)))

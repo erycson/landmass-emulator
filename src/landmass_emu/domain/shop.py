@@ -10,7 +10,12 @@ from enum import IntEnum
 from typing import Protocol
 
 from landmass_emu.domain.currency import Currency
-from landmass_emu.domain.inventory import GATE_COUNT, InventoryService, ItemUnit, MoratUnit
+from landmass_emu.domain.inventory import (
+    InventoryService,
+    ItemUnit,
+    MoratUnit,
+    enabled_gates,
+)
 from landmass_emu.domain.locks import AccountLocks
 from landmass_emu.domain.progression import Level, RankTable
 from landmass_emu.ports.accounts import AccountRepository
@@ -35,7 +40,9 @@ class BuyResult(IntEnum):
     """
 
     OK = 0
-    NO_SPACE = -1  # msg 231000802: sem espaço no hangar ou gate livre
+    NO_SPACE = (
+        -1
+    )  # msg 231000802 ("sem espaço para adquirir MO-RATS"): nenhum gate livre habilitado
     LD_SHORTAGE = -4056  # msg 231000602, "LD Insuficiente"
     CASH_SHORTAGE = -4055  # msg 231000502, "Cash insuficiente."
     SILENT = 8000  # sem mensagem na UI; o motivo vai para o log do servidor
@@ -221,9 +228,13 @@ class ShopService:
         if sale.is_morat:
             morats = await self._repository.morats(account_id)
             used = [m.gate_index for m in morats if m.gate_index is not None]
-            gate = next((g for g in range(GATE_COUNT) if g not in used), None)
+            # R-GATE-02: morat só entra em gate habilitado (`enabled_gates`); sem vaga, NO_SPACE.
+            enabled = enabled_gates(await self._accounts.gate_count(account_id), used)
+            gate = next((g for g in enabled if g not in used), None)
             if gate is None:
-                raise ShopRefusal(BuyResult.NO_SPACE, morat=True, reason="sem gate livre")
+                raise ShopRefusal(
+                    BuyResult.NO_SPACE, morat=True, reason="sem gate livre habilitado"
+                )
             return self._inventory.new_morat(account_id, catalog_id, gate, used)
         items = await self._repository.items(account_id)
         used_indexes = [item.inventory_index for item in items]

@@ -6,7 +6,7 @@ import dataclasses
 from collections.abc import Sequence
 
 from landmass_emu.domain.equipment import SYSTEM_SLOT_COUNT, pieces_of
-from landmass_emu.domain.inventory import ItemUnit, MoratUnit, utc_now
+from landmass_emu.domain.inventory import ItemUnit, MoratUnit, enabled_gates, utc_now
 from landmass_emu.handlers.channel.entry import EntryHandlers
 from landmass_emu.net.server import Reply
 from landmass_emu.net.session import Session
@@ -41,12 +41,15 @@ class LoginHandlers:
         # shortcut: morat sem gate não entra no login; o cliente não tem chave para ele fora de
         # sGate. Revisar quando a F6 ou a compra criar morat fora do gate.
         placed = [(morat, gate) for morat in morats if (gate := morat.gate_index) is not None]
-        gates = tuple(gate for _, gate in placed)
+        # R-GATE-01: bEnable nos gates da contagem da conta, e nos que já têm morat (morat antigo).
+        gates = enabled_gates(
+            await self._accounts.gate_count(account.id), (gate for _, gate in placed)
+        )
         nest = await self._accounts.regular_nest(account.id)
         progress = dataclasses.replace(
             first.progress,
             nest=nest,
-            morat_gates=gates,
+            enabled_gates=gates,
             system_slots=_system_slots(items),
         )
         return [

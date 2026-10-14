@@ -28,7 +28,7 @@ class PlayerRecord:
     @0x4c iPoint (nó+0x5c). @0x50..0x59 é o `sEventSlot[10]` (índice do item de sistema, 0xFF
     vazio). @0x90 e @0xa0 são o id do jogador (chave da lista e do nó).
     Os demais campos ficam zero, exceto nest (@0x20, ucNest) e os sGate (@0x5a + 4·g: siIdx = g e
-    bEnable = 1), que vêm do inventário (F5).
+    bEnable = 1, para cada gate habilitado, R-GATE-01), que vêm do inventário (F5).
 
     shortcut: nick, clã e estatísticas do 101 seguem zero; o cliente recebe esses campos por outros
     pacotes (151/317/549) ou não os usa no canal. Revisar com o cliente real.
@@ -39,7 +39,7 @@ class PlayerRecord:
     cash: int = 0
     point: int = 0
     nest: int = 0
-    morat_gates: tuple[int, ...] = ()
+    enabled_gates: tuple[int, ...] = ()  # gates com bEnable (domain/inventory: enabled_gates)
     system_slots: tuple[int | None, ...] = ()  # índice do item por slot de sistema; None = vazio
     SIZE: ClassVar[int] = 0xA8
 
@@ -61,7 +61,7 @@ class PlayerRecord:
                 if not 0 <= index <= 0xFE:
                     raise ValueError(f"índice de sistema fora de 0 a 254: {index}")
                 buf[0x50 + slot] = index
-        for gate in self.morat_gates:
+        for gate in self.enabled_gates:
             if not 0 <= gate < GATE_COUNT:
                 raise ValueError(f"gate fora da faixa: {gate}")
             struct.pack_into("<hB", buf, 0x5A + 4 * gate, gate, 1)

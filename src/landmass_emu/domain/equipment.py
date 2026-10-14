@@ -67,6 +67,7 @@ class UseResult(IntEnum):
     NO_GATE = -1  # gate sem morat, ou morat de outra conta
     DENIED = -4  # genérico: índice inválido, vencido, slot cheio ou item fora do catálogo
     REQUIREMENT = -7  # classe, energia, força, agilidade, precisão, patente ou nest
+    GATE_LIMIT = -4083  # CERR_ADD_GATE_LIMIT (layouts_f0 §7.3): Adicionar Hangar com 8 gates
 
 
 class ItemRefusal(Exception):

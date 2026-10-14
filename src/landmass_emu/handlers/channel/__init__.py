@@ -11,6 +11,7 @@ from landmass_emu.domain.shop import ShopService
 from landmass_emu.handlers.channel.chat import ChatHandlers
 from landmass_emu.handlers.channel.entry import EntryHandlers
 from landmass_emu.handlers.channel.equipment import EquipmentHandlers
+from landmass_emu.handlers.channel.gift import GiftHandlers
 from landmass_emu.handlers.channel.lists import ListHandlers
 from landmass_emu.handlers.channel.login import LoginHandlers
 from landmass_emu.handlers.channel.morat import MoratHandlers
@@ -30,6 +31,7 @@ from landmass_emu.ports.profile import PlayerProfileRepository
 from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.protocol.channel import CsOp
+from landmass_emu.protocol.gift import CsGiftOp
 from landmass_emu.protocol.inventory import CsInventoryOp
 from landmass_emu.protocol.progression import CsProgressionOp
 from landmass_emu.protocol.shop import CsShopOp
@@ -55,6 +57,7 @@ class ChannelHandlers:
         audit: EconomyAudit | None = None,
         *,
         profiles: PlayerProfileRepository,
+        gifts: GiftHandlers | None = None,
     ) -> None:
         records = ChannelRecords(lobby)
         room_handlers = RoomHandlers(lobby, rooms, records, match, maps, matches)
@@ -97,6 +100,14 @@ class ChannelHandlers:
         }
         if equipment is not None:
             routes.update(equipment.router)
+        if gifts is not None:
+            routes.update(
+                {
+                    CsGiftOp.GET_GIFT_ITEM_IN: gifts.get_gift_item,
+                    CsGiftOp.GIFT_ITEM_USED_IN: gifts.gift_item_used,
+                    CsGiftOp.ITEM_GIFT_IN: gifts.item_gift,
+                }
+            )
         self.router: Router = routes
 
     async def heartbeat(self, session: Session, payload: bytes) -> Sequence[Reply]:

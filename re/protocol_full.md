@@ -342,7 +342,7 @@ Sem par identificado: 451→452 (gap: sem `case 452`); 461 (convite enviado) nã
 Fechado nesta revisão: layouts C→S prioritários por wrapper (§3.1 e §2.1), nick/amigo/bloqueio/clã (140, 152, 181, 182, 186, 187, 190, 192, 194); assinaturas de 332, 342, 462, 543; corpos S→C de 104, 554–573, 585–591, 613, 614, 616, 617; goto de 571, 572, 581, 582, 591, 656.
 
 Ordem de prioridade para o próximo ciclo de RE:
-1. **Corpos S→C ainda em gap** (coluna Corpo de §3.2, gerada automaticamente nesta revisão): 107, 108, 141, 142, 143, 144, 302, 312, 332, 543, 571, 591, 613, 614, 643, 648, 649, 650, 651, 652, 653, 654, 656, 658, 659, 660, 661, 662, (cauda). Os de equipar e destruir (554 a 585) estão medidos desde F6 (§9).
+1. **Corpos S→C ainda em gap** (coluna Corpo de §3.2, gerada automaticamente nesta revisão): 107, 108, 141, 142, 143, 144, 302, 312, 332, 543, 571, 613 (parcial, §10), 614, 643, 648, 649, 650, 651, 652, 653, 654, 656, 658, 659, 660, 661, 662, (cauda). Os de equipar e destruir (554 a 585) estão medidos desde F6 (§9).
 2. **Message 150 (CreateNickname)**: corpo 52+2+1 não decodificado. Ler o wrapper de `/CreateNickname` no roteador `FUN_10026810` (ver `message_server.md` §5.6).
 3. **Message 120 (InMessageServer)**: conteúdo do byte opcional (gap).
 4. **Channel 543**: nomes dos campos `i32 @0x14..@0x38` e semântica de `u8 @0x34` e do texto `@0x3c` (falta o tipo `LM_PLAYER_DETAIL_INFO` nos `.u`).
@@ -464,3 +464,13 @@ Resolve os layouts que faltavam para pintura e consumíveis. Os pedidos (C→S) 
 **Nest e classe (569 e 590).** 569 grava `u8` @2 no nó do jogador (+0x30) e tira o item. 590 grava `u8` @2 no nó do morat principal (+0x98) e tira o item. 590 não confere `result`, só o envelope: a recusa da Troca de Função vai por 561.
 
 **Status.** 565, 568, 569, 573 e 590 estão implementados no servidor (F15). Nenhum foi testado no cliente real.
+
+## 11. Presente, Depósito e gacha: layouts da implementação (F10, F11)
+
+Os offsets de 610 a 617 e de 591 em §3.2 batem com o codec de `protocol/gift.py` e `protocol/gacha.py` (testes em `tests/test_gift_codec.py`). Pontos ainda inferidos:
+
+- 611: registro de 0x48 (L1483–1522): `u16` chave @0; catálogo `i32` @0x14, `item_guid` @0x18 e opção `u8` @0x40 seguem a implementação, a confirmar no cliente.
+- 613: registro do item em @0..0x33 e resultado em @0x34. A chave em @0x38 é a que o cliente usa para tirar a entrada do Depósito (L1526–1561). Confirmar no cliente real.
+- 616: `i32` resultado @0, Cash @4, LD @8 (L1608–1625). Os códigos de recusa (-2407, -4055, -4056, 8000) são inferidos do `switch` de `NotifyItemGift`.
+- 617: corpo ignorado (L1626–1629).
+- 591: o dispatcher lê até dois registros (`while iVar3 < 2`, L2749–2771). O tamanho de 0x110 do registro `GACHA_PRIZE` e o texto UTF-8 NUL de 260 bytes são inferidos.

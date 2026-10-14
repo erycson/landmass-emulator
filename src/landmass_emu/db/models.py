@@ -48,6 +48,7 @@ class AccountRow(Base):
     # Marcos de zerado (D131, D132): a ficha conta só partidas depois. Nulo = nunca zerado.
     record_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     combat_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    gate_count: Mapped[int] = mapped_column(Integer, server_default="4")
 
 
 class AccountMoratRow(Base):
@@ -114,6 +115,32 @@ class AccountItemRow(Base):
     apply_flag: Mapped[int] = mapped_column(Integer, server_default="0")
     apply_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class GiftRow(Base):
+    """Depósito (F10): presente pendente de um destinatário até o resgate (612). `claimed_at` nulo
+    = pendente. `slot` é a chave u16 do 610/612, única entre os pendentes da conta."""
+
+    __tablename__ = "gifts"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["sender_account_id"], ["accounts.id"], name="gifts_sender_account_id_foreign"
+        ),
+        ForeignKeyConstraint(
+            ["receiver_account_id"], ["accounts.id"], name="gifts_receiver_account_id_foreign"
+        ),
+        Index("gifts_receiver_account_id_index", "receiver_account_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    sender_account_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    receiver_account_id: Mapped[int] = mapped_column(Integer)
+    slot: Mapped[int] = mapped_column(Integer)
+    catalog_id: Mapped[int] = mapped_column(Integer)
+    duration_days: Mapped[int] = mapped_column(Integer)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 

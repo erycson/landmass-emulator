@@ -4,6 +4,7 @@ Sucesso responde o opcode da resposta com `result` 0 (e o registro, quando há).
 mesmo tipo de resposta com `result` ≠ 0 e sem estado: o dispatcher só aplica com 0.
 """
 
+import dataclasses
 import logging
 from collections.abc import Sequence
 
@@ -13,6 +14,13 @@ from landmass_emu.domain.currency import Currency
 from landmass_emu.domain.equipment import SKIN_SLOTS, EquipService, ItemRefusal, UseResult
 from landmass_emu.domain.inventory import ItemUnit
 from landmass_emu.domain.lifecycle import DestroyService, ExtendService
+from landmass_emu.domain.use import (
+    ADD_GATE_ITEM,
+    GACHA_ITEM,
+    GachaOpened,
+    GateAdded,
+    ItemUseService,
+)
 from landmass_emu.handlers.channel.login import item_record
 from landmass_emu.net.server import Reply, Router
 from landmass_emu.net.session import Session
@@ -36,6 +44,8 @@ from landmass_emu.protocol.equipment import (
     CsSkinMountedOut,
     CsSkinUnusedOut,
 )
+from landmass_emu.protocol.gacha import CsGachaPrizeOut
+from landmass_emu.protocol.progression import CsChargeCashOut, CsChargePointOut
 
 log = logging.getLogger(__name__)
 
@@ -49,12 +59,14 @@ class EquipmentHandlers:
         extend: ExtendService,
         consumables: ConsumableService,
         audit: EconomyAudit | None = None,
+        use: ItemUseService | None = None,
     ) -> None:
         self._equip = equip
         self._destroy = destroy
         self._extend = extend
         self._consumables = consumables
         self._audit = audit or EconomyAudit()
+        self._use = use
         self.router: Router = {
             CsEquipOp.ITEM_DESTROY_IN: self.item_destroy,
             CsEquipOp.ITEM_USED_IN: self.item_used,
@@ -74,6 +86,14 @@ class EquipmentHandlers:
             if req.value:
                 # ItemUsedByValue fora dos consumíveis (morat principal): recusa (D75).
                 return [CsItemUsedRefusedOut(UseResult.DENIED)]
+            if self._use is not None:
+                try:
+                    special = await self._use.use(account_id, req.index)
+                except ItemRefusal as refusal:
+                    log.info("[%s] uso de %d recusado: %s", session.peer, req.index, refusal)
+                    return [CsItemUsedRefusedOut(refusal.result)]
+                if special is not None:
+                    return self._special_replies(session, special)
             return await self._equip_item(session, account_id, req.index, req.gate)
         except ItemRefusal as refusal:
             log.info("[%s] consumir %d recusado: %s", session.peer, req.index, refusal)
@@ -106,6 +126,38 @@ class EquipmentHandlers:
             value=done.value,
             result=0,
         )
+
+    def _special_replies(self, session: Session, done: GachaOpened | GateAdded) -> list[Reply]:
+        """Item Surpresa: 591 (tira o item pela chave e mostra o popup), 102 de cada prêmio em item
+        e saldos (900 Cash, 902 LD). Adicionar Hangar: 556 sem montagem tira o item da lista. O gate
+        novo aparece no 101 do próximo login (R-GATE-01)."""
+        if isinstance(done, GateAdded):
+            self._audit.record(
+                session,
+                "hangar",
+                catalog_id=ADD_GATE_ITEM,
+                inventory_index=done.index,
+                gate_count=done.gate_count,
+                result=0,
+            )
+            return [CsItemDestroyOut(done.index, 0, False, 0)]
+        self._audit.record(
+            session,
+            "gacha",
+            catalog_id=GACHA_ITEM,
+            inventory_index=done.index,
+            prizes=[dataclasses.asdict(prize) for prize in done.prizes],
+            granted=[unit_fields(unit) for unit in done.granted],
+            ld_after=done.ld,
+            cash_after=done.cash,
+            result=0,
+        )
+        return [
+            CsGachaPrizeOut(done.index, done.prizes),
+            *(item_record(unit) for unit in done.granted),
+            CsChargeCashOut(done.cash),
+            CsChargePointOut(done.ld),
+        ]
 
     async def item_unused(self, session: Session, payload: bytes) -> Sequence[Reply]:
         if session.account is None:

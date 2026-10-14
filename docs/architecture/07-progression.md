@@ -174,6 +174,7 @@ A tabela `accounts` existente ([04-persistence.md](04-persistence.md)) recebe as
 | `record_reset_at` | `DateTime` (fuso) | não | (novo, D131) | Marco de zerado de vitórias, derrotas e abandono (Queima de Arquivo). Nulo = nunca zerado. |
 | `combat_reset_at` | `DateTime` (fuso) | não | (novo, D132) | Marco de zerado de abates, mortes e headshots (Reconstituir). Nulo = nunca zerado. |
 | `main_gate_index` | `Integer` | sim | (novo) | Gate da morat principal, 0 a 7 (R-MAIN). |
+| `gate_count` | `Integer` | não | (novo) | Gates da conta: 4 no início, +1 por Adicionar Hangar (308010005), até 8. Regra em R-GATE-01 (D95). |
 | `tutorial_clear` | `Integer` | não | `tbl_account.tutorial_clear`; `iTutorialClear` | Máscara de bits do tutorial (R-TUT). |
 | `total_gamecount` | `Integer` | não | `total_gamecount` | Partidas jogadas. |
 | `total_win` | `Integer` | não | `total_win` | Vitórias. |
@@ -266,15 +267,18 @@ Ao implementar, a tabela de índices do codec é a fonte de verdade. A conferên
 
 ### 4.9 `gifts`
 
-Presente pendente. Linha criada na compra do presente; `claimed_at` nulo = pendente.
+Presente pendente. Linha criada no envio (615); `claimed_at` nulo = pendente, e o resgate marca a data sem apagar a linha. A compra direta de item não passa por aqui: vai ao hangar (D96). Migração `a3d9e6f1c402`.
 
 | Coluna | Tipo | Nulo | Regra |
 |--------|------|------|-------|
-| `sender_account_id` | `Integer` | não | FK `gifts_sender_account_id_foreign`. |
+| `id` | `Integer` PK | não | Chave da linha. O `item_guid` do resgate sai dela (`gift-<id>`). |
+| `sender_account_id` | `Integer` | sim | FK `gifts_sender_account_id_foreign`. Remetente. |
 | `receiver_account_id` | `Integer` | não | FK `gifts_receiver_account_id_foreign`. Índice `gifts_receiver_account_id_index`. |
+| `slot` | `Integer` | não | Chave u16 que o cliente devolve no 612. Menor livre entre os pendentes do destinatário (D97); a regra fica no envio, sem constraint. |
 | `catalog_id` | `Integer` | não | Id do cliente. Sem FK. |
-| `duration_days` | `Integer` | sim | 1, 7, 14 ou 30. Nulo = sem prazo. |
+| `duration_days` | `Integer` | não | Prazo da opção: 1, 7, 14 ou 30 (R-PRC-01). |
 | `claimed_at` | `DateTime(tz)` | sim | Nulo = pendente. |
+| `created_at`, `updated_at` | `DateTime(tz)` | não | Datas da linha. |
 
 ### 4.10 Ranking: sem tabela
 
@@ -320,10 +324,11 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 |----|-------|-------|
 | R-BUY-01 | Ordem de validação (`ShopService`): conta autenticada (sem login, não responde); `catalog_id` no catálogo; preço > 0 na moeda e opção; saldo; patente e nest (R-REQ); gate livre (morat). Qualquer falha recusa e não grava. | (inferido; D51) |
 | R-REQ-01 | Requisitos: `item_required_level`, `item_required_nest`, `item_required_nest_point`, `item_required_clan`, `item_required_clan_rank`, `item_required_rank`, `item_required_class`, `item_required_strength`, `item_required_agility`, `item_required_precision` e `item_required_power`; para morat, `required_*`. Conferidos na compra: `required_level` (patente pela LevelList) e `required_nest` (nest regular). Recusam se ≠ 0, sem fonte no servidor: `nest_point`, clã, patente de clã e `rank`. Classe, força, agilidade, precisão e energia são de equipar (F6): a tela de morat não as usa para bloquear a compra. | features §2.2; dúvida 10, resolvida (D51) |
-| R-BUY-02 | Item: `account_items` com `apply_flag = 2` (REALTIME) e `expires_at = agora + dias`, com os dias da opção 0 a 3 (1, 7, 14 ou 30). Morat: `account_morats` no menor gate livre (0 a 7), sem prazo. O cliente não escolhe o gate na compra. | (inferido; dúvidas 5 e 19; D51) |
-| R-BUY-03 | Resposta 551 (item) ou 552 (morat) com `result`. Sucesso: registro (102 ou 103), depois 900 e 902. Só com `result` 0 o cliente aplica registro e saldos. Recusas: -4056 (LD insuficiente, msg 231000602), -4055 (Cash insuficiente, 231000502), -1 (sem gate livre, 231000802) e 8000 (sem mensagem: fora do catálogo, não vendido na moeda ou requisito não atendido). | `NotifyItemBuy` (XInterface, `switch`); `ERRCODE_*` inferidos iguais aos `CERR_BUY_*` (D51) |
+| R-BUY-02 | Item: `account_items` com `apply_flag = 2` (REALTIME) e `expires_at = agora + dias`, com os dias da opção 0 a 3 (1, 7, 14 ou 30). Morat: `account_morats` no menor gate livre e habilitado (R-GATE-02), sem prazo. O cliente não escolhe o gate na compra. | (inferido; dúvidas 5 e 19; D51) |
+| R-BUY-03 | Resposta 551 (item) ou 552 (morat) com `result`. Sucesso: registro (102 ou 103), depois 900 e 902. Só com `result` 0 o cliente aplica registro e saldos. Recusas: -4056 (LD insuficiente, msg 231000602), -4055 (Cash insuficiente, 231000502), -1 (sem gate livre habilitado, 231000802) e 8000 (sem mensagem: fora do catálogo, não vendido na moeda ou requisito não atendido). | `NotifyItemBuy` (XInterface, `switch`); `ERRCODE_*` inferidos iguais aos `CERR_BUY_*` (D51) |
 | R-BUY-04 | Cada compra gera `item_guid` novo e `inventory_index` livre da conta. Nenhuma linha parcial sobrevive a falha (transação). | (inferido; D22) |
 | R-BUY-05 | Catálogo abre na primeira compra (`LazyItemCatalog`), então o canal sobe sem o wdb. Enquanto o wdb não abre, a compra é recusada com 8000 e erro no log. Emenda a D19 (D50). | (inferido) |
+| R-BUY-06 | Item comprado vai direto ao hangar. A msg 231000104 diz "vá até o Depósito"; o servidor não manda ao Depósito (D96). Risco aberto: o texto da tela não bate com o destino. | `msg_error` 231000104; D96 |
 
 ### 5.4 Uso, gate e slots de sistema (560, 570, 573)
 
@@ -342,6 +347,9 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 | R-CON-04 | Troca de Função (`308010004`, ONCE): 560 com `value` 1 a 4 grava `accounts.regular_morat_class` e consome. Resposta 590 (`u16 index` @0, `u8 classe` @2, `i32 result` @4). O 590 não confere o resultado: a recusa vai por 561 (D134). | `LM_ChangeMainMoratsPage` (`ItemUsedByValue`); 590 (`re/protocol_full.md` §10); inferido: a chave é o índice |
 | R-SKIN-01 | Pintura (`307010001` a `307010005`, classe 7): 560 com `gate` monta a pintura em `skin_00` do morat do gate, sem consumo. Resposta 565 (`u16 gate` @0, `u16 index` @2 (índice da pintura), `u16 k` @4 = 0, `i32 result` @8). O 103 leva o índice da pintura em `siSkinID[0]`; `siSkinID[1]` e `[2]` ficam em 0. Desmontar (570) responde 573 (`u16 gate` @0, `u16 k` @4, `i32 result` @8). Destruir pintura montada responde 556 com `mounted` 0 e, em seguida, 573 (D136). | `LM_MORATS_INFO` (`siSkinID`); 565 e 573 (`re/protocol_full.md` §10); inferido: `k` e o valor |
 | R-BUFF-01 | Buffs (`308020001` EXP, `308020002` LD, `308020003` Ressurreição; tipo 2): 560 monta no `sEventSlot` (554, R-USE-04) e o buff fica ativo até o prazo. `BuffService.active_buffs(account_id)` (`domain/buffs.py`) devolve `exp`, `ld` e `respawn`. O ×1.5 de EXP e LD é R-REW-08 (4); a recompensa ainda não lê `active_buffs`. Ressurreição só informa: o respawn é do servidor de partida, fora do canal (D137). | `item_desc` do wdb; `ApplySysItmValue` (XGame 16852); R-REW-08 |
+| R-USE-08 | `ItemUsed` (560) com item especial não equipa: `308010006` (Item Surpresa) abre o gacha (R-GACHA-01) e `308010005` (Adicionar Hangar) sobe `gate_count` (R-GATE-01). Montado ou de sistema segue para o equipar e é recusado por ele. | D98, D99 |
+| R-GATE-01 | Gates habilitados no 101 (`bEnable`, `sGate[g]`): `min(max(gate_count, maior gate ocupado + 1), 8)`, com `gate_count` padrão 4. Sobe 1 por Adicionar Hangar, até 8. Morat em gate 5 mantém o gate 5 habilitado mesmo com `gate_count` 4. | LM_Engine.src L1002; `enabled_gates`; D95 (inferido) |
+| R-GATE-02 | Morat comprado entra só no menor gate livre e habilitado. Sem vaga, NO_SPACE (-1), sem débito. O cliente não escolhe gate. | `ShopService._new_unit`; D96 (inferido) |
 
 ### 5.5 Destruição e extensão (555, 556, 580, 582, 585)
 
@@ -358,19 +366,21 @@ Ids `R-*` para referência em testes e na ordem de implementação (§7). Fonte:
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-GIFT-01 | Envio (615): o remetente paga pela mesma tabela de R-PRC-01 e escolha de opção. Cria `gifts` com `claimed_at` nulo. Destinatário resolvido por `strNick`. Nick inexistente responde erro. Envio a si mesmo responde erro (inferido). | features §2.3; `XInterface` 12203–12219 |
-| R-GIFT-02 | Patente mínima: o cliente bloqueia se `iTotalExp < EnableGiftExp`. Com o `landmass.wdb`, `EnableGiftExp = -1` (nível 0, "Sem Patente", `event = enable_gift`). A condição nunca é verdadeira. O servidor aplica a mesma checagem com o valor do wdb, sem regra nova. | `XInterface` 12022, 22970; `PrecessLevelList` (`LM_Engine.u`); dúvida 2 |
-| R-GIFT-03 | Lista (610): paginada, 12 itens por página (`LM_HangerPage`). Retorna presentes pendentes do destinatário. Resposta `611` (`NotifyGetGiftItem(result, page)`). | features §2.3 |
-| R-GIFT-04 | Resgate: `GiftItemUsed` (612) tem wrapper e nenhum chamador na UI. Não há caminho de resgate no cliente. Até decisão (dúvida 3), o resgate ocorre na listagem (inferido) e marca `claimed_at`. | features §2.3; dúvida 3 |
+| R-GIFT-01 | Envio (615): o remetente paga pela tabela de R-PRC-01 na moeda e opção pedidas. Cria `gifts` pendente e debita o remetente na mesma transação (D20, D97). Nick inexistente responde -2407. Envio a si mesmo, morat, item não vendido na moeda ou opção fora de 0 a 3 responde 8000 (sem mensagem). Saldo insuficiente responde -4056 (LD) ou -4055 (Cash). Resposta 616: `result`, Cash e LD do remetente. | features §2.3; `NotifyItemGift` (XInterface, `switch`); códigos de nick e saldo inferidos de `CERR_*` (D97) |
+| R-GIFT-02 | Patente mínima: nenhuma. `LevelList` tem `enable_gift` no nível 0 e `EnableGiftExp = -1`, então a checagem do cliente nunca dispara. O servidor não impõe patente (dúvida 2, resolvida, D97). | `XInterface` 12022, 22970; `LevelList` (wdb) |
+| R-GIFT-03 | Depósito (610): página de 12 presentes pendentes do destinatário, por `slot`; página de 0 a n. Resposta 611: `i32` página @0, `i32` quantidade @4 e registros de 0x48 a partir de @8 (`u16` chave @0, `i32` catálogo @0x14, `item_guid` `gift-<id>` @0x18, `u8` opção de prazo @0x40). Lista vazia manda um registro zerado, com quantidade 0. | `NotifyGetGiftItem` (L1483–1522); D97 |
+| R-GIFT-04 | Resgate (612): pede a chave do pendente. Na mesma transação o servidor cria a unidade no menor índice livre, grava no hangar e marca `claimed_at`. A resposta 613 leva o registro do item (0x34 bytes), `i32` resultado @0x34 e a chave @0x38, para o cliente tirar a entrada do Depósito; com resultado diferente de 0 o registro sai zerado. Pendente inexistente ou já resgatado responde 8000. Índice ocupado desfaz tudo: o presente continua pendente. | `NotifyGiftItemUsed` (L1526–1561); dúvida 3, resolvida (D97); `@0x38` inferido |
 | R-GIFT-05 | Pacotes `gift` do wdb (`gift_okcashback1..3`) são itens de sistema com `item_id`, `apply_flag` e `apply_value`. Quem os concede não aparece no cliente. | `landmass.wdb` `gift` (inferido: concessão pelo servidor) |
+| R-GIFT-06 | Aviso (617): vai ao destinatário online quando o envio é gravado, sem corpo. Offline, vê o presente ao abrir o Depósito. | `NotifyGetGift` (L1626–1629); D97 |
 
 ### 5.7 Gacha (591)
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-GACHA-01 | Item `308010006` ("Item Surpresa", ONCE) gera sorteio no servidor. O resultado sai em 591 (push) como lista `LM_GATCHA_PRIZE` (`item_id`, `size`, `buy_option`, `description`). | features §2.4 |
-| R-GACHA-02 | Prêmio LD vai para `accounts.ld`. Prêmio de item vai para `account_items` com as regras de R-BUY-02. | features §2.4 (inferido) |
-| R-GACHA-03 | Tabela de sorteio, pesos e pool: não existem no cliente nem no wdb. Definição pendente (dúvida 6). | features §2.4 (lacuna) |
+| R-GACHA-01 | `ItemUsed` (560) com `308010006` ("Item Surpresa", ONCE) consome o item e sai 591: `u16` chave (índice consumido) @0, `i32` quantidade @4, `i32` resultado @8 e registros `GACHA_PRIZE` de 0x110 bytes a partir de @0xC (`i32` item_id, `i32` size, `i32` buy_option, texto UTF-8 NUL nos bytes restantes). Até 2 prêmios, como o laço do dispatcher. Depois saem 102 de cada item novo, 900 e 902 (D98). | features §2.4; `NotifyGetGatchaPrize` (L2749–2771); tamanho de 0x110 inferido |
+| R-GACHA-02 | Prêmio LD (`item_id` 0) soma em `accounts.ld` na mesma transação que consome o item. Prêmio de item vai para `account_items` com o prazo do sorteio (R-BUY-02). Consumo que falha responde -4 e nada é creditado (D98). | features §2.4; D20 |
+| R-GACHA-03 | Pool: os 12 itens de `Item_Equip` com `item_buy_type` 1 e preço 0 (201020001, 201040002, 201120001, 201140001, 204010003, 204010004, 204020003, 204020004, 204030003, 204030004, 204040003, 204040004), prazo de 1 dia. Chances iguais: LD sempre, e um prêmio de sorte entre cinco opções (três pinturas, EXP+ e a caixa). | features §2.4; D98 (decisão, não vem do cliente) |
+| R-GACHA-04 | Faixa de LD: 1.000 a 500.000, passo 1.000, pela descrição do item (`XGame.LM_EtcItemI`). Inferido: pode ser generosa; confirmar com o usuário. | D98 (inferido) |
 
 ### 5.8 Experiência e patente
 
@@ -447,7 +457,7 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 
 ## 6. Mapeamento opcode → caso de uso → tabelas
 
-Estado atual: os opcodes desta seção não são tratados hoje. Tratados (ver [channel-server.md](../protocol/channel-server.md) e [message-server.md](../protocol/message-server.md)): Channel 2, 100, 101, 111, 120–123, 141, 151 (lobby), 240, 241, 544 (F1), 600, 601, 900, 902 (F2 e F3); Message 2, 100, 101, 110, 111, 120, 121, 130, 131, 160–162, 180–193 (F12).
+Estado atual: os opcodes desta seção não são tratados hoje. Tratados (ver [channel-server.md](../protocol/channel-server.md) e [message-server.md](../protocol/message-server.md)): Channel 2, 100, 101, 111, 120–123, 141, 151 (lobby), 240, 241, 544 (F1), 600, 601, 900, 902 (F2 e F3), 591 e 610 a 617 (F10 e F11); Message 2, 100, 101, 110, 111, 120, 121, 130, 131, 160–162, 180–193 (F12).
 
 Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou alguns campos; **falta** = só o nome.
 
@@ -481,14 +491,16 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 586 / 587 | C→S / S→C | Entrar no hangar | `account_items`, `account_morats` | corpo vazio; 587 é `bool` (features §3.1) | falta |
 | 588 | C→S | Sair do hangar | — | sem chamador na UI | — |
 | 590 | S→C (push) | Troca de morat principal | `accounts` | falta | falta |
-| 591 | S→C (push) | Prêmio de gacha | `account_items`, `accounts` | falta (array `LM_GATCHA_PRIZE`) | falta |
+| 591 | S→C (push) | Prêmio de gacha (resposta ao 560 com `308010006`) | `account_items`, `accounts` | `u16 key` @0, `i32` quantidade @4, `i32` resultado @8, registros de 0x110 a partir de @0xC | implementado (F11); até 2 prêmios |
 | 600 | C→S | Marcar passo do tutorial | `accounts` | `u8 @0` (passo 0 a 2) | implementado (F2) |
 | 601 | S→C | Resposta do tutorial | `accounts` | `i32 @0` máscara, `i32 @4` LD | implementado (F2) |
-| 610 | C→S | Listar presentes | `gifts` | parcial: `u32 @0` (página) | falta |
-| 611 | S→C | Lista de presentes | `gifts` | falta (bloco 1483–1522) | falta |
-| 612 | C→S | Resgatar presente (sem UI) | `gifts` | parcial: `u32 @0` | falta |
-| 615 | C→S | Enviar presente | `gifts`, `accounts` | parcial: 24 bytes (6 `u32`); nick e mensagem sem separação | falta |
-| 616 | S→C | Resultado do presente | — | inferido: `i32` | falta |
+| 610 | C→S | Listar Depósito | `gifts` | `i32 page` @0 (0 a n) | implementado (F10): responde 611 |
+| 611 | S→C | Página do Depósito | `gifts` | `i32 page` @0, `i32 count` @4; registros de 0x48 a partir de @8 (`u16` chave @0, `i32` catálogo @0x14, `item_guid` @0x18, `u8` prazo @0x40) | implementado (F10): vazio manda registro zerado |
+| 612 | C→S | Resgatar presente | `gifts`, `account_items` | `i32 key` @0 | implementado (F10): responde 613 |
+| 613 | S→C | Resultado do resgate | `account_items` | registro de 102 em @0..0x33 (zerado com recusa), `i32 result` @0x34, `i32 key` @0x38 | implementado (F10) |
+| 615 | C→S | Enviar presente | `gifts`, `accounts` | `i32 catalog_id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 option` @5, `char[18] nick` @6 | implementado (F10): responde 616 e avisa o destinatário (617) |
+| 616 | S→C | Resultado do presente | — | `i32 result` @0, `i32 cash` @4, `i32 point` @8; corpo de 12 | implementado (F10): recusa com código de R-GIFT-01 |
+| 617 | S→C | Aviso de presente ao destinatário online | — | corpo vazio | implementado (F10) |
 | 512 | S→C | Resultado de partida (a UI chama `GetMatchGroupInfoList` depois; não é o resultado DM) | `accounts` | parcial: `i32 @0`, `@4`, `@8`, `i16 @0xc`, `i32 @0x10` | falta |
 | 151 / 317 / 549 | S→C | Registro do jogador (exp e saldo) | `accounts` | `i32 @4` = `iTotalExp` (layouts_f0 §1.2) | parcial (lobby; exp e saldo do próprio jogador vão no 101 e no 121) |
 | 900 | S→C (push) | Saldo de Cash | `accounts` | `i32 @0` | implementado (F3, no login) |
@@ -556,8 +568,8 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F7 (implementada, sem teste no cliente real) | Destruir e estender (555; respostas 556, 557, 559; 580; resposta 582; push 585 no login). | F4 | Destruir some do hangar após reconexão. Estender muda o prazo exibido. Vencido abre renovação. |
 | F8 (implementada, sem teste no cliente real) | Compra por LD e Cash (550, 551, 552). | F3, F4; dúvida 1 (resolvida) | Item comprado com LD debita `ld` pelo preço do wdb e cria a linha; saldo 902 atualiza. Saldo insuficiente: resultado ≠ 0 e nada muda. |
 | F9 | Recompensa de partida DM e OP (R-REW-*), buffs e PC-room. | Marco 4 (leitura do `GameEnded`, D86); F0 (512); dúvidas 13, 14, 17 | Partida DM e OP com 2 jogadores: exp e LD do placar batem com a fórmula (tolerância de 1 por arredondamento). Buff de EXP ativo multiplica por 1.5. |
-| F10 | Presente (615, 616, 610, 611). | F8; dúvidas 2, 3 | A envia item a B por nick; B vê na lista paginada de 12; resgate conforme dúvida 3. |
-| F11 | Gacha (591). | F3, F4; dúvida 6 | Usar "Item Surpresa" abre popup com prêmio do servidor; item aparece no inventário. |
+| F10 (implementada, sem teste no cliente real) | Presente (615, 616, 617) e Depósito (610, 611, 612, 613). | F8; dúvidas 2 e 3 (resolvidas, D97) | A envia item a B por nick; B vê na lista paginada de 12; resgate pelo Depósito. |
+| F11 (implementada, sem teste no cliente real) | Gacha (560 com 308010006 → 591) e Adicionar Hangar (308010005, gate). | F3, F4; dúvida 6 (resolvida, D98) | Usar "Item Surpresa" abre popup com prêmio do servidor; item aparece no inventário. Adicionar Hangar sobe a contagem e o gate novo aparece após relogar. |
 | F12 (implementada, sem teste no cliente real) | Amigos, bloqueio e sussurro (Message 160–162, 180–193). Clã fica na F13. | Opcodes de amigo e bloqueio medidos (dúvida 16 parcial) | Adicionar amigo, reconectar: permanece. Bloquear e desbloquear. Sussurro chega ao outro cliente online. |
 | F13 (implementada, sem teste no cliente real) | Clã: dados (171/172), membros (174/175), chat (177/178) e lote (194/195). Criar, entrar e sair só pela CLI (D55). | F0 (172, 175); dúvida 18 (respondida por D55) | Conta com clã mostra nome e membros. Chat de clã chega aos membros online. |
 | F14 (implementada, sem teste no cliente real) | Ranking (Message 170/171). Ranking por nest, ver dúvida 22. | F0 (171), F3 | Lista com top 100 por `total_exp`; empates com a mesma posição (1, 1, 3). |
@@ -575,17 +587,17 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 
 1. **Preço de morat (resolvida, D51).** A UI envia `ItemBuy(id, true, 1)` fixo e exibe e valida `buy_point × 5` (`LM_SupplyMoratsBuyPopPage`). O wdb tem preço em `buy_point[0]` (ex.: 5000 em AssaultA) e `buy_point[1] = 0`. Decisão do usuário: cobrar `buy_point[0] × 5` e ignorar a opção.
-2. **Presente sem patente efetiva.** `EnableGiftExp = -1` (nível "Sem Patente") faz o bloqueio nunca disparar. Confirmar se é a regra desejada ou se o wdb deveria marcar "Praça".
-3. **Resgate de presente [bloqueia F10].** `GiftItemUsed` (612) não tem chamador na UI. Como o destinatário recebe o presente?
+2. **Presente sem patente efetiva (resolvida, D97: sem patente mínima).** `EnableGiftExp = -1` (nível "Sem Patente") faz o bloqueio nunca disparar. Confirmar se é a regra desejada ou se o wdb deveria marcar "Praça".
+3. **Resgate de presente (resolvida, D97: Depósito, 610 a 613).** `GiftItemUsed` (612) não tem chamador na UI. Como o destinatário recebe o presente?
 4. **Opções 8 e 9 (em aberto).** Chegam como opção 0, então cobram o prazo de 1 dia (R-PRC-02). Duração: 1 dia, sem prazo, ou outra?
 5. **Início da validade [bloqueia F6, F7].** Na F8 a validade começa na compra (inferido). Confirmar: começa na compra ou no uso? Como `apply_value` deve ser preenchido para cada `ITEM_APPLY`? Remoção automática de vencidos?
-6. **Efeito dos itens não-buff (resolvida, F15).** Queima de Arquivo, Reconstituir, Alistar e Troca de Função têm texto no wdb e resposta no cliente (R-CON-01 a 04; D131 a D134). Ressurreição é buff (R-BUFF-01; o efeito é do servidor de partida). Adicionar Hangar (outro agente) e o sorteio do gacha seguem em aberto [bloqueia F11].
+6. **Efeito dos itens não-buff (resolvida, F15).** Queima de Arquivo, Reconstituir, Alistar e Troca de Função têm texto no wdb e resposta no cliente (R-CON-01 a 04; D131 a D134). Ressurreição é buff (R-BUFF-01; o efeito é do servidor de partida). Adicionar Hangar (308010005) e o sorteio do gacha (308010006) foram definidos pelo servidor (D98, D99).
 7. **Morat principal (recusa, D75).** `ItemUsedByValue` existe (wrapper `0x10018260`, 560 com `value`). O F6 recusa com 561 e -4. A troca de morat principal fica fora. Aceitar essa limitação?
 8. **Aridade de 570 e 580 (resolvida, `re/protocol_full.md` §9).** 570 é `u16 index` + `u16 gate` (4 bytes); 580 é `i32 id` + `u16 index` + `u8 point` + `u8 option` (8 bytes). Medido nos wrappers. Confirmar com captura.
 9. **Mapa `item_slot` → `slot_name` (resolvida).** `item_slot` é o índice de `SLOT_NAMES` (`domain/equipment.py`), de 0 (`main_weapon`) a 11 (`leg`). Tabela completa em `re/protocol_full.md` §9. O slot de sistema vem do índice do item (inferido).
 10. **Requisitos na compra (resolvida, D51).** O servidor valida patente e nest e recusa os demais requisitos sem fonte (R-REQ-01).
 11. **Nível para escolher nest.** Exigir "Praça" (`SelectNestExp = 2800`) em `SetRegular`? O cliente não bloqueia.
-12. **Códigos de erro** de uso, extensão e presente: o mapa de `msg_error` não foi identificado para essas ações. A compra usa os códigos de `NotifyItemBuy` (R-BUY-03).
+12. **Códigos de erro** de uso, extensão e presente: o mapa de `msg_error` não foi identificado para essas ações. Presente usa -2407, -4055, -4056 e 8000 (R-GIFT-01, inferido de `CERR_*`, D97). A compra usa os códigos de `NotifyItemBuy` (R-BUY-03).
 25. **ONCE e BUFF (resolvida, D130).** O wdb traz `item_type` 0, mas o tipo está no id: `(id / 1e4) % 100`, com 1 ONCE e 2 BUFF (tabela de tipos em `re/features.md`). Inferido do id e dos textos dos itens; falta confirmar no cliente real.
 13. **Arredondamento** de exp e LD (float para inteiro): proposta, truncar. Confirmar.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
@@ -623,6 +635,11 @@ Registradas em [decisions/README.md](../decisions/README.md):
 - **D74** Item de sistema vai para o `sEventSlot` livre (0 a 9). Não se desmonta por 570 (-4). Destruir libera o slot (559). Sem slot livre, recusa com -4 (inferido).
 - **D75** `ItemUsedByValue` (560 com `value` ≠ 0) é recusado com 561 e -4. O método existe; a troca de morat principal fica fora do F6 (dúvida 7).
 - **D76** Destruir morat zera as peças na mesma transação, sem depender de `ON DELETE SET NULL` (SQLite sem `PRAGMA foreign_keys`).
+- **D95** Gate habilitado no 101 é regra do servidor (`gate_count` e morats); o cliente só lê `bEnable` (R-GATE-01).
+- **D96** Morat só em gate habilitado e livre (NO_SPACE -1, R-GATE-02); item comprado segue direto ao hangar.
+- **D97** Presente pelo Depósito: pendente em `gifts`, resgate 612 grava no hangar, sem patente mínima (R-GIFT-01 a 06).
+- **D98** Gacha: LD e prêmio de sorte com chances iguais; pool de 12 itens de evento sem preço (R-GACHA-01 a 04).
+- **D99** Adicionar Hangar sobe `gate_count` até 8; gate, presente e gacha vão ao log de economia (D120).
 - **D105** Jogos, vitórias e derrotas só de partidas com resultado (`won` não nulo); quem não terminou conta jogo sem vitória nem derrota (R-ABN).
 - **D106** Banimento de conta pela CLI: `accounts.banned_until`, login recusado com -160 até o prazo vencer (R-PEN-01).
 - **D107** Ficha 542/543 montada no banco, sem tabela; posição como a do 171 (R-FIC-01).

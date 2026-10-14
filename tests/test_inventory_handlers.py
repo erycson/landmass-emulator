@@ -196,7 +196,7 @@ async def test_login_manda_101_com_nest_e_gates_depois_102_e_103(
     login = replies[0]
     assert isinstance(login, CsInChannelServerOut)
     assert (login.client_guid, login.result) == (ana.id, 0)
-    assert (login.progress.nest, login.progress.morat_gates) == (2, (0, 2))
+    assert (login.progress.nest, login.progress.enabled_gates) == (2, (0, 1, 2, 3))
     item = replies[4]
     assert isinstance(item, CsGetItemOut)
     assert (item.inventory_index, item.catalog_id, item.apply_flag) == (1, ITEM, 2)
@@ -226,7 +226,7 @@ async def test_conta_sem_inventario_recebe_so_101_e_111(
     ]
     login = replies[0]
     assert isinstance(login, CsInChannelServerOut)
-    assert (login.progress.nest, login.progress.morat_gates) == (0, ())
+    assert (login.progress.nest, login.progress.enabled_gates) == (0, (0, 1, 2, 3))
 
 
 async def test_chave_recusada_nao_lista_inventario(db: async_sessionmaker[AsyncSession]) -> None:
@@ -320,7 +320,7 @@ async def test_kit_aplicado_vai_no_login_com_gates_habilitados(
 
     login = replies[0]
     assert isinstance(login, CsInChannelServerOut)
-    assert login.progress.morat_gates == (0, 1, 2, 3)
+    assert login.progress.enabled_gates == (0, 1, 2, 3)
     corpo = login.pack()
     assert [corpo[0x5C + 4 * g] for g in range(8)] == [1, 1, 1, 1, 0, 0, 0, 0]
     morats = [r for r in replies if isinstance(r, CsGetMoratsOut)]

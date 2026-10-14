@@ -62,7 +62,7 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 2 | C↔S | `HEARTBEAT` | vazio | implementado |
 | 54 | S→C | `ERROR` (envelope) | 8 bytes: opcode real e código | implementado |
 | 100 | C→S | `IN_CHANNEL_SERVER` | `char session_key[33]` | implementado |
-| 101 | S→C | `IN_CHANNEL_SERVER_OUT` | 176 bytes | implementado (progressão de `@0x28` a `@0x4C`, F2 e F3; nest em `@0x20` e gates em `@0x5A`, com `bEnable` em `@0x5C`, F5; ver Layouts) |
+| 101 | S→C | `IN_CHANNEL_SERVER_OUT` | 176 bytes | implementado (progressão de `@0x28` a `@0x4C`, F2 e F3; nest em `@0x20` e gates em `@0x5A`, com `bEnable` em `@0x5C`, F5, habilitados por R-GATE-01 (F10); ver Layouts) |
 | 111 | S→C | `CHANNEL_INFO_OUT` | `u8 count` = 1 | implementado (shortcut) |
 | 120 | C→S | `IN_CHANNEL` | `u32 num` ou vazio | implementado (`num` ignorado) |
 | 121 | S→C | `IN_CHANNEL_OUT` | entrada de jogador, 40 bytes | implementado (`total_exp` = exp do banco, F3: o 121 sobrescreve o nó do próprio jogador) |
@@ -78,6 +78,14 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 241 | S→C | `SEND_MESSAGE_OUT` | 8 bytes + texto | implementado |
 | 600 | C→S | `TUTORIAL_CLEAR` | `u8 passo` (0 a 2) | implementado (F2): liga o bit `1 << passo`; passo fora da faixa é logado e nada é gravado |
 | 601 | S→C | `TUTORIAL_CLEAR_OUT` | `i32` máscara @0, `i32` LD @4 | implementado (F2); o LD vai no @4 porque o cliente o grava em `iPoint` |
+| 591 | S→C | `GACHA_PRIZE_OUT` | `u16 key` @0, `i32` quantidade @4, `i32 result` @8; registros de 0x110 a partir de @0xC (`i32` item_id, `i32` size, `i32` buy_option, texto UTF-8 NUL) | implementado (F11): resposta ao 560 com `308010006`; até 2 prêmios |
+| 610 | C→S | `GET_GIFT_ITEM_IN` | `i32 page` @0 (0 a n) | implementado (F10): responde 611 |
+| 611 | S→C | `GET_GIFT_ITEM_OUT` | `i32 page` @0, `i32 count` @4; registros de 0x48 a partir de @8 (`u16` chave @0, `i32` catálogo @0x14, `item_guid` @0x18, `u8` prazo @0x40) | implementado (F10): página de 12; vazio manda um registro zerado |
+| 612 | C→S | `GIFT_ITEM_USED_IN` | `i32 key` @0 | implementado (F10): resgata o pendente |
+| 613 | S→C | `GIFT_ITEM_USED_OUT` | registro de 102 em @0..0x33 (zerado com recusa), `i32 result` @0x34, `i32 key` @0x38 | implementado (F10) |
+| 615 | C→S | `ITEM_GIFT_IN` | 24 bytes: `i32 catalog_id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 option` @5, `char[18] nick` @6 | implementado (F10): responde 616 |
+| 616 | S→C | `ITEM_GIFT_OUT` | 12 bytes: `i32 result` @0, `i32 cash` @4, `i32 point` @8 | implementado (F10): recusa com código de R-GIFT-01 |
+| 617 | S→C | `GET_GIFT_OUT` | corpo vazio | implementado (F10): aviso ao destinatário online |
 | 900 | S→C (push) | `CHARGE_CASH_OUT` | `i32` Cash | implementado (F3): enviado depois do 111 no login |
 | 902 | S→C (push) | `CHARGE_POINT_OUT` | `i32` LD | implementado (F3): enviado depois do 111 no login; bloco misto no dispatcher (shortcut) |
 | 102 | S→C (push) | `GET_ITEM_OUT` | 56 bytes | implementado (F4): um por item, no login, depois de 900 e 902 |

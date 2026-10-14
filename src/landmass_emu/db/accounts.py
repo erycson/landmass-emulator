@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from landmass_emu.db.models import AccountRow
 from landmass_emu.domain.account import Account
+from landmass_emu.domain.inventory import BASE_GATE_COUNT
 from landmass_emu.ports.accounts import AccountConflict
 
 
@@ -81,6 +82,13 @@ class SqlAccountRepository:
                 .where(AccountRow.id == account_id)
                 .values(token_hash=token_hash, updated_at=datetime.now(UTC))
             )
+
+    async def gate_count(self, account_id: int) -> int:
+        async with self._sessions() as session:
+            count = await session.scalar(
+                select(AccountRow.gate_count).where(AccountRow.id == account_id)
+            )
+        return BASE_GATE_COUNT if count is None else count
 
     async def regular_nest(self, account_id: int) -> int:
         """Nest regular da conta; 0 quando não escolheu (o 101 manda ucNest 0)."""

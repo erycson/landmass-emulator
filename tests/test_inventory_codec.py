@@ -87,7 +87,7 @@ def test_set_regular_out_corpo_vazio() -> None:
 
 
 def test_101_leva_nest_e_gates_nos_offsets_do_lm_player_info() -> None:
-    progress = PlayerRecord(nest=2, morat_gates=(0, 3))
+    progress = PlayerRecord(nest=2, enabled_gates=(0, 3))
     body = CsInChannelServerOut(client_guid=7, result=0, progress=progress).pack()
     assert len(body) == 176
     assert CsInChannelServerOut.opcode == CsOp.IN_CHANNEL_SERVER_OUT
@@ -108,5 +108,5 @@ def test_101_grava_o_result_e_recusa_gate_fora_da_faixa() -> None:
     assert struct.unpack_from("<i", body, 0xA8) == (-160,)
     for gate in (-1, 8):
         with pytest.raises(ValueError, match="gate"):
-            progress = PlayerRecord(morat_gates=(gate,))
+            progress = PlayerRecord(enabled_gates=(gate,))
             CsInChannelServerOut(client_guid=7, result=0, progress=progress).pack()

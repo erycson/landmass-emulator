@@ -91,11 +91,15 @@ class FakeLevels:
 
 
 class FakeAccounts:
-    def __init__(self, nest: int = 0) -> None:
+    def __init__(self, nest: int = 0, gates: int = 4) -> None:
         self._nest = nest
+        self._gates = gates
 
     async def regular_nest(self, account_id: int) -> int:
         return self._nest
+
+    async def gate_count(self, account_id: int) -> int:
+        return self._gates
 
 
 class FakeProgression:
@@ -159,6 +163,7 @@ def _servico(
     morats: list[MoratUnit] | None = None,
     conflito: bool = False,
     muda: bool = False,
+    gates: int = 4,
 ) -> tuple[ShopService, FakeProgression, FakePurchases]:
     progresso = FakeProgression(ld=ld, cash=cash, total_exp=exp)
     compras = FakePurchases(progresso, conflito=conflito, muda=muda)
@@ -168,7 +173,7 @@ def _servico(
         levels=FakeLevels(),
         inventory=InventoryService(catalogo, clock=lambda: AGORA, new_guid=lambda: GUID),
         repository=FakeInventory(morats),
-        accounts=FakeAccounts(nest),
+        accounts=FakeAccounts(nest, gates),
         progression=progresso,
         purchases=compras,
     )
@@ -251,6 +256,24 @@ async def test_morat_sem_gate_livre_recusa_sem_debitar() -> None:
     assert recusa.value.morat is True
     assert progresso.progress.cash == 9999
     assert compras.gravadas == []
+
+
+async def test_morat_so_entra_em_gate_habilitado() -> None:
+    # R-GATE-02: com 4 gates habilitados, o morat 5 não entra no gate 4 livre; recusa sem débito.
+    ocupados = [_morat_no_gate(g) for g in range(4)]
+    servico, progresso, compras = _servico({MORAT: _morat()}, cash=9999, morats=ocupados, gates=4)
+    with pytest.raises(ShopRefusal) as recusa:
+        await servico.buy(1, MORAT, Currency.CASH, 0)
+    assert recusa.value.result is BuyResult.NO_SPACE
+    assert progresso.progress.cash == 9999
+    assert compras.gravadas == []
+
+
+async def test_gate_habilitado_pela_contagem_recebe_morat() -> None:
+    ocupados = [_morat_no_gate(g) for g in range(4)]
+    servico, _, _ = _servico({MORAT: _morat()}, cash=2000, morats=ocupados, gates=5)
+    compra = await servico.buy(1, MORAT, Currency.CASH, 0)
+    assert compra.unit.gate_index == 4
 
 
 async def test_item_fora_do_catalogo_recusa_em_silencio() -> None:

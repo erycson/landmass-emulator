@@ -13,6 +13,7 @@ from landmass_emu.db.clans import SqlClanRepository
 from landmass_emu.db.consumables import SqlConsumableRepository
 from landmass_emu.db.engine import Migrator
 from landmass_emu.db.equipment import SqlEquipmentRepository
+from landmass_emu.db.gifts import SqlGiftRepository
 from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.item_catalog import LazyItemCatalog
 from landmass_emu.db.matches import SqlMatchRepository
@@ -22,9 +23,11 @@ from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.db.ranking import SqlRankingRepository
 from landmass_emu.db.shop import SqlShopRepository
 from landmass_emu.db.social import SqlSocialRepository
+from landmass_emu.db.use import SqlUseRepository
 from landmass_emu.domain.channel import Channel
 from landmass_emu.domain.consumables import ConsumableService
 from landmass_emu.domain.equipment import EquipService
+from landmass_emu.domain.gift import GiftService
 from landmass_emu.domain.inventory import InventoryService
 from landmass_emu.domain.lifecycle import DestroyService, ExtendService
 from landmass_emu.domain.lobby import Lobby
@@ -33,8 +36,10 @@ from landmass_emu.domain.presence import MessagePresence
 from landmass_emu.domain.rooms import Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.domain.shop import ShopService
+from landmass_emu.domain.use import ItemUseService
 from landmass_emu.handlers.channel import ChannelHandlers
 from landmass_emu.handlers.channel.equipment import EquipmentHandlers
+from landmass_emu.handlers.channel.gift import GiftHandlers
 from landmass_emu.handlers.message import MessageHandlers
 from landmass_emu.hosting.fixed import FixedMatchHost
 from landmass_emu.hosting.process import ProcessHostConfig, ProcessMatchHost
@@ -161,6 +166,7 @@ async def channel_server(
     equipment: EquipmentHandlers,
     audit: EconomyAudit,
     profiles: PlayerProfileRepository,
+    gifts: GiftService,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
@@ -181,6 +187,7 @@ async def channel_server(
         equipment=equipment,
         audit=audit,
         profiles=profiles,
+        gifts=GiftHandlers(gifts, lobby, audit),
     )
     server = await Service(
         net_code=CHANNEL_NET_CODE,
@@ -211,7 +218,9 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         clans = SqlClanRepository(db)
         ranking = SqlRankingRepository(db)
         profiles = SqlPlayerProfileRepository(db)
-        shop, equipment, audit = _game_services(settings, db, accounts, progression, inventory)
+        shop, equipment, audit, gifts = _game_services(
+            settings, db, accounts, progression, inventory
+        )
         matches = SqlMatchRepository(db)
         async with (
             message_server(
@@ -229,6 +238,7 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
                 equipment,
                 audit,
                 profiles,
+                gifts,
             ) as channel,
         ):
             yield message, channel
@@ -240,7 +250,7 @@ def _game_services(
     accounts: AccountRepository,
     progression: ProgressionRepository,
     inventory: InventoryRepository,
-) -> tuple[ShopService, EquipmentHandlers, EconomyAudit]:
+) -> tuple[ShopService, EquipmentHandlers, EconomyAudit, GiftService]:
     """Compra e F6/F7 com o mesmo catálogo (LazyItemCatalog, o canal sobe sem o wdb) e a mesma trava
     por conta: uma conta não compra e equipa ao mesmo tempo."""
     wdb = settings.client_dir / "landmass.wdb"
@@ -257,6 +267,25 @@ def _game_services(
         accounts=accounts,
         progression=progression,
         purchases=SqlShopRepository(db),
+        locks=locks,
+    )
+    inventory_service = InventoryService(catalog)
+    use = ItemUseService(
+        names=catalog,
+        inventory=inventory_service,
+        items=inventory,
+        accounts=accounts,
+        progression=progression,
+        repository=SqlUseRepository(db),
+        locks=locks,
+    )
+    gifts = GiftService(
+        catalog=catalog,
+        inventory=inventory_service,
+        items=inventory,
+        accounts=accounts,
+        progression=progression,
+        repository=SqlGiftRepository(db),
         locks=locks,
     )
     handlers = EquipmentHandlers(
@@ -283,5 +312,6 @@ def _game_services(
             locks=locks,
         ),
         audit=audit,
+        use=use,
     )
-    return shop, handlers, audit
+    return shop, handlers, audit, gifts
