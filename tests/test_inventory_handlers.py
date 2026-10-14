@@ -19,12 +19,14 @@ from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.domain.account import Account, hash_token
 from landmass_emu.domain.inventory import ApplyFlag, InventoryService, ItemUnit, MoratUnit
 from landmass_emu.domain.lobby import Lobby
+from landmass_emu.domain.match import MapRecord
 from landmass_emu.domain.rooms import Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.domain.starter_kit import STARTER_MORATS, StarterKit
 from landmass_emu.handlers.channel import ChannelHandlers
-from landmass_emu.handlers.channel.rooms import GameEndpoint
+from landmass_emu.hosting.fixed import FixedMatchHost
 from landmass_emu.net.session import Session
+from landmass_emu.ports.match_host import GameEndpoint
 from landmass_emu.protocol.channel import CsInChannelServerIn, CsInChannelServerOut, CsOp
 from landmass_emu.protocol.inventory import (
     CsGetItemOut,
@@ -123,6 +125,13 @@ async def _conta(db: async_sessionmaker[AsyncSession], usuario: str, token: str)
     return await SqlAccountRepository(db).create(usuario, usuario.title(), hash_token(token))
 
 
+class _Mapas:
+    """Catálogo de teste: todo mapa existe (o canal só o consulta ao iniciar partida)."""
+
+    def get(self, record_id: int) -> MapRecord | None:
+        return MapRecord(record_id=record_id, file_name="ONS-Treino", player_max=32, op_type=0)
+
+
 def _canal(
     db: async_sessionmaker[AsyncSession], sessoes: MemorySessionKeyRegistry
 ) -> ChannelHandlers:
@@ -132,7 +141,9 @@ def _canal(
         Rooms(),
         None,
         SqlProgressionRepository(db),
-        GameEndpoint("127.0.0.1", 7777),
+        FixedMatchHost(GameEndpoint("127.0.0.1", 7777)),
+        _Mapas(),
+        None,
         SqlAccountRepository(db),
         SqlInventoryRepository(db),
         None,

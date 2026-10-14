@@ -1,10 +1,20 @@
 """Modelo SQLAlchemy: `accounts` (marco 1, progressão em F2 e F3, regular em F5), `account_options`
-(F1), `account_morats` (F5), `account_items` (F4), `friends` e `blocks` (F12). Nomes seguem a
-convenção Laravel (D11). Colunas de `account_options` na ordem de `LmRegisterInfo`."""
+(F1), `account_morats` (F5), `account_items` (F4), `friends` e `blocks` (F12), `matches` e
+`match_players` (histórico de partidas). Nomes seguem a convenção Laravel (D11). Colunas de
+`account_options` na ordem de `LmRegisterInfo`."""
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKeyConstraint, Index, Integer, String, UniqueConstraint
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Float,
+    ForeignKeyConstraint,
+    Index,
+    Integer,
+    String,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -194,5 +204,55 @@ class BlockRow(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     account_id: Mapped[int] = mapped_column(Integer)
     blocked_account_id: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class MatchRow(Base):
+    __tablename__ = "matches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    room_id: Mapped[int] = mapped_column(Integer)
+    map_record_id: Mapped[int] = mapped_column(Integer)
+    map_file: Mapped[str] = mapped_column(String(64))
+    game_mode: Mapped[int] = mapped_column(Integer)
+    game_class: Mapped[str] = mapped_column(String(64))
+    team_count: Mapped[int] = mapped_column(Integer)
+    max_players: Mapped[int] = mapped_column(Integer)
+    time_limit: Mapped[int] = mapped_column(Integer)
+    goal_score: Mapped[int] = mapped_column(Integer)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    end_reason: Mapped[str] = mapped_column(String(32))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class MatchPlayerRow(Base):
+    __tablename__ = "match_players"
+    __table_args__ = (
+        ForeignKeyConstraint(["match_id"], ["matches.id"], name="match_players_match_id_foreign"),
+        UniqueConstraint("match_id", "account_id", name="match_players_match_id_account_id_unique"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    match_id: Mapped[int] = mapped_column(Integer)
+    account_id: Mapped[int] = mapped_column(Integer)
+    nickname: Mapped[str] = mapped_column(String(16))
+    slot: Mapped[int] = mapped_column(Integer)
+    team: Mapped[int | None] = mapped_column(Integer)
+    is_master: Mapped[bool] = mapped_column(Boolean)
+    kills: Mapped[int | None] = mapped_column(Integer)
+    deaths: Mapped[int | None] = mapped_column(Integer)
+    assists: Mapped[int | None] = mapped_column(Integer)
+    ranking: Mapped[int | None] = mapped_column(Integer)
+    played_percent: Mapped[float | None] = mapped_column(Float)
+    won: Mapped[bool | None] = mapped_column(Boolean)
+    headshots: Mapped[int | None] = mapped_column(Integer)
+    bullets: Mapped[int | None] = mapped_column(Integer)
+    hits: Mapped[int | None] = mapped_column(Integer)
+    damage: Mapped[int | None] = mapped_column(Integer)
+    exp: Mapped[int | None] = mapped_column(Integer)
+    money: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

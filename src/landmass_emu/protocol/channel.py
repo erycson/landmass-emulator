@@ -82,6 +82,8 @@ class CsOp(IntEnum):
     ROOM_ENTRY_OUT = 549
     EXPEL_PLAYER = 700
     EXPEL_PLAYER_OUT = 701
+    EXIT_PLAY = 500
+    EXIT_PLAY_OUT = 501
     SAVE_OPTION = 544
     SEND_MESSAGE = 240
     SEND_MESSAGE_OUT = 241
@@ -927,6 +929,18 @@ class CsExpelPlayerOut:
 
     result: int = 0
     opcode: ClassVar[int] = CsOp.EXPEL_PLAYER_OUT
+
+    def pack(self) -> bytes:
+        return _I32.pack(self.result)
+
+
+@dataclass(frozen=True, slots=True)
+class CsExitPlayOut:
+    """EXIT_PLAY_OUT (501), 4 bytes: `i32 result` @0. Resposta a 500 (EXIT_PLAY, corpo vazio).
+    shortcut: valor 0 não confirmado no cliente; ver re/game_server_host.md."""
+
+    result: int = 0
+    opcode: ClassVar[int] = CsOp.EXIT_PLAY_OUT
 
     def pack(self) -> bytes:
         return _I32.pack(self.result)

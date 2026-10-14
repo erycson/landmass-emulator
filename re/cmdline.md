@@ -61,7 +61,7 @@ Com P1 aplicado na cópia do servidor e linha do tipo `ONS-Treino.map?listen -se
    - `Parse(appCmdLine(), "PORT=", URL+0x18)` só se a chave existir. A porta do bind é `htons(URL.Port)`. Sem `PORT=`, vale o default de `[URL] Port=7777` do ini (FURL). Ver nota abaixo sobre `PORT=`.
    - `bind(...)` (`FUN_10701880`, inferido: `bind`) e depois `FUN_10719480` (inferido: modo não bloqueante). Falha → log "binding to port %i failed".
    - Ao fim: `URL.Port = ntohs(sockaddr.port)`, a porta efetivamente ligada.
-   - Nota (observado, possível erro de bind): com `PORT=` na linha, o tamanho do `bind` é `(-(iVar3 != 0) & 0xffffffed) + 0x14`, que dá 1. Não usar `PORT=` na linha do servidor até testar.
+   - Correção: o tamanho do `bind` é constante (`namelen = 0x10`), com ou sem `PORT=`. A hipótese anterior de tamanho 1 foi refutada pelo RE de `InitListen` (ver `re/game_server_host.md`, seção 10.2). Com `PORT=`, uma tentativa só, sem fallback. Teste em execução pendente.
 
 Resposta curta: o servidor de partida, nesse caminho, é `UGameEngine` (Engine.dll) com nível `ULevel` (Engine.dll) e net driver `IpDrv.UTcpNetDriver` em UDP/7777. `UServerLevel` (LM_Engine) não entra.
 

@@ -15,12 +15,14 @@ from landmass_emu.handlers.channel.morat import MoratHandlers
 from landmass_emu.handlers.channel.options import OptionHandlers
 from landmass_emu.handlers.channel.progression import ProgressionHandlers
 from landmass_emu.handlers.channel.records import ChannelRecords
-from landmass_emu.handlers.channel.rooms import GameEndpoint, RoomHandlers
+from landmass_emu.handlers.channel.rooms import RoomHandlers
 from landmass_emu.handlers.channel.shop import ShopHandlers
 from landmass_emu.net.server import Reply, Router
 from landmass_emu.net.session import Session
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.inventory import InventoryRepository
+from landmass_emu.ports.match_host import MapCatalog, MatchHost
+from landmass_emu.ports.matches import MatchRepository
 from landmass_emu.ports.options import OptionsRepository
 from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
@@ -40,13 +42,15 @@ class ChannelHandlers:
         rooms: Rooms,
         player_options: OptionsRepository,
         progression: ProgressionRepository,
-        game: GameEndpoint,
+        match: MatchHost,
+        maps: MapCatalog,
+        matches: MatchRepository | None,
         accounts: AccountRepository,
         inventory: InventoryRepository,
         shop: ShopService,
     ) -> None:
         records = ChannelRecords(lobby)
-        room_handlers = RoomHandlers(lobby, rooms, records, game)
+        room_handlers = RoomHandlers(lobby, rooms, records, match, maps, matches)
         progression_handlers = ProgressionHandlers(progression, ProgressionService())
         self._entry = EntryHandlers(
             sessions, lobby, rooms, records, room_handlers, progression_handlers
@@ -71,6 +75,7 @@ class ChannelHandlers:
             CsOp.IN_ROOM: self._rooms.in_room,
             CsOp.OUT_ROOM: self._rooms.out_room,
             CsOp.READY_GAME: self._rooms.ready_game,
+            CsOp.EXIT_PLAY: self._rooms.exit_play,
             CsOp.CHANGE_ROOM_PROPERTY: self._rooms.change_room_property,
             CsOp.CHANGE_ROOM_SLOT: self._rooms.change_room_slot,
             CsOp.ROOM_EXPEL: self._rooms.room_expel,

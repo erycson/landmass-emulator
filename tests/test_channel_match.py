@@ -1,0 +1,265 @@
+"""Partida no Channel Server com servidor de partida falso: início (401 com 412 e 403), falha
+(241000201), fim pelo último 500, queda do servidor, saída da última pessoa em jogo, volta à sala e
+gravação do histórico. O servidor real é coberto em `test_match_host.py`."""
+
+import asyncio
+import struct
+from collections.abc import Awaitable, Callable
+
+from test_channel_handlers import _corpos, _criar_sala, _entra_no_lobby, _Mapas
+
+from landmass_emu.domain.lobby import Lobby
+from landmass_emu.domain.match import MapRecord, MatchPlan
+from landmass_emu.domain.match_stats import MatchRecord
+from landmass_emu.domain.rooms import ROOM_PLAYING, ROOM_WAITING, Room, Rooms
+from landmass_emu.handlers.channel.records import ChannelRecords
+from landmass_emu.handlers.channel.rooms import ERR_MATCH_START, RoomHandlers
+from landmass_emu.net.session import Session
+from landmass_emu.ports.match_host import GameEndpoint, MapCatalog, MatchStartError
+from landmass_emu.protocol.channel import (
+    CsErrorEnvelope,
+    CsExitPlayOut,
+    CsInRoomOut,
+    CsOp,
+    CsRoomInfoOut,
+    CsRoomPlayerInfoOut,
+)
+
+
+class _HostFalso:
+    """Servidor de partida sem processo. `falha` faz o início recusar, como a porta ocupada."""
+
+    def __init__(self, falha: str | None = None) -> None:
+        self._falha = falha
+        self.iniciados: list[tuple[int, MatchPlan]] = []
+        self.encerrados: list[int] = []
+        self.on_exit: Callable[[], Awaitable[None]] | None = None
+
+    async def start(
+        self, room_id: int, plan: MatchPlan, on_exit: Callable[[], Awaitable[None]]
+    ) -> GameEndpoint:
+        if self._falha is not None:
+            raise MatchStartError(self._falha)
+        self.iniciados.append((room_id, plan))
+        self.on_exit = on_exit
+        return GameEndpoint("10.0.0.5", 7800)
+
+    def finish(self, room_id: int) -> None:
+        self.encerrados.append(room_id)
+
+    async def close(self) -> None:
+        return None
+
+
+class _Historico:
+    """Repositório em memória: guarda o que foi gravado."""
+
+    def __init__(self) -> None:
+        self.salvos: list[MatchRecord] = []
+
+    async def save(self, match: MatchRecord) -> int:
+        self.salvos.append(match)
+        return len(self.salvos)
+
+
+class _SemMapas:
+    def get(self, record_id: int) -> MapRecord | None:
+        return None
+
+
+def _montagem(
+    host: _HostFalso,
+    historico: _Historico | None = None,
+    maps: MapCatalog | None = None,
+) -> tuple[RoomHandlers, Lobby, Rooms]:
+    lobby = Lobby()
+    rooms = Rooms()
+    handlers = RoomHandlers(
+        lobby,
+        rooms,
+        ChannelRecords(lobby),
+        host,
+        maps or _Mapas(),
+        historico,
+    )
+    return handlers, lobby, rooms
+
+
+async def _partida(
+    handlers: RoomHandlers, lobby: Lobby, rooms: Rooms
+) -> tuple[Session, Session, Room]:
+    """Ana (dona, guid 7) e Bia (guid 9) na sala, Bia pronta, e Ana inicia a partida."""
+    ana = _entra_no_lobby(lobby, 7, "Ana")
+    bia = _entra_no_lobby(lobby, 9, "Bia")
+    sala = _criar_sala(rooms, 7)
+    rooms.join(sala.room_id, 9, "")
+    await handlers.ready_game(bia, bytes([0]))
+    await handlers.ready_game(ana, bytes([0]))
+    return ana, bia, sala
+
+
+async def test_401_do_dono_sobe_a_partida_e_so_depois_manda_403_aos_da_sala() -> None:
+    host = _HostFalso()
+    handlers, lobby, rooms = _montagem(host, _Historico())
+    _ana, bia, sala = await _partida(handlers, lobby, rooms)
+
+    [(room_id, plano)] = host.iniciados
+    assert room_id == sala.room_id
+    assert (plano.map_file, plano.game_class) == ("ONS-Treino", "XGame.LM_TeamOperation")
+    # Bia recebe: 402 de Bia pronta, 412 PLAYING ao canal e 403 com o endereço do servidor.
+    recebidos = _corpos(bia)
+    assert [op for op, _ in recebidos] == [
+        CsOp.READY_GAME_OUT,
+        CsOp.CHANGE_ROOM_PROPERTY_OUT,
+        CsOp.START_GAME_OUT,
+    ]
+    assert recebidos[1][1][0xF] == ROOM_PLAYING
+    inicio = recebidos[2][1]
+    assert inicio.split(b"\0")[0] == b"10.0.0.5"
+    assert struct.unpack_from("<H", inicio, 16) == (7800,)
+
+
+async def test_falha_ao_subir_servidor_volta_a_sala_a_espera_e_erra_para_o_dono() -> None:
+    host = _HostFalso(falha="porta ocupada")
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(host, historico)
+    ana = _entra_no_lobby(lobby, 7, "Ana")
+    bia = _entra_no_lobby(lobby, 9, "Bia")
+    sala = _criar_sala(rooms, 7)
+    rooms.join(sala.room_id, 9, "")
+    await handlers.ready_game(bia, bytes([0]))
+    _corpos(ana)
+    _corpos(bia)
+
+    respostas = await handlers.ready_game(ana, bytes([0]))
+
+    [erro] = respostas
+    assert isinstance(erro, CsErrorEnvelope)
+    assert erro.error == ERR_MATCH_START == 241000201
+    assert sala.state == ROOM_WAITING
+    estados = [c[0xF] for op, c in _corpos(bia) if op == CsOp.CHANGE_ROOM_PROPERTY_OUT]
+    assert estados == [ROOM_PLAYING, ROOM_WAITING]
+    assert sala.members[9].ready is False
+    assert historico.salvos == []
+
+
+async def test_mapa_fora_do_catalogo_nao_inicia_a_partida() -> None:
+    host = _HostFalso()
+    handlers, lobby, rooms = _montagem(host, _Historico(), maps=_SemMapas())
+    ana = _entra_no_lobby(lobby, 7, "Ana")
+    bia = _entra_no_lobby(lobby, 9, "Bia")
+    sala = _criar_sala(rooms, 7)
+    rooms.join(sala.room_id, 9, "")
+    await handlers.ready_game(bia, bytes([0]))
+
+    respostas = await handlers.ready_game(ana, bytes([0]))
+
+    assert host.iniciados == []
+    assert [type(r) for r in respostas] == [CsErrorEnvelope]
+    assert sala.state == ROOM_WAITING
+    assert ana.outbox.qsize() >= 1
+
+
+async def test_ultimo_a_sair_da_partida_grava_o_historico_e_devolve_a_sala_a_espera() -> None:
+    host = _HostFalso()
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(host, historico)
+    ana, bia, sala = await _partida(handlers, lobby, rooms)
+    _corpos(ana)
+    _corpos(bia)
+
+    [saida] = await handlers.exit_play(ana, b"")
+    assert isinstance(saida, CsExitPlayOut)
+    assert historico.salvos == [] and sala.state == ROOM_PLAYING
+
+    await handlers.exit_play(bia, b"")
+
+    [gravado] = historico.salvos
+    assert gravado.end_reason == "exit_play"
+    assert gravado.map_file == "ONS-Treino"
+    assert [(p.account_id, p.nickname, p.is_master) for p in gravado.players] == [
+        (7, "Ana", True),
+        (9, "Bia", False),
+    ]
+    # Nada de partida além de quem jogou: kills, mortes e o resto ficam nulos (ver docs).
+    assert all(p.kills is None and p.played_percent is None for p in gravado.players)
+    assert host.encerrados == [sala.room_id]
+    assert sala.state == ROOM_WAITING
+    assert sala.members[9].ready is False and sala.members[7].ready is True
+
+
+async def test_queda_do_servidor_depois_de_pronto_encerra_a_partida_com_server_exit() -> None:
+    host = _HostFalso()
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(host, historico)
+    _ana, _bia, sala = await _partida(handlers, lobby, rooms)
+    assert host.on_exit is not None
+
+    await host.on_exit()
+
+    [gravado] = historico.salvos
+    assert gravado.end_reason == "server_exit"
+    assert sala.state == ROOM_WAITING
+
+
+async def test_volta_a_propria_sala_depois_da_partida_recebe_312_314_317_so_quem_entrou() -> None:
+    host = _HostFalso()
+    handlers, lobby, rooms = _montagem(host, _Historico())
+    ana, bia, sala = await _partida(handlers, lobby, rooms)
+    await handlers.exit_play(ana, b"")
+    await handlers.exit_play(bia, b"")
+    _corpos(ana)
+    _corpos(bia)
+
+    respostas = await handlers.in_room(bia, struct.pack("<i16s", sala.room_id, b""))
+
+    assert [type(r) for r in respostas] == [CsInRoomOut, CsRoomInfoOut, CsRoomPlayerInfoOut]
+    assert _corpos(ana) == []  # o lobby já sabe que Bia está na sala: nada é difundido de novo
+
+
+async def test_volta_com_a_partida_em_andamento_responde_so_a_quem_volta_e_nao_encerra() -> None:
+    host = _HostFalso()
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(host, historico)
+    ana, bia, sala = await _partida(handlers, lobby, rooms)
+    await handlers.exit_play(ana, b"")  # Bia segue em jogo: a partida não acaba
+    _corpos(ana)
+    _corpos(bia)
+
+    respostas = await handlers.in_room(ana, struct.pack("<i16s", sala.room_id, b""))
+
+    assert [type(r) for r in respostas] == [CsInRoomOut, CsRoomInfoOut, CsRoomPlayerInfoOut]
+    assert _corpos(bia) == []
+    assert sala.state == ROOM_PLAYING
+    assert historico.salvos == []
+
+
+async def test_sair_da_ultima_pessoa_em_jogo_encerra_a_partida_sem_travar_a_sala() -> None:
+    host = _HostFalso()
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(host, historico)
+    ana, bia, sala = await _partida(handlers, lobby, rooms)
+    await handlers.exit_play(ana, b"")
+
+    await handlers.out_room(bia, b"")  # Bia sai sem mandar 500: era a última em jogo
+    await asyncio.sleep(0)  # a gravação roda em tarefa
+
+    [gravado] = historico.salvos
+    assert gravado.end_reason == "exit_play"
+    assert sala.state == ROOM_WAITING
+    assert set(sala.members) == {7}
+
+
+async def test_sala_que_esvazia_no_meio_da_partida_nao_grava_e_derruba_o_servidor() -> None:
+    host = _HostFalso()
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(host, historico)
+    ana, bia, sala = await _partida(handlers, lobby, rooms)
+
+    await handlers.out_room(bia, b"")
+    await handlers.out_room(ana, b"")
+    await asyncio.sleep(0)
+
+    assert rooms.get(sala.room_id) is None
+    assert host.encerrados == [sala.room_id]
+    assert historico.salvos == []

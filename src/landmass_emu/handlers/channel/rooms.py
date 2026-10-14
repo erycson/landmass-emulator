@@ -8,15 +8,29 @@ Difusão: `lobby.broadcast` para o que o cliente aplica no canal inteiro (302 na
 `lobby.send_to` para quem está na sala (402, 403, 421) e para o convidado (463).
 """
 
+import asyncio
 import logging
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import replace
+from datetime import UTC, datetime
+from functools import partial
 
 from landmass_emu.domain.lobby import Lobby
-from landmass_emu.domain.rooms import Room, RoomError, RoomReason, Rooms
+from landmass_emu.domain.match import MatchPlan, build_plan
+from landmass_emu.domain.match_stats import MatchRecord, PlayerMatchStats
+from landmass_emu.domain.rooms import (
+    ROOM_PLAYING,
+    ROOM_WAITING,
+    Room,
+    RoomError,
+    RoomReason,
+    Rooms,
+)
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.net.server import Reply, reply_body
 from landmass_emu.net.session import Session
+from landmass_emu.ports.match_host import MapCatalog, MatchHost, MatchStartError
+from landmass_emu.ports.matches import MatchRepository
 from landmass_emu.protocol.channel import (
     ROOM_FLAG_LIMIT_PLAYER,
     ROOM_FLAG_LIMIT_SCORE,
@@ -32,6 +46,7 @@ from landmass_emu.protocol.channel import (
     CsCreateRoomIn,
     CsCreateRoomOut,
     CsErrorEnvelope,
+    CsExitPlayOut,
     CsInRoomError,
     CsInRoomIn,
     CsInRoomOut,
@@ -58,6 +73,10 @@ log = logging.getLogger(__name__)
 ERR_CREATE_NAME_SHORT = 211000202  # "O nome da sala deve ter no mínimo 3 caracteres." (302)
 ERR_CREATE = 211000201  # "Não pode criar Sala. Tente novamente." (302)
 ERR_NOT_READY = 241002702  # "Ninguem está pronto nesta sala." (404)
+ERR_MATCH_START = 241000201  # "Não foi possível iniciar a partida. Tente novamente." (404)
+# Motivo do fim no histórico (`matches.end_reason`).
+END_EXIT_PLAY = "exit_play"  # todos saíram da partida (500)
+END_SERVER_EXIT = "server_exit"  # o servidor de partida caiu depois de pronto
 
 # Código de erro do 312 (short). O cliente monta a mensagem por `FUN_10021c80` (gap no RE); o
 # número é o sufixo de 211000000 + código em `msg_error` do `landmass.wdb`.
@@ -85,14 +104,6 @@ INVITE_CODES: dict[RoomReason, int] = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class GameEndpoint:
-    """Endereço da partida no 403 (`LANDMASS_GAME_HOST` e `LANDMASS_GAME_PORT`)."""
-
-    host: str
-    port: int
-
-
 def _clamp(value: int, low: int, high: int) -> int:
     return min(max(value, low), high)
 
@@ -117,12 +128,24 @@ def _settings(req: CsChangeRoomPropertyIn) -> dict[str, int]:
 
 class RoomHandlers:
     def __init__(
-        self, lobby: Lobby, rooms: Rooms, records: ChannelRecords, game: GameEndpoint
+        self,
+        lobby: Lobby,
+        rooms: Rooms,
+        records: ChannelRecords,
+        match: MatchHost,
+        maps: MapCatalog,
+        matches: MatchRepository | None,
     ) -> None:
         self._lobby = lobby
         self._rooms = rooms
         self._records = records
-        self._game = game
+        self._match = match
+        self._maps = maps
+        self._matches = matches
+        # Histórico em curso por sala: quem jogou no início. O fim e o motivo vêm depois.
+        self._open: dict[int, MatchRecord] = {}
+        # Gravações disparadas por `leave` (síncrono); guardadas para não serem coletadas.
+        self._saves: set[asyncio.Task[None]] = set()
 
     async def create_room(self, session: Session, payload: bytes) -> Sequence[Reply]:
         guid = self._lobby.guid_of(session)
@@ -162,6 +185,16 @@ class RoomHandlers:
             return []
         log.info("[%s] InRoom\n%s", session.peer, hexdump(payload))
         req = CsInRoomIn.unpack(payload)
+        current = self._rooms.room_of(guid)
+        if current is not None and current.room_id == req.room_id:
+            # Volta à própria sala depois da partida. O lobby já sabe que está nela, então só quem
+            # entra recebe a sala de novo: 312 para ele, 314 e 317.
+            slot = current.members[guid].slot
+            return [
+                CsInRoomOut(current.room_id, guid, slot),
+                CsRoomInfoOut(self._records.room(current)),
+                self._records.room_players(current),
+            ]
         try:
             room = self._rooms.join(req.room_id, guid, req.password)
         except RoomError as e:
@@ -205,10 +238,15 @@ class RoomHandlers:
         self._to_lobby(CsOutRoomOut(room_id, guid))
         if result.removed:
             log.info("sala %d removida: sem jogadores", room_id)
+            # Partida abandonada (ninguém ficou para jogar): o servidor cai e nada é gravado.
+            self._match.finish(room_id)
+            self._open.pop(room_id, None)
             self._to_lobby(CsRemoveRoomOut(room_id))
-        elif result.new_master is not None:
+            return
+        if result.new_master is not None:
             log.info("sala %d: novo dono %d", room_id, result.new_master)
             self._to_lobby(CsChangeRoomMasterOut(room_id, result.new_master))
+        self._after_leave(result.room)
 
     async def out_room(self, session: Session, payload: bytes) -> Sequence[Reply]:
         guid = self._lobby.guid_of(session)
@@ -235,9 +273,9 @@ class RoomHandlers:
                     return [CsErrorEnvelope(CsOp.READY_GAME_ERROR, ERR_NOT_READY)]
                 return []
             log.info("[%s] partida iniciada na sala %d", session.peer, started.room_id)
+            # 412 PLAYING vai já ao canal; o 403 só sai quando o servidor aceita conexões.
             self._to_lobby(CsChangeRoomPropertyOut(started.room_id, state=started.state))
-            self._to_room(started, CsStartGameOut(self._game.host, self._game.port))
-            return []
+            return await self._launch(session.peer, started)
         try:
             room, ready = self._rooms.toggle_ready(guid, req.morats)
         except RoomError as e:
@@ -305,6 +343,7 @@ class RoomHandlers:
             return []
         log.info("[%s] expulsou %d da sala %d", session.peer, expelled.guid, room.room_id)
         self._to_lobby(CsOutRoomOut(expelled.room.room_id, expelled.guid))
+        self._after_leave(expelled.room)
         return []
 
     async def room_invite(self, session: Session, payload: bytes) -> Sequence[Reply]:
@@ -348,6 +387,118 @@ class RoomHandlers:
             return []
         log.info("[%s] entrou na sala %d pelo convite", session.peer, room.room_id)
         return self._joined(room, guid)
+
+    async def exit_play(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        """500: o jogador deixou a partida e fica na sala. Com o último a sair, a partida acaba."""
+        guid = self._lobby.guid_of(session)
+        if guid is None:
+            return []
+        room = self._rooms.exit_play(guid)
+        if room is not None and room.match_over():
+            record = self._end(room)
+            if record is not None:
+                await self._save(record, END_EXIT_PLAY)
+        return [CsExitPlayOut(0)]
+
+    async def _launch(self, peer: str, room: Room) -> Sequence[Reply]:
+        """Sobe o servidor da partida e manda o 403 quando ele aceita conexões.
+        Falha devolve a sala à espera e avisa o dono com o erro 241000201."""
+        try:
+            plan = self._plan(room)
+            endpoint = await self._match.start(
+                room.room_id, plan, partial(self._match_exited, room.room_id)
+            )
+        except MatchStartError as e:
+            log.warning("[%s] partida da sala %d não começou: %s", peer, room.room_id, e)
+            self._end(room)
+            return [CsErrorEnvelope(CsOp.READY_GAME_ERROR, ERR_MATCH_START)]
+        if self._rooms.get(room.room_id) is not room:
+            # A sala acabou enquanto o servidor subia (todos saíram).
+            self._match.finish(room.room_id)
+            return []
+        self._open[room.room_id] = self._open_record(room, plan)
+        self._to_room(room, CsStartGameOut(endpoint.host, endpoint.port))
+        return []
+
+    async def _match_exited(self, room_id: int) -> None:
+        """O servidor da partida caiu sozinho depois de pronto: a partida acaba e a sala espera."""
+        room = self._rooms.get(room_id)
+        if room is None:
+            return
+        record = self._end(room)
+        if record is not None:
+            await self._save(record, END_SERVER_EXIT)
+
+    def _end(self, room: Room) -> MatchRecord | None:
+        """Fecha a partida na memória: servidor encerrado, sala de volta à espera e avisos.
+        Devolve o histórico a gravar. Sala que já não existe ou não está jogando não faz nada."""
+        if self._rooms.get(room.room_id) is not room or room.state != ROOM_PLAYING:
+            return None
+        self._match.finish(room.room_id)
+        self._rooms.finish(room.room_id)
+        self._to_lobby(CsChangeRoomPropertyOut(room.room_id, state=ROOM_WAITING))
+        for guid, member in room.members.items():
+            self._to_room(room, CsReadyGameOut(guid, member.ready, member.morats))
+        self._to_room(room, self._records.room_players(room))
+        return self._open.pop(room.room_id, None)
+
+    def _after_leave(self, room: Room) -> None:
+        """Quem saiu (ou foi expulso) pode ter sido o último em jogo: então a partida acaba."""
+        if not room.match_over():
+            return
+        record = self._end(room)
+        if record is not None:
+            task = asyncio.get_running_loop().create_task(self._save(record, END_EXIT_PLAY))
+            self._saves.add(task)
+            task.add_done_callback(self._saves.discard)
+
+    async def _save(self, record: MatchRecord, reason: str) -> None:
+        """Grava o histórico. Erro de banco é logado: a sala já voltou à espera."""
+        if self._matches is None:
+            return
+        ended = replace(record, ended_at=datetime.now(UTC), end_reason=reason)
+        try:
+            await self._matches.save(ended)
+        except Exception:
+            log.exception("histórico da sala %d não gravado", record.room_id)
+
+    def _plan(self, room: Room) -> MatchPlan:
+        try:
+            record = self._maps.get(room.map_num)
+        except ValueError as e:
+            raise MatchStartError(f"catálogo de mapas indisponível: {e}") from e
+        if record is None:
+            raise MatchStartError(f"mapa {room.map_num} não existe no catálogo")
+        return build_plan(room, record)
+
+    def _open_record(self, room: Room, plan: MatchPlan) -> MatchRecord:
+        """Histórico no início: quem está na sala agora joga. Resultado e fim vêm em `_save`."""
+        now = datetime.now(UTC)
+        players = tuple(
+            PlayerMatchStats(
+                account_id=guid,
+                nickname=self._lobby.nickname_of(guid) or "",
+                slot=member.slot,
+                team=None,
+                is_master=guid == room.master,
+            )
+            for guid, member in room.members.items()
+        )
+        return MatchRecord(
+            room_id=room.room_id,
+            map_record_id=room.map_num,
+            map_file=plan.map_file,
+            game_mode=room.game_mode,
+            game_class=plan.game_class,
+            team_count=room.team_count,
+            max_players=plan.max_players,
+            time_limit=plan.time_limit,
+            goal_score=plan.goal_score,
+            started_at=now,
+            ended_at=now,
+            end_reason="",
+            players=players,
+        )
 
     def _to_lobby(self, reply: Reply) -> None:
         self._lobby.broadcast(reply_body(reply, CHANNEL_NET_CODE))

@@ -33,7 +33,7 @@ Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151
 | `311` InRoom, 20 bytes | `312` ao canal, menos quem já está na sala; `549` a quem já está na sala; `314` e `317` ao entrante | Entra no primeiro slot livre. Recusa: `312` com código negativo só ao entrante, com 1001 (sala não existe), 1202 (cheia), 1701 (senha) ou 200 (partida já iniciada). Estar em sala já: sem resposta. |
 | `321` OutRoom, vazio | `322` ao lobby; `332` se trocou o dono; `342` se a sala esvaziou | Sai da sala. |
 | `401` ReadyGame, `u8 morats`, de jogador não dono | `402` aos membros da sala | Alterna o estado de pronto. |
-| `401` ReadyGame, do dono | `412` ao lobby e `403` aos membros da sala (endereço e porta da partida) | Inicia a partida se houver outro jogador e todos os outros estiverem prontos. Senão: envelope `54` com `404` e código 241002702. |
+| `401` ReadyGame, do dono | `412` ao lobby; depois `403` aos membros da sala (endereço e porta da partida) | Inicia a partida se houver outro jogador e todos os outros estiverem prontos. Se não, envelope `54` com `404` e código 241002702 (condições não atendidas). Se o servidor da partida não abre a porta, a sala volta à espera (`412` ao lobby, `402` aos não-donos) e o dono recebe envelope `54` com `404` e código 241000201. |
 | `420` ChangeRoomSlot, `u8 slot` | `421` aos membros da sala | Troca de slot. Slot ocupado ou inválido: sem resposta. |
 | `411` ChangeRoomProperty, 10 bytes, do dono | `412` ao lobby | Muda só os campos marcados em `flags`, com os limites da criação. Sala jogando, quem não é dono ou configuração inválida: sem resposta. |
 | `451` RoomExpel, 18 bytes, do dono | `322` ao lobby | Expulsa pelo nick. Sem resposta a quem pediu; quem não é dono é ignorado. Sem caminho de UI confirmado (item 20). |
@@ -93,7 +93,7 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 342 | S→C | `REMOVE_ROOM_OUT` | 4 bytes | implementado (shortcut: gap no RE) |
 | 401 | C→S | `READY_GAME` | `u8 morats` | implementado |
 | 402 | S→C | `READY_GAME_OUT` | 12 bytes | implementado |
-| 403 | S→C | `START_GAME_OUT` | 18 bytes | implementado (shortcut) |
+| 403 | S→C | `START_GAME_OUT` | 18 bytes | implementado (shortcut: sai só depois de a porta da partida abrir, D47) |
 | 404 | S→C | `READY_GAME_ERROR` (dentro do envelope 54) | sem corpo próprio | implementado |
 | 411 | C→S | `CHANGE_ROOM_PROPERTY` | 10 bytes | implementado (shortcut: só campos com bit ligado) |
 | 412 | S→C | `CHANGE_ROOM_PROPERTY_OUT` | 16 bytes | implementado (shortcut: máscara e campos) |
@@ -104,6 +104,8 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 462 | S→C | `ROOM_INVITE_OUT` | `i32 result` | implementado |
 | 463 | S→C | `ROOM_INVITE_NOTIFY` | 21 bytes | implementado (shortcut: nick de @4 inferido) |
 | 471 | C→S | `ROOM_INVITE_ANSWER` | `i32 room_id`, `u8 accept` | implementado |
+| 500 | C→S | `EXIT_PLAY` | sem corpo | implementado (shortcut: fim da partida quando todos saem, D48; o cliente real não confirmou) |
+| 501 | S→C | `EXIT_PLAY_OUT` | `i32 result` | implementado (shortcut: `result` 0 não confirmado no cliente) |
 | 543 | S→C | `PLAYER_DETAIL_OUT` | 77 bytes | só codec: nenhum handler roteia o 542 |
 | 549 | S→C | `ROOM_ENTRY_OUT` | entrada de jogador, 48 bytes | implementado (shortcut: divisão com 312) |
 | 550 | C→S | `ITEM_BUY_IN` | 12 bytes: `i32 id` @0, `u8 bPoint` @4 (1 LD, 0 Cash), `u8 nBuyOption` @5 (0 a 3) | implementado (F8): debita e cria a unidade numa transação; recusa com result ≠ 0 |
@@ -120,11 +122,12 @@ Estado em `domain/rooms.py`, só em memória (D12, D24). `handlers/channel/rooms
 - **Criar.** O criador entra no slot 0, já pronto, e é o dono. Nome de 3 a 50 bytes; senha de até 12 bytes (shortcut). Valores numéricos fora da faixa são limitados e logados, não recusados: `scale`, `game_mode`, `team_count` e `limit_time` em 0..255; `map_num` e `limit_score` em 0..32767; `max_player` em 1..70.
 - **Entrar.** A sala precisa existir, não ter começado, ter slot livre e, se tiver senha, a senha certa. Entra no primeiro slot livre. Quem entra não sai do lobby: continua recebendo a lista e o chat do canal.
 - **Pronto.** Jogador que não é dono alterna o estado com `401`. O dono não marca pronto: o `401` dele inicia a partida.
-- **Iniciar.** Só o dono. Exige ao menos um outro membro e todos os outros prontos. A sala passa a jogando (estado 2) e não aceita novas entradas. O `403` leva `LANDMASS_GAME_HOST` e `LANDMASS_GAME_PORT` ([05-configuration](../architecture/05-configuration.md)).
+- **Iniciar.** Só o dono. Exige ao menos um outro membro e todos os outros prontos. A sala passa a jogando (estado 2) e não aceita novas entradas. O `403` leva `LANDMASS_GAME_HOST` com a porta fixa `LANDMASS_GAME_PORT`, ou com a porta da partida lançada pelo emulador (`LANDMASS_MATCH_SERVER_DIR`). Ver [05-configuration](../architecture/05-configuration.md) e [game-server](../operations/game-server.md).
 - **Sair.** Se o dono sai e ainda há membros, o dono passa ao primeiro membro na ordem de entrada (`332`). Sala sem membros é removida (`342`).
 - **Configurar.** Só o dono, com a sala esperando. Muda os campos marcados em `flags` (411) e avisa o canal (412). Valores fora da faixa são limitados; `max_player` abaixo de quem já está sentado é ignorado.
 - **Convidar.** Só o dono. O convidado do canal recebe o convite (463) e responde com 471. O convite fica pendente até a resposta e não expira (shortcut). O aceite entra sem senha.
 - **Expulsar.** Só o dono, pelo nick (451). O expulso sai da sala (`322`).
+- **Fim da partida.** Cada jogador em jogo manda `500`; o canal responde `501`. A sala volta à espera quando todos saem, quando o último em jogo sai da sala ou quando o servidor cai depois de pronto (D48). Quem entra de novo na sala (`311`) recebe `312`, `314` e `317` só para si (D49).
 
 Escopo da difusão:
 
@@ -520,7 +523,7 @@ Cada item com código afetado tem um `shortcut:` no código. Ao confirmar no cli
 15. **Envelope 54 e dispatch.** O código fica em @4 (`re/channel_server.md` §3). O corpo real fica sobreposto ao envelope, conforme o RE (inferido). Por isso o 312 não usa envelope.
 16. **Campos do registro de sala sem decodificação (D45).** `name` (0x04, `char[51]`), `has_password` (0x37) e `scale` (0x47) vêm de `execGetRoomInfo` (`re/rooms.md`), não de captura. A lista 141 tem 68 bytes e não traz `scale`, então a sala aparece com escala 0 até o 302 ou o 314 da sala. `curr_spectator` (0x3C) e `open` (0x3E) são valores fixos.
 17. **Escopo da difusão.** Confirmado na análise de `re/rooms.md`, mas não no cliente real (ver tabela em [Salas](#salas)).
-18. **Início e endereço da partida (403).** O 403 vai só aos membros, com `address` de 16 bytes (hipótese, `re/rooms.md` §8) e `port`. O servidor de partida não existe até o marco 4: o cliente tenta conectar e falha, o que é esperado. O critério do marco é o recebimento do 403.
+18. **Início e endereço da partida (403).** O 403 vai só aos membros, com `address` de 16 bytes (hipótese, `re/rooms.md` §8) e `port`. Sem servidor de partida no ar, o cliente tenta conectar e falha; isso é esperado. Com `LANDMASS_MATCH_SERVER_DIR`, o emulador sobe um servidor por sala (marco 4). O critério do marco é o recebimento do 403.
 19. **Escopo do chat na sala (240).** O RE não decodifica o escopo (`re/rooms.md` §6). Assumido: remetente em sala fala só com a sala.
 20. **Console e expulsão (700, 451; D41).** O 700 é o `/EXPEL` do console (`u8 kind` + nick); não é executado, porque o emulador não tem papel de administrador. O dono expulsa pelo 451, sem resposta. A UI não chama o 451 (`XInterface` L29174, comentado): o caminho só é exercido por código e pelos testes.
 21. **Pronto e seletor (402, 317).** O bit de pronto é `u8 @4` do 402 e `u8 @0x29` do 317. O seletor `@0x2A` do 317 vai zero (inferido).
@@ -545,7 +548,7 @@ Conferir nesta ordem; cada falha aponta o item de lacunas indicado.
 4. **Entrar com senha errada.** Aparece a mensagem de senha inválida (1701), e nenhum slot fica ocupado (item 14).
 5. **Entrar com a senha certa.** Os dois slots aparecem com o estado certo e o nick de cada um (item 1).
 6. **Pronto.** O entrante marca pronto (401); o estado aparece nos dois clientes (402).
-7. **Iniciar.** O dono inicia (401). Os dois recebem 412 e 403 com `127.0.0.1` e `7777`. O cliente tenta conectar; a falha é esperada até o marco 4 (item 18).
+7. **Iniciar.** O dono inicia (401). Os dois recebem 412 e 403 com `127.0.0.1` e `7777`. O cliente tenta conectar; sem servidor de partida no ar, a falha é esperada (item 18).
 8. **Iniciar sem prontos.** Aparece a mensagem "ninguém está pronto" (404, 241002702).
 9. **Sair.** A lista do outro atualiza (322). Se o dono sai, o outro vira dono (332). Sala vazia some da lista (342).
 10. **Expulsar.** Sem caminho de UI para o 451 (item 20): testar só se o cliente enviar. Quando enviar, o alvo sai da sala (322) e quem não é dono não recebe nada.

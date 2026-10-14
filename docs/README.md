@@ -25,9 +25,9 @@ flowchart LR
 | [01-scope.md](architecture/01-scope.md) | Objetivos, fora de escopo e restrições obrigatórias (R1–R6). |
 | [02-context.md](architecture/02-context.md) | Componentes do sistema, topologia, portas e fluxo ponta a ponta. |
 | [03-emulator.md](architecture/03-emulator.md) | Camadas, regras de dependência, estrutura de pacotes, concorrência, codec e handlers. |
-| [04-persistence.md](architecture/04-persistence.md) | Banco portável (SQLAlchemy/Alembic), convenção de nomes (Laravel), schema de contas, opções, inventário (`account_items`, `account_morats`) e colunas de morat regular, tabelas do legado não migradas, dados estáticos do cliente. |
+| [04-persistence.md](architecture/04-persistence.md) | Banco portável (SQLAlchemy/Alembic), convenção de nomes (Laravel), schema de contas, opções, inventário (`account_items`, `account_morats`) e colunas de morat regular, tabelas do legado não migradas, dados estáticos do cliente, histórico de partidas (`matches`, `match_players`: uma gravação no fim; métricas ainda nulas). |
 | [05-configuration.md](architecture/05-configuration.md) | Variáveis `LANDMASS_*`, valores padrão e regras de segredos. |
-| [06-game-server-host.md](architecture/06-game-server-host.md) | Processo que hospeda a partida (componente ausente a reconstruir). |
+| [06-game-server-host.md](architecture/06-game-server-host.md) | Host de partida: um `LandMass.exe -server` por sala, com `PORT=` numa porta da faixa, 403 só após a porta abrir, fim de partida e volta à sala. |
 | [07-progression.md](architecture/07-progression.md) | Progressão e economia: modelo de dados (contas, inventário, morats, opções, social, clãs), regras de compra, uso, presente, patente, recompensa e tutorial, mapeamento opcode → tabela e ordem de implementação. |
 
 ### Protocolo — [`protocol/`](protocol/)
@@ -44,7 +44,7 @@ flowchart LR
 | Arquivo | Conteúdo |
 |---------|----------|
 | [running-client.md](operations/running-client.md) | Como iniciar o cliente contra o emulador, parâmetros obrigatórios, modo janela. |
-| [game-server.md](operations/game-server.md) | Cópia do servidor de partida (`servidor-partida`), patches, `servidor.bat`, porta UDP 7777 e sinais no log. |
+| [game-server.md](operations/game-server.md) | Cópia do servidor de partida (`servidor-partida`), patches, `servidor.bat` (porta 7777), partida lançada pelo emulador (modo por processo), roteiro de teste de uma partida com dois clientes e casos que devem falhar. |
 | [testing.md](operations/testing.md) | Níveis de teste, fixtures de captura e gates de qualidade. |
 | [reverse-engineering.md](operations/reverse-engineering.md) | Ferramentas (REA, Ghidra), fontes de verdade e como registrar achados. |
 

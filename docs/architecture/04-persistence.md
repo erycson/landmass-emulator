@@ -114,3 +114,62 @@ Fonte: [07-progression.md §4.7](07-progression.md). Modelos: `db/models.py` (`F
 - Tabelas relevantes: `item`, `Item_Equip`, `maps`, `LevelList`, `Morats`, `supply`, `gift`, `msg_error`, `message_server`.
 - Abra em modo somente leitura (`file:...?mode=ro`). Não copie para o banco de contas; o cliente é a fonte desses dados (R1).
 - Os demais `.wdb` (magic `f7 db 00 00 72 f3 31 01`) usam formato proprietário `Cdb_table`; decodifique só se necessário.
+
+## Histórico de partidas
+
+- Porta: `ports/matches.py` (`MatchRepository.save`). Implementação: `db/matches.py` (`SqlMatchRepository`), que grava a partida e os jogadores numa transação e devolve o id de `matches`.
+- Dados em memória: `domain/match_stats.py` (`MatchRecord`, `PlayerMatchStats`), sem IO.
+- Modelos: `db/models.py` (`MatchRow`, `MatchPlayerRow`). Migração: `db/migrations/versions/887ad86230f6_create_matches_and_match_players_tables.py`.
+- Constraints: `match_players_match_id_foreign` (FK) e `match_players_match_id_account_id_unique` (um jogador por partida).
+- Gravação: uma vez, no fim da partida, com `end_reason` (D48, D52). Não há tabela de eventos nem registro durante a partida.
+- Hoje só a identidade e a sala são gravadas. Métricas de jogador ficam `NULL` até haver o parser do bloco `GameEnded` do log (`re/game_server_host.md`, seção 10.4).
+
+Tabela `matches` (uma linha por partida):
+
+| Coluna | Tipo | Nulo | Uso |
+|--------|------|------|-----|
+| `id` | `Integer` PK, autoincremento | não | Id da partida. |
+| `room_id` | `Integer` | não | Sala onde a partida rodou. |
+| `map_record_id` | `Integer` | não | Id do registro do mapa. |
+| `map_file` | `String(64)` | não | Arquivo do mapa. |
+| `game_mode` | `Integer` | não | Modo de jogo. |
+| `game_class` | `String(64)` | não | Classe do jogo (ex.: `LM_DeathMatch`). |
+| `team_count` | `Integer` | não | Número de times. |
+| `max_players` | `Integer` | não | Máximo de jogadores (`MaxPlayers` do log). |
+| `time_limit` | `Integer` | não | Tempo limite da partida. |
+| `goal_score` | `Integer` | não | Pontuação para vencer (`GoalScore` da URL). |
+| `started_at`, `ended_at` | `DateTime(timezone=True)` | não | Início e fim da partida. |
+| `end_reason` | `String(32)` | não | Motivo do fim: `exit_play` (todos saíram ou o último em jogo saiu) ou `server_exit` (processo caiu depois de pronto), D48. |
+| `created_at`, `updated_at` | `DateTime(timezone=True)` | não | Criação e última gravação. |
+
+Tabela `match_players` (uma linha por jogador por partida):
+
+| Coluna | Tipo | Nulo | Uso |
+|--------|------|------|-----|
+| `id` | `Integer` PK, autoincremento | não | Id da linha. |
+| `match_id` | `Integer`, FK `matches.id` | não | Partida. |
+| `account_id` | `Integer` | não | Conta do jogador. Único por partida. |
+| `nickname` | `String(16)` | não | Nickname na partida. |
+| `slot` | `Integer` | não | Posição do jogador na sala. |
+| `team` | `Integer` | sim | Time; nulo quando o modo não define time. |
+| `is_master` | `Boolean` | não | Se era o mestre da sala. |
+| `kills`, `deaths`, `assists`, `ranking`, `headshots`, `bullets`, `hits`, `damage`, `exp`, `money` | `Integer` | sim | Métricas da partida; disponibilidade na tabela abaixo. |
+| `played_percent` | `Float` | sim | Percentual do tempo jogado, de 0 a 100. |
+| `won` | `Boolean` | sim | Vitória; disponibilidade na tabela abaixo. |
+| `created_at`, `updated_at` | `DateTime(timezone=True)` | não | Criação e última gravação. |
+
+Disponibilidade das métricas: o que o jogo produz, segundo o RE do `XGame` e o bloco `GameEnded` (não reproduzido no log neste ambiente). O emulador ainda não lê esse bloco, então hoje todas as métricas ficam `NULL`.
+
+| Métrica | O que o jogo produz | Situação |
+|---------|---------------------|----------|
+| `kills` | `Kills`, por jogador, nos blocos de DM e de OP/time. | Consta do RE; não coletado. |
+| `ranking` | `Ranking`, no bloco de DM. | Consta do RE; não coletado. |
+| `played_percent` | `Played%`, no bloco de DM, em fração. A conversão para 0 a 100 fica com o parser. | Consta do RE; não coletado. |
+| `exp`, `money` | Exp e LD ganhos, por jogador, no bloco de DM. | Consta do RE; não coletado. |
+| `won` | `Winner`, no bloco de OP/time. Não há no DM, e a semântica (time ou jogador) não foi confirmada. | Parcial; não coletado. |
+| `deaths` | `PRI.Deaths` é incrementado em `Killed()`, mas não entra no bloco. | Não produzido: fica `NULL`. |
+| `assists` | Só `m_iAssistScore` (critical frag de time). Não é assistência de CS. | Não existe: fica `NULL`. |
+| `headshots` | O tipo de dano `DamageTypeHeadShot` existe; nenhum contador por partida é logado. | Não produzido: fica `NULL`. |
+| `bullets`, `hits`, `damage` | Sem fonte no código extraído. | Sem fonte: fica `NULL`. |
+
+Métrica sem fonte fica `NULL`; nenhum valor é estimado.

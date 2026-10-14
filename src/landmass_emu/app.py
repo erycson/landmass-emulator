@@ -11,6 +11,7 @@ from landmass_emu.db.catalog import WdbCatalog
 from landmass_emu.db.engine import Migrator
 from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.item_catalog import LazyItemCatalog
+from landmass_emu.db.matches import SqlMatchRepository
 from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.db.progression import SqlProgressionRepository
 from landmass_emu.db.shop import SqlShopRepository
@@ -23,11 +24,14 @@ from landmass_emu.domain.rooms import Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.domain.shop import ShopService
 from landmass_emu.handlers.channel import ChannelHandlers
-from landmass_emu.handlers.channel.rooms import GameEndpoint
 from landmass_emu.handlers.message import MessageHandlers
+from landmass_emu.hosting.fixed import FixedMatchHost
+from landmass_emu.hosting.process import ProcessHostConfig, ProcessMatchHost
 from landmass_emu.net.server import Service
 from landmass_emu.ports.accounts import AccountRepository
 from landmass_emu.ports.inventory import InventoryRepository
+from landmass_emu.ports.match_host import GameEndpoint, MatchHost
+from landmass_emu.ports.matches import MatchRepository
 from landmass_emu.ports.options import OptionsRepository
 from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
@@ -102,6 +106,25 @@ async def message_server(
         yield listening
 
 
+def match_host_from(settings: Settings) -> MatchHost:
+    """Sem `LANDMASS_MATCH_SERVER_DIR`, a partida é o endereço fixo (`LANDMASS_GAME_HOST/PORT`).
+    Com a pasta, cada sala em partida sobe o próprio servidor (docs/architecture/06)."""
+    if settings.match_server_dir is None:
+        return FixedMatchHost(GameEndpoint(settings.game_host, settings.game_port))
+    return ProcessMatchHost(
+        ProcessHostConfig(
+            server_dir=settings.match_server_dir,
+            game_host=settings.game_host,
+            port_min=settings.match_port_min,
+            port_max=settings.match_port_max,
+            ready_timeout=settings.match_ready_timeout,
+            message_addr=f"{settings.public_host}:{settings.message_port}",
+            version=settings.client_version,
+            login_num=settings.match_login_num or "",
+        )
+    )
+
+
 @asynccontextmanager
 async def channel_server(
     settings: Settings,
@@ -111,12 +134,24 @@ async def channel_server(
     accounts: AccountRepository,
     inventory: InventoryRepository,
     shop: ShopService,
+    matches: MatchRepository,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
-    game = GameEndpoint(settings.game_host, settings.game_port)
+    match = match_host_from(settings)
+    maps = WdbCatalog(settings.client_dir / "landmass.wdb")
     handlers = ChannelHandlers(
-        sessions, lobby, rooms, options, progression, game, accounts, inventory, shop
+        sessions,
+        lobby,
+        rooms,
+        options,
+        progression,
+        match,
+        maps,
+        matches,
+        accounts,
+        inventory,
+        shop,
     )
     server = await Service(
         net_code=CHANNEL_NET_CODE,
@@ -126,8 +161,11 @@ async def channel_server(
         heartbeat=CsHeartbeat(),
         heartbeat_every=CHANNEL_HEARTBEAT_SECONDS,
     ).start(settings.bind_host, settings.channel_port)
-    async with _listening(server) as listening:
-        yield listening
+    try:
+        async with _listening(server) as listening:
+            yield listening
+    finally:
+        await match.close()
 
 
 @asynccontextmanager
@@ -142,10 +180,11 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         inventory = SqlInventoryRepository(db)
         social = SqlSocialRepository(db)
         shop = _shop_service(settings, accounts, progression, inventory, SqlShopRepository(db))
+        matches = SqlMatchRepository(db)
         async with (
             message_server(settings, sessions, accounts, options, social) as message,
             channel_server(
-                settings, sessions, options, progression, accounts, inventory, shop
+                settings, sessions, options, progression, accounts, inventory, shop, matches
             ) as channel,
         ):
             yield message, channel

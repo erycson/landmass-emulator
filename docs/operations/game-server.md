@@ -56,15 +56,16 @@ netstat -ano -p UDP | findstr :7777
 ```
 
 - Se o cliente estiver em outra máquina, liberar UDP 7777 no firewall do Windows para `LandMass.exe`.
+- Com `LANDMASS_MATCH_SERVER_DIR` definido, cada partida lançada pelo emulador usa a porta da faixa `LANDMASS_MATCH_PORT_MIN..MAX` (`PORT=`), não 7777. O `servidor.bat` continua abrindo 7777.
 
 ## Como um cliente conecta
 
 1. Subir o emulador conforme [`running-client.md`](running-client.md).
 2. Subir o servidor de partida (`servidor.bat`) antes do cliente.
 3. O 403 `NotifyStartGame` leva o endereço da partida, configurado no emulador:
-   - `LANDMASS_GAME_HOST=127.0.0.1` (padrão)
-   - `LANDMASS_GAME_PORT=7777` (padrão)
-   Ver [`../architecture/05-configuration.md`](../architecture/05-configuration.md). A porta do 403 precisa ser a mesma do `servidor.bat`.
+   - Sem `LANDMASS_MATCH_SERVER_DIR`: `LANDMASS_GAME_HOST` e `LANDMASS_GAME_PORT` (padrão `127.0.0.1:7777`). A porta do 403 precisa ser a mesma do `servidor.bat`.
+   - Com `LANDMASS_MATCH_SERVER_DIR`: `LANDMASS_GAME_HOST` e a porta da partida, lançada pelo emulador.
+   Ver [`../architecture/05-configuration.md`](../architecture/05-configuration.md).
 4. Iniciar o cliente de teste em `cliente2` com o `jogar_<usuário>.bat`. Criar sala, o dono inicia (401), o cliente recebe o 403 e tenta `127.0.0.1:7777`.
 
 (Inferido: o cliente monta o `open` com o endereço e a porta do 403. A conexão real não foi observada.)
@@ -81,9 +82,58 @@ Arquivo: `D:\landmass\servidor-partida\system\LandMass.log`, gravado no encerram
 | Saída em poucos segundos, sem `LandMass.log` | Argumento depois de `login_num=`, ou falta `login_server=`/`version=`/`login_num=`. Ponha os argumentos do motor no início. |
 | Log de LOGIN recusado | A validação está na lógica UnrealScript (`XGame`), não em `LM_Engine.dll` (ver `re/game_server_host.md`). |
 
+## Partida lançada pelo emulador (marco 4)
+
+Com `LANDMASS_MATCH_SERVER_DIR`, o canal sobe um `LandMass.exe` por sala que inicia a partida e o encerra no fim (D46). Sem a variável, vale o `servidor.bat` com endereço fixo, como acima.
+
+Configuração (PowerShell, na raiz de `emulador\`). O valor de `login_num` vem do `jogar_teste.bat`; não o escreva em arquivo versionado:
+
+```
+$env:LANDMASS_MATCH_SERVER_DIR = "D:\landmass\servidor-partida\system"
+$env:LANDMASS_MATCH_LOGIN_NUM = "<login_num do jogar_teste.bat>"
+$env:LANDMASS_MATCH_PORT_MIN = "7800"
+$env:LANDMASS_MATCH_PORT_MAX = "7899"
+uv run landmass-emu serve
+```
+
+### Roteiro: uma partida com dois clientes
+
+Pré-requisito: `servidor-partida` com os patches conferidos (ver acima) e duas contas. As contas são `ana` e `bia`, com `account create --user ana --nickname Ana` e `account create --user bia --nickname Bia`. Os `.bat` caem em `cliente\` e `cliente2\`.
+
+| # | Ação | Esperado no emulador (`serve`) |
+|---|------|-------------------------------|
+| 1 | Subir o emulador com a configuração acima. | Sem erro na inicialização. |
+| 2 | Abrir `cliente\jogar_ana.bat` e `cliente2\jogar_bia.bat`, entrar no canal 1. | Sem log de erro. Os dois veem um ao outro no lobby. |
+| 3 | Ana cria sala DM em ONS-Treino, 2 vagas. | `[...] sala 1 criada: <nome>` |
+| 4 | Bia entra na sala 1. | `[...] entrou na sala 1` |
+| 5 | Bia marca pronto; Ana inicia. | `partida iniciada na sala 1`, depois `partida da sala 1: XGame.LM_DeathMatch pronta na porta UDP 7800`. |
+| 6 | Conferir a porta: `netstat -ano -p UDP \| findstr :7800`. | Uma linha `UDP 0.0.0.0:7800` com o PID do `LandMass.exe` lançado. |
+| 7 | Os clientes mostram a contagem e entram em `127.0.0.1:7800`. | (Não confirmado: aceitar o 403 atrasado.) |
+| 8 | Jogar até o fim. Cada cliente manda 500 ao sair da partida. | `partida da sala 1: servidor encerrado (porta 7800)`. Sala volta à espera e Bia fica sem pronto. |
+| 9 | Conferir o histórico (com o emulador parado): `uv run python -c "import sqlite3; c=sqlite3.connect('data/landmass.db'); print(c.execute('select id, room_id, map_file, game_class, end_reason from matches').fetchall()); print(c.execute('select match_id, account_id, nickname, is_master, kills from match_players').fetchall())"` | Uma linha em `matches` (`ONS-Treino`, `XGame.LM_DeathMatch`, `exit_play`). Duas em `match_players` com `kills` nulo. |
+| 10 | Cada cliente volta à sala e envia 311 para a sala 1. | Só quem entrou recebe 312, 314 e 317; o lobby não recebe nada de novo. |
+
+Os logs do servidor de partida (`servidor-partida\system\LandMass.log`) só são gravados no encerramento normal do processo; enquanto ele roda o arquivo fica travado. Procure `Game class is 'LM_DeathMatch'` e `Bringing Level ONS-Treino.myLevel up for play`, que apareceram numa execução anterior.
+
+### Casos que devem falhar do jeito certo
+
+| Caso | Como provocar | Esperado |
+|------|---------------|----------|
+| Faixa sem porta livre | `LANDMASS_MATCH_PORT_MIN=7800` e `MAX=7800`, com outro programa usando UDP 7800. | Ana recebe o erro "Não foi possível iniciar a partida. Tente novamente."; emulador: `partida da sala 1 não começou: nenhuma porta UDP livre na faixa configurada`. Sala continua em espera. |
+| Servidor não abre a porta | `LANDMASS_MATCH_LOGIN_NUM=0` (o valor de teste que não sobe o servidor, re/game_server_host.md §5). | Erro igual ao anterior; emulador: `servidor de partida encerrou antes de abrir a porta`. |
+| Servidor cai depois de pronto | Encerrar o `LandMass.exe` durante a partida. | `servidor de partida da sala 1 caiu sozinho`. Histórico com `end_reason = server_exit`. |
+
+### Limites conhecidos
+
+- A partida não foi jogada por agente. Os passos 5 a 10 dependem do cliente real.
+- Não há prazo próprio de partida. Se um cliente nunca manda 500 e o servidor não cai, a sala fica jogando até alguém sair.
+- As métricas de jogador ficam nulas. O bloco `GameEnded` do log ainda não é lido (ver `04-persistence.md`, "Histórico de partidas").
+- Salas e partidas em andamento são só de memória: reiniciar o emulador zera as salas.
+
 ## Riscos e pendências
 
-- Não testado. A porta UDP 7777 não está comprovada: não foi achado o chamador de `ULevel::Listen` (ver `re/game_server_host.md`, seção 9). Se o servidor não abrir a porta, esse é o primeiro ponto a investigar.
+- Não testado com cliente. Com `servidor.bat`, a UDP 7777 foi vista aberta (2026-10-13), mas o chamador de `ULevel::Listen` ainda não foi achado (ver `re/game_server_host.md`, seção 9). Se o servidor não abrir a porta, esse é o primeiro ponto a investigar.
+- Com ou sem `LANDMASS_MATCH_SERVER_DIR`, o 401 consulta o mapa em `landmass.wdb` (`LANDMASS_CLIENT_DIR`). Sem o arquivo ou sem o mapa da sala, a partida não inicia (241000201).
 - Saídas precoces (~20 ms, sem log) ainda sem causa comprovada; podem afetar o servidor.
 - A conexão com o Channel (`GS_*`, `CServerRoom`) não está no caminho desta cópia. Um LOGIN recusado não vem do `LM_Engine.dll`.
 - Os patches são binários de 2008 alterados à mão. Restaure com os arquivos `.orig` se algo se comportar de forma estranha.

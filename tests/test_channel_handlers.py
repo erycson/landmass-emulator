@@ -4,6 +4,7 @@ memória."""
 import struct
 
 from landmass_emu.domain.lobby import Lobby
+from landmass_emu.domain.match import MapRecord
 from landmass_emu.domain.rooms import Room, Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.handlers.channel import ChannelHandlers
@@ -13,10 +14,11 @@ from landmass_emu.handlers.channel.rooms import (
     CERR_FIND_PLAYER,
     CERR_IN_ROOM,
     CERR_INVITE_ROOM_NOT_ADMIN,
-    GameEndpoint,
     RoomHandlers,
 )
+from landmass_emu.hosting.fixed import FixedMatchHost
 from landmass_emu.net.session import Session
+from landmass_emu.ports.match_host import GameEndpoint
 from landmass_emu.protocol.channel import (
     CsChangeRoomPropertyIn,
     CsErrorEnvelope,
@@ -35,6 +37,13 @@ from landmass_emu.protocol.progression import CsProgressionOp
 from landmass_emu.protocol.shop import CsShopOp
 
 
+class _Mapas:
+    """Catálogo de teste: todo mapa existe, com 32 vagas."""
+
+    def get(self, record_id: int) -> MapRecord | None:
+        return MapRecord(record_id=record_id, file_name="ONS-Treino", player_max=32, op_type=0)
+
+
 class _Recebedor:
     """Destino de corpos: guarda o que recebe. Satisfaz `domain.lobby.Recipient`."""
 
@@ -48,7 +57,14 @@ class _Recebedor:
 def _montagem() -> tuple[RoomHandlers, Lobby, Rooms]:
     lobby = Lobby()
     rooms = Rooms()
-    handlers = RoomHandlers(lobby, rooms, ChannelRecords(lobby), GameEndpoint("127.0.0.1", 7777))
+    handlers = RoomHandlers(
+        lobby,
+        rooms,
+        ChannelRecords(lobby),
+        FixedMatchHost(GameEndpoint("127.0.0.1", 7777)),
+        _Mapas(),
+        None,
+    )
     return handlers, lobby, rooms
 
 
@@ -90,7 +106,9 @@ def test_tabela_do_roteador_cobre_entrada_chat_salas_e_listas() -> None:
         Rooms(),
         None,
         None,
-        GameEndpoint("127.0.0.1", 7777),
+        FixedMatchHost(GameEndpoint("127.0.0.1", 7777)),
+        _Mapas(),
+        None,
         None,
         None,
         None,

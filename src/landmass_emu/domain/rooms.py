@@ -66,6 +66,11 @@ class Room:
     state: int = ROOM_WAITING
     # Ordem de entrada: é a ordem em que o dono passa a ser outro jogador ao sair.
     members: dict[int, RoomMember] = field(default_factory=dict)
+    # Quem ainda não mandou ExitPlay (500) nesta partida. Sala jogando sem ninguém aqui = acabou.
+    in_game: set[int] = field(default_factory=set)
+
+    def match_over(self) -> bool:
+        return self.state == ROOM_PLAYING and not self.in_game
 
     def free_slot(self) -> int | None:
         taken = {m.slot for m in self.members.values()}
@@ -204,6 +209,7 @@ class Rooms:
             return None
         del room.members[guid]
         del self._room_of[guid]
+        room.in_game.discard(guid)
         if not room.members:
             del self._rooms[room.room_id]
             return LeaveResult(room, removed=True, new_master=None)
@@ -251,6 +257,26 @@ class Rooms:
             raise RoomError(RoomReason.NOT_READY)
         room.members[owner].morats = morats
         room.state = ROOM_PLAYING
+        room.in_game = set(room.members)
+        return room
+
+    def exit_play(self, guid: int) -> Room | None:
+        """500: o jogador deixou a partida. Continua na sala. None se não estiver em sala."""
+        room = self.room_of(guid)
+        if room is not None:
+            room.in_game.discard(guid)
+        return room
+
+    def finish(self, room_id: int) -> Room | None:
+        """Partida acabou: a sala volta à espera e os não-donos perdem o pronto."""
+        room = self._rooms.get(room_id)
+        if room is None or room.state != ROOM_PLAYING:
+            return room
+        room.state = ROOM_WAITING
+        room.in_game.clear()
+        for guid, member in room.members.items():
+            if guid != room.master:
+                member.ready = False
         return room
 
     def configure(self, owner: int, changes: dict[str, int]) -> Room:
@@ -283,4 +309,5 @@ class Rooms:
             raise RoomError(RoomReason.NO_SUCH_PLAYER)
         del room.members[target]
         del self._room_of[target]
+        room.in_game.discard(target)
         return Expelled(room, target)

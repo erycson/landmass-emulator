@@ -1,6 +1,7 @@
 """Salas no Channel Server por TCP, com dois ou três clientes (marco 3)."""
 
 import struct
+from collections.abc import Callable
 from pathlib import Path
 
 from test_channel_server import (
@@ -78,8 +79,9 @@ async def _cria_sala(a: Client, b: Client, nome: str, senha: str = "") -> int:
 
 
 async def test_dois_clientes_na_mesma_sala_ficam_prontos_e_recebem_o_inicio(
-    tmp_path: Path,
+    tmp_path: Path, wdb_de_teste: Callable[[], Path]
 ) -> None:
+    wdb_de_teste()  # o início consulta o mapa em landmass.wdb (client_dir)
     settings = _settings(tmp_path)
     async with open_accounts(settings) as accounts:
         ana = await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))

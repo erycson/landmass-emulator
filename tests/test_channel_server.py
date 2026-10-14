@@ -35,6 +35,7 @@ def _settings(tmp_path: Path) -> Settings:
         bind_host="127.0.0.1",
         message_port=0,
         channel_port=0,
+        client_dir=tmp_path,
     )
 
 

@@ -162,3 +162,54 @@ Fonte: `re/channel_server.md`, seção 4, e `LM_Engine.dll/all/1000bcd0_FUN_1000
 - Caminho do teste: `GameEngine` padrão (`Engine.GameEngine`), nível `ULevel` (inferido: o objeto é o do pacote do mapa), net driver `IpDrv` em UDP 7777. Sem `UServerLevel`, `InitServer` ou Channel.
 - Consequência: no caminho de teste, o LOGIN é validado pela lógica UnrealScript (`XGame`), e não pela sala `CServerRoom`.
 - Pendências, em ordem: (1) chamador de `ULevel::Listen`; (2) saídas precoces sem causa (ver seção 1); (3) origem do room guid e chamador de `ChannelServerTick`, só se o protocolo (a) for necessário.
+
+## 10. Partida por sala: linha de comando, `PORT=`, fim e estatísticas (marco 4)
+
+Implementação: `src/landmass_emu/hosting/command.py` (linha de comando, tabela UDP), `hosting/process.py` (processo por sala) e `domain/match.py` (plano). Arquitetura em [`../docs/architecture/06-game-server-host.md`](../docs/architecture/06-game-server-host.md).
+
+### 10.1 Linha de comando da partida
+
+Forma escrita pelo emulador:
+
+```
+<mapa>?listen?game=<classe>?MaxPlayers=<n>?TimeLimit=<t>?GoalScore=<g> -server PORT=<porta> -log login_server=<ip>:<porta>?version=<v>?login_num=<l>
+```
+
+- `version=` e `login_num=` continuam como último token, sem nada depois (seção 2).
+- `PORT=` vem antes de `-log`. O `main` (`re/LandMass.exe/main_loop.c`, linhas 74-162) remove cada chave de login do fim e preserva o prefixo, então `PORT=` chega ao `appInit`.
+- `game=`, `MaxPlayers`, `TimeLimit` e `GoalScore` são opções de URL. Os nomes vêm do `XGame` (inferido); o servidor ainda não as confirmou em execução.
+- Classes: `XGame.LM_DeathMatch`, `XGame.LM_TeamGame` e `XGame.LM_TeamOperation`, pela regra de modo da UI (D53).
+
+### 10.2 `PORT=` (RE de `IpDrv` e `Core`)
+
+Fonte: pseudocódigo com base de imagem `IpDrv` 0x10700000, `Core` 0x10100000 e `Engine` 0x10300000 (subagente REA, 2026-10-13).
+
+- `Parse("PORT=")` (`Core`, `?Parse@@YAHPBG0AAH@Z`, 0x1013c710) chama `appStrfind` na linha de comando inteira. Casa só se o caractere anterior não for letra maiúscula ou dígito. Vale a primeira ocorrência. O valor vem de `appAtoi` (`_wtoi`) até o primeiro não dígito. Retorna 1 mesmo com valor 0.
+- `InitListen` (`IpDrv`, 0x107171e0): com `PORT=`, uma tentativa na porta dada. Sem `PORT=`, até 20 tentativas a partir de 7777 (7777 a 7796), pelo laço de `FUN_10701880`. O `namelen` do bind é constante (`0x10`).
+- A porta ligada vai para `URL.Port`.
+- Outros textos que também casam, não usados pelo emulador: `-port=`, `?port=` dentro da URL e `_port=` (ex.: `ch_port=`). `xport=` não casa. `[URL] Port` do `LandMass.ini` (`Port=7777`) é o padrão sem `PORT=`. `INI=` não foi rastreado.
+- Porta ocupada com `PORT=`: o log mostra `binding to port N failed` e não tenta a seguinte. Por isso o emulador escolhe a porta antes do lançamento.
+- Não testado em execução (teste T4 de seção 4 ainda pendente).
+
+### 10.3 Prontidão
+
+Com o servidor aberto, `netstat -ano -p UDP` mostra `0.0.0.0:<porta>` com o PID do `LandMass.exe`. Observado com o padrão 7777 (PID 208240, 2026-10-13). O emulador espera essa linha com o PID do processo que lançou, até `LANDMASS_MATCH_READY_TIMEOUT`.
+
+### 10.4 Fim de partida e estatísticas
+
+- Sinais de fim no emulador: 500 `EXIT_PLAY` (sem corpo) de cada jogador em jogo, saída da última pessoa em jogo, ou queda do processo depois de pronto. A resposta 501 `EXIT_PLAY_OUT` leva `i32`; o valor 0 não foi confirmado no cliente real.
+- O log do servidor traz um bloco `GameEnded` por jogador no fim da partida, com `Kills`, `Ranking`, `Played%` (fração), `exp` e `LD` ganhos. No OP e no time, traz também `Winner`, `MissionScore` e `RoundCount`. A linha exata não foi reproduzida neste ambiente.
+- Existem no motor, mas não entram no log por jogador: `PRI.Deaths` (incrementado em `Killed()`) e `m_iAssistScore` (critical frag de time, que não é assistência de CS). `DamageTypeHeadShot` existe, mas nenhum contador de headshot por partida é logado.
+- Não há fonte verificada no código extraído para balas, acertos e dano por partida.
+- Coleta prevista: ler o bloco `GameEnded` de `system\LandMass.log` depois do encerramento normal do processo, porque o arquivo fica travado enquanto o servidor roda. Não implementada. Por isso hoje as métricas ficam nulas (D52).
+
+### 10.5 Correções a notas anteriores
+
+- `re/cmdline.md`, passo 7: o `namelen` do bind é `0x10`, não 1 (hipótese refutada em 10.2). Esclarecimento: o `re/cmdline.md` usa `cliente\system` (hash `b478ca32...`). O `Core.dll` patchado da cópia do servidor é `128ae25a...`, e o `.orig` dela é o mesmo `b478ca32...` do cliente.
+
+### 10.6 Pendências
+
+1. Teste em execução: `PORT=` com porta livre e com porta ocupada (T4).
+2. 500 e 501 com o cliente real, e aceitação do 403 atrasado.
+3. Parser do bloco `GameEnded` e gravação no fim da partida.
+4. Prazo próprio de partida (não há).
