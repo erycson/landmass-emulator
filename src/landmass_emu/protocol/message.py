@@ -19,10 +19,30 @@ class MsOp(IntEnum):
     GET_CHANNEL_SERVER_INFO = 130
     GET_CHANNEL_SERVER_OUT = 131
     CREATE_NICKNAME = 150
+    SEND_WHISPER = 160
+    SEND_WHISPER_OUT = 161
+    SEND_WHISPER_ERROR_OUT = 162
+    GET_FRIEND_LIST = 180
+    ADD_FRIEND = 181
+    DEL_FRIEND = 182
+    FRIEND_LIST_OUT = 183
+    DEL_FRIEND_OUT = 184
+    ADD_BLACK = 186
+    DEL_BLACK = 187
+    BLACK_LIST_OUT = 188
+    DEL_BLACK_OUT = 189
+    REFRESH_FRIEND = 190
+    REFRESH_FRIEND_OUT = 191
+    REFRESH_BLACK = 192
+    REFRESH_BLACK_OUT = 193
 
 
 class MsResult(IntEnum):
+    """Códigos de `msg_error` do cliente (`landmass.wdb`, tabela `msg_error`)."""
+
     OK = 0
+    INVALID_VALUE = -11  # "Erro do valor inserido."
+    CONTACT_OFFLINE = -19  # "Contato está offline."
     INVALID_PASSWORD = -160
 
 
@@ -214,3 +234,237 @@ class MsGetChannelServerOut:
             raise ValueError(f"canais demais para MS_GET_CHANNEL_SERVER_OUT: {len(self.channels)}")
         head = struct.pack("<BB", len(self.channels), int(self.b_random))
         return head + b"".join(c.pack() for c in self.channels)
+
+
+# Amigos, bloqueios e sussurro (F12). Layouts: re/protocol_full.md §2.1 e §2.2, e os cases
+# 161, 183, 184, 188, 189, 191 e 193 de re/LM_Engine.dll/message_dispatch_FUN_10025120.c.
+
+MAX_WHISPER_TEXT = 0x78  # o cliente descarta sussurro com `len > 0x78` (case 161)
+MAX_RELATION_IDS = 14  # ids por pedido de 190 e 192 (máximo do wrapper do cliente)
+ONLINE_STATE = 0x22  # estado de amigo conectado; o cliente grava 0x22 ou 0 (case 191)
+
+
+@dataclass(frozen=True, slots=True)
+class MsNickIn:
+    """ADD_FRIEND (181) e ADD_BLACK (186): `char nick[17]` @0, NUL-terminado."""
+
+    nickname: str
+    _FIXED = struct.Struct("<17s")
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> MsNickIn:
+        (raw,) = cls._FIXED.unpack_from(payload)  # payload curto: struct.error, logado
+        return cls(cstr(raw))
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(cfield(self.nickname, 17))
+
+
+@dataclass(frozen=True, slots=True)
+class MsAccountIdIn:
+    """DEL_FRIEND (182) e DEL_BLACK (187): `i32 account_id` @0. O cliente envia o id que recebeu no
+    183 ou no 188 (chave do nó). Zero significa que o cliente não achou o nick na lista local."""
+
+    account_id: int
+    _FIXED = struct.Struct("<i")
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> MsAccountIdIn:
+        (account_id,) = cls._FIXED.unpack_from(payload)
+        return cls(account_id)
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(self.account_id)
+
+
+@dataclass(frozen=True, slots=True)
+class MsContactRecord:
+    """Registro de amigo (183) ou de bloqueado (188): 0x2C bytes.
+
+    @0 `i32` id da conta (chave do nó, eco no 182 e no 187); @4 nick `char[16]` com NUL em @0x14
+    (`cfield(nick, 17)`); @0x20 `i32` total_exp; @0x25 estado (0x22 conectado, 0 fora); @0x28
+    `i32` result: o cliente só insere com `>= 0`. Clã (@0x18, @0x1c), nest (@0x24) e veículo
+    (@0x26) ficam zero.
+
+    shortcut: nest e clã são zero porque a conta ainda não tem nest (`regular_nest_id`) nem clã
+    (F13). Recusa usa `result` negativo e id 0 (ver handlers/message/social.py).
+    """
+
+    account_id: int
+    nickname: str
+    total_exp: int = 0
+    online: bool = False
+    result: int = 0
+    _FIXED = struct.Struct("<i17s3xiiiBBBxi")
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(
+            self.account_id,
+            cfield(self.nickname, 17),
+            0,  # siClan @0x18
+            0,  # clan_mark @0x1c
+            self.total_exp,  # @0x20
+            0,  # ucNest @0x24
+            ONLINE_STATE if self.online else 0,  # @0x25
+            0,  # ucVehicleLicence @0x26
+            self.result,  # @0x28
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MsFriendListOut:
+    """FRIEND_LIST_OUT (183): um registro por pacote. O cliente insere ou atualiza o nó da chave."""
+
+    record: MsContactRecord
+    opcode: ClassVar[int] = MsOp.FRIEND_LIST_OUT
+
+    def pack(self) -> bytes:
+        return self.record.pack()
+
+
+@dataclass(frozen=True, slots=True)
+class MsBlackListOut:
+    """BLACK_LIST_OUT (188): mesmo registro de 183, um por pacote."""
+
+    record: MsContactRecord
+    opcode: ClassVar[int] = MsOp.BLACK_LIST_OUT
+
+    def pack(self) -> bytes:
+        return self.record.pack()
+
+
+@dataclass(frozen=True, slots=True)
+class MsDelFriendOut:
+    """DEL_FRIEND_OUT (184): `i32 account_id` @0 (chave do nó) e `i32 result` @4. O cliente remove
+    o nó só com result 0 (dispatcher, case 184)."""
+
+    account_id: int
+    result: int
+    opcode: ClassVar[int] = MsOp.DEL_FRIEND_OUT
+    _FIXED = struct.Struct("<ii")
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(self.account_id, self.result)
+
+
+@dataclass(frozen=True, slots=True)
+class MsDelBlackOut:
+    """DEL_BLACK_OUT (189): mesmo layout de 184. Remove o bloqueado só com result 0."""
+
+    account_id: int
+    result: int
+    opcode: ClassVar[int] = MsOp.DEL_BLACK_OUT
+    _FIXED = struct.Struct("<ii")
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(self.account_id, self.result)
+
+
+@dataclass(frozen=True, slots=True)
+class MsRelationIdsIn:
+    """REFRESH_FRIEND (190) e REFRESH_BLACK (192): `u8 count` @0 (1 a 14), padding @1..3, e
+    `i32 account_id[count]` a partir de @4."""
+
+    account_ids: tuple[int, ...]
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> MsRelationIdsIn:
+        (count,) = struct.unpack_from("<B", payload)
+        if not 1 <= count <= MAX_RELATION_IDS:
+            raise ValueError(f"pedido de relação com {count} ids (máximo {MAX_RELATION_IDS})")
+        return cls(struct.unpack_from(f"<{count}i", payload, 4))
+
+    def pack(self) -> bytes:
+        return struct.pack("<B3x", len(self.account_ids)) + struct.pack(
+            f"<{len(self.account_ids)}i", *self.account_ids
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MsRelationState:
+    """Registro de 0x14 bytes de 191 e 193: `i32 account_id` @0 (chave), `i32 total_exp` @4,
+    `i32 clan` @8, `i32 clan_mark` @0xc, `u8 nest` @0x10, `u8 estado` @0x11 (0x22 conectado)."""
+
+    account_id: int
+    total_exp: int
+    online: bool = False
+    _FIXED = struct.Struct("<iiiiBB2x")
+
+    def pack(self) -> bytes:
+        state = ONLINE_STATE if self.online else 0
+        return self._FIXED.pack(self.account_id, self.total_exp, 0, 0, 0, state)
+
+
+@dataclass(frozen=True, slots=True)
+class MsRefreshFriendOut:
+    """REFRESH_FRIEND_OUT (191): `u8 count` @0, padding @1..3, registros de 0x14 a partir de @4.
+    O cliente só atualiza nós que já tem; lote vazio é válido."""
+
+    records: tuple[MsRelationState, ...]
+    opcode: ClassVar[int] = MsOp.REFRESH_FRIEND_OUT
+    _HEAD = struct.Struct("<B3x")
+
+    def pack(self) -> bytes:
+        return self._HEAD.pack(len(self.records)) + b"".join(r.pack() for r in self.records)
+
+
+@dataclass(frozen=True, slots=True)
+class MsRefreshBlackOut:
+    """REFRESH_BLACK_OUT (193): mesmo lote de 191, para bloqueados."""
+
+    records: tuple[MsRelationState, ...]
+    opcode: ClassVar[int] = MsOp.REFRESH_BLACK_OUT
+    _HEAD = struct.Struct("<B3x")
+
+    def pack(self) -> bytes:
+        return self._HEAD.pack(len(self.records)) + b"".join(r.pack() for r in self.records)
+
+
+@dataclass(frozen=True, slots=True)
+class MsSendWhisperIn:
+    """SEND_WHISPER (160): `char target[18]` @0 (NUL), `u16 len` @0x12, texto `len` bytes @0x14."""
+
+    target: str
+    text: bytes
+    _HEAD = struct.Struct("<18sH")
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> MsSendWhisperIn:
+        raw_target, length = cls._HEAD.unpack_from(payload)  # payload curto: struct.error
+        end = cls._HEAD.size + length
+        if length > MAX_WHISPER_TEXT or len(payload) < end:
+            raise ValueError(f"MS_SEND_WHISPER_IN inconsistente: len={length}")
+        return cls(cstr(raw_target), payload[cls._HEAD.size : end])
+
+    def pack(self) -> bytes:
+        return self._HEAD.pack(cfield(self.target, 18), len(self.text)) + self.text
+
+
+@dataclass(frozen=True, slots=True)
+class MsWhisperOut:
+    """SEND_WHISPER_OUT (161), ao destinatário: `char sender[18]` @0, `u16 len` @0x12, texto @0x14.
+    Sem NUL no fim: o cliente grava o terminador após `len` bytes."""
+
+    sender: str
+    text: bytes
+    opcode: ClassVar[int] = MsOp.SEND_WHISPER_OUT
+    _HEAD = struct.Struct("<18sH")
+
+    def pack(self) -> bytes:
+        return self._HEAD.pack(cfield(self.sender, 18), len(self.text)) + self.text
+
+
+@dataclass(frozen=True, slots=True)
+class MsWhisperErrorOut:
+    """SEND_WHISPER_ERROR_OUT (162), ao remetente: `i32 result` @0, `char receiver[18]` @4,
+    `u16 len` @0x16, texto @0x18. O cliente mostra o texto fixo "falhou ao receber a mensagem"."""
+
+    result: int
+    receiver: str
+    text: bytes
+    opcode: ClassVar[int] = MsOp.SEND_WHISPER_ERROR_OUT
+    _HEAD = struct.Struct("<i18sH")
+
+    def pack(self) -> bytes:
+        head = self._HEAD.pack(self.result, cfield(self.receiver, 18), len(self.text))
+        return head + self.text

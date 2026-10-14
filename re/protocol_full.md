@@ -67,10 +67,10 @@ Portas: Message 7313 (`message_server.md`), Channel 7314 (`channel_server.md`). 
 | 171 | `GetClanInfo` (0x10003ff0) | inline, `OR EBX,0x1560` | 2 | — | 172 (inferido) | 0x10003ff0 |
 | 174 | `GetClanMember` (0x10004040) | inline, `OR EBX,0x15c0` | 2 | — | 175 (inferido) | 0x10004040 |
 | 177 | `SendClanMessage` (0x10004090) | helper `FUN_10003c50`, AX=0xb1 | `len + 4` | `u16 len` @0 (strlen, máx. 0x78); texto `char[len]` @2 (wrapper `0x10023e30`) | 178 (inferido) | 0x10004090; `FUN_10003c50` @0x10003c50 |
-| 180 | `GetFriendList` (0x100040c0) | inline, `OR EBX,0x1680` | 2 | — | 183 (inferido) | 0x100040c0 |
-| 181 | `AddFriendList` (0x10004110) | helper `FUN_10003ce0`, AX=0xb5 | 19 | `char nick[17]` @0, NUL-terminado, zerado antes da cópia (wrapper `0x10023f10`) | (gap; sem caso no dispatcher) | 0x10004110 |
+| 180 | `GetFriendList` (0x100040c0) | inline, `OR EBX,0x1680` | 2 | — | 183 por amigo, depois 188 por bloqueado; um registro por mensagem; sem registros, sem resposta (inferido) | 0x100040c0 |
+| 181 | `AddFriendList` (0x10004110) | helper `FUN_10003ce0`, AX=0xb5 | 19 | `char nick[17]` @0, NUL-terminado, zerado antes da cópia (wrapper `0x10023f10`) | 183 com o registro do amigo; recusa: mesmo opcode com id 0 e gate `@0x28` negativo (inferido de 0xb7) | 0x10004110 |
 | 182 | `GetDelFriendList` (0x10004130) | inline, `OR EBX,0x16c0` | 2 ou 6 | `u32 @0` = id do amigo: o wrapper (`0x10024a30`) procura o nick digitado na lista local e envia `node+0xc`; envia 0 se não achar | 184 (inferido) | 0x10004130; wrapper 0x10024a30 |
-| 186 | `AddBlackList` (0x100041a0) | helper `FUN_10003ce0`, AX=0xba | 19 | `char nick[17]` @0, NUL-terminado, zerado antes da cópia (wrapper `0x10023f90`) | (gap; sem caso no dispatcher) | 0x100041a0 |
+| 186 | `AddBlackList` (0x100041a0) | helper `FUN_10003ce0`, AX=0xba | 19 | `char nick[17]` @0, NUL-terminado, zerado antes da cópia (wrapper `0x10023f90`) | 188 com o registro do bloqueado; recusa igual a 181 (inferido de 0xbc) | 0x100041a0 |
 | 187 | `GetDelBlackList` (0x100041c0) | inline, `OR EBX,0x1760` | 2 ou 6 | `u32 @0` = id do bloqueado: o wrapper (`0x10024af0`) procura o nick na lista local e envia `node+0xc`; 0 se não achar | 189 (inferido) | 0x100041c0; wrapper 0x10024af0 |
 | 190 | `RefreshFriendList` (0x10004320) | inline, `OR EBX,0x17c0` | 2 ou 62 (o wrapper não envia se count = 0) | `u8 count @0` (1..14; acima de 13 vira 14); @1..@3 não usados; `i32 id[i] @4+4i` (i < 14; ids = tokens de param[1]; o último token só entra se a string terminar em espaço (mesmo laço do SaveOption); sem limite de tokens no cliente (gap)) | 191 (inferido; par não observado) | 0x10004320; wrapper 0x10024010 |
 | 192 | `RefreshBlackList` (0x100042a0) | inline, `OR EBX,0x1800` | 2 ou 62 (o wrapper não envia se count = 0) | igual a 190 (wrapper `0x10024130`) | 193 (inferido; par não observado) | 0x100042a0 |
@@ -105,9 +105,9 @@ Dispatcher: `re/LM_Engine.dll/message_dispatch_FUN_10025120.c`. Rótulos de `cas
 | 176 | `NotifyDelClanMember()` | `MS_DEL_CLAN_MEMBER_OUT` | `i16 @4` | (inferido) | case 0xb0 |
 | 178 | `NotifySendClanMessage(string sender, string msg)` | `MS_SEND_WHISPER_OUT` (reuso) | `u16 @0x12` = len; texto @0x14 | 177 (inferido) | case 0xb2 |
 | 183 | `NotifyFriendList()` | `MS_GET_BLACK_LIST_OUT` (reuso) | gate `i32 @0x28 >= 0`; i32 em `@0,4,8,0xC,0x10,0x18,0x1C,0x20`; u8 em `@0x14,0x24,0x25,0x26` | 180 (inferido) | case 0xb7 |
-| 184 | `NotifyDelFriend()` | `MS_DEL_FRIEND_LIST_OUT` | `i32 @4` = result; remove se 0 | 182 (inferido) | case 0xb8 |
+| 184 | `NotifyDelFriend()` | `MS_DEL_FRIEND_LIST_OUT` | `i32 @0` = id do amigo (eco do 182); `i32 @4` = result; remove o nó pela chave `@0` se `@4 == 0` | 182 (inferido) | case 0xb8 |
 | 188 | `NotifyBlackList()` | `MS_GET_BLACK_LIST_OUT` | igual a 183, exceto que não grava `@0x25` em +0xB0 | 186 (inferido) | case 0xbc |
-| 189 | `NotifyDelBlack()` | `MS_DEL_BLACK_LIST_OUT` | `i32 @4` = result | 187 (inferido) | case 0xbd |
+| 189 | `NotifyDelBlack()` | `MS_DEL_BLACK_LIST_OUT` | `i32 @0` = id do bloqueado (eco do 187); `i32 @4` = result; remove o nó pela chave `@0` se `@4 == 0` | 187 (inferido) | case 0xbd |
 | 191 | (sem evento; atualiza amigos em lote) | — | `u8 @0` = count; registros de 0x14 a partir de `@4` | 190 (inferido) | case 0xbf |
 | 193 | (sem evento; atualiza lista em lote) | — | `u8 @0` = count; registros de 0x14 a partir de `@4` (`i32 @0` → +0xA0, `i32 @4` → +0x3C, `i32 @8` → +0x28, `i32 @0xC` → +0x2C, `u8 @0x10` → +0x30, `u8 @0x11` → +0xB0) | 192 (inferido) | case 0xc1 |
 | 195 | (sem evento; atualiza clã em lote) | — | cabeçalho `i32 @0` → +0x28, `i32 @4` → +0x2C, `u8 @8` → +0x30, `u8 @9` = count; registros de 0x0C a partir de `@0x0C` | 194 (inferido) | case 0xc3 |

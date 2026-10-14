@@ -36,6 +36,11 @@ class SqlAccountRepository:
             )
         return None if row is None else _to_domain(row)
 
+    async def find_by_nickname(self, nickname: str) -> Account | None:
+        async with self._sessions() as session:
+            row = await session.scalar(select(AccountRow).where(AccountRow.nickname == nickname))
+        return None if row is None else _to_domain(row)
+
     async def create(self, username: str, nickname: str, token_hash: str) -> Account:
         now = datetime.now(UTC)
         row = AccountRow(

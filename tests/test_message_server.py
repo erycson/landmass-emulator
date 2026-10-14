@@ -11,15 +11,24 @@ import pytest
 from landmass_emu.app import message_server, open_accounts, open_database
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.options import SqlOptionsRepository
+from landmass_emu.db.social import SqlSocialRepository
 from landmass_emu.domain.account import hash_token
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.net.framing import encode_frame, read_frame
 from landmass_emu.net.server import Service
 from landmass_emu.protocol.header import MESSAGE_NET_CODE, pack_header, unpack_header
-from landmass_emu.protocol.message import MsLoginIn, MsOp
+from landmass_emu.protocol.message import (
+    MsAccountIdIn,
+    MsLoginIn,
+    MsNickIn,
+    MsOp,
+    MsRelationIdsIn,
+    MsSendWhisperIn,
+)
 from landmass_emu.settings import Settings
 
 TOKEN = "0123456789abcdef0123456789abcdef"
+TOKEN_BIA = "fedcba9876543210fedcba9876543210"
 
 
 def _settings(tmp_path: Path) -> Settings:
@@ -72,7 +81,11 @@ async def _servidor(
     async with (
         open_database(settings) as db,
         message_server(
-            settings, registro, SqlAccountRepository(db), SqlOptionsRepository(db)
+            settings,
+            registro,
+            SqlAccountRepository(db),
+            SqlOptionsRepository(db),
+            SqlSocialRepository(db),
         ) as server,
     ):
         yield server
@@ -120,14 +133,14 @@ async def test_sem_login_nao_responde_e_opcode_desconhecido_nao_derruba(tmp_path
         _connect(server) as c,
     ):
         await c.send(MsOp.GET_CHANNEL_SERVER_INFO)
-        await c.send(182, b"\x01\x02")
+        await c.send(170, b"\x01\x02")  # GetRankingInfo: sem handler
         await c.send(MsOp.HEARTBEAT)
         await c.send(MsOp.LOGIN, b"\x01")  # payload curto: ignorado
         await c.send(MsOp.LOGIN, MsLoginIn(login_num=TOKEN).pack())
         op, body = await c.recv()
         assert op == MsOp.LOGIN_OUT and struct.unpack_from("<i", body, 4) == (0,)
 
-        await c.send(182, b"\x01\x02")
+        await c.send(170, b"\x01\x02")
         await c.send(MsOp.GET_CHANNEL_SERVER_INFO)
         op, _ = await c.recv()
         assert op == MsOp.GET_CHANNEL_SERVER_OUT
@@ -159,3 +172,76 @@ async def test_sem_trafego_desconecta(tmp_path: Path) -> None:
         async with asyncio.timeout(5):
             assert await reader.read() == b""
         writer.close()
+
+
+async def _logar(c: Client, token: str) -> None:
+    await c.send(MsOp.LOGIN, MsLoginIn(login_num=token).pack())
+    op, body = await c.recv()
+    assert op == MsOp.LOGIN_OUT and struct.unpack_from("<i", body, 4) == (0,)
+
+
+async def test_amizade_sussurro_e_queda_entre_duas_contas(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        bia_id = (await accounts.create("bia", "Bia", hash_token(TOKEN_BIA))).id
+        await accounts.create("ana", "Ana", hash_token(TOKEN))
+
+    async with (
+        _servidor(settings, MemorySessionKeyRegistry()) as server,
+        _connect(server) as ana,
+        _connect(server) as bia,
+    ):
+        await _logar(ana, TOKEN)
+        await _logar(bia, TOKEN_BIA)
+
+        # Amizade com Bia conectada: 183 com o id, o nick e o estado 0x22 (conectado).
+        await ana.send(MsOp.ADD_FRIEND, MsNickIn("Bia").pack())
+        op, body = await ana.recv()
+        assert op == MsOp.FRIEND_LIST_OUT
+        assert struct.unpack_from("<i", body, 0) == (bia_id,)
+        assert body[4:0x14].split(b"\0", 1)[0] == b"Bia"
+        assert body[0x25] == 0x22
+
+        # Sussurro: 161 vai só à Bia, com o remetente em @0 e o texto em @0x14.
+        await ana.send(MsOp.SEND_WHISPER, MsSendWhisperIn("Bia", b"oi!").pack())
+        op, body = await bia.recv()
+        assert op == MsOp.SEND_WHISPER_OUT
+        assert body[:18].split(b"\0", 1)[0] == b"Ana"
+        assert body[0x14:] == b"oi!"
+        await ana.assert_silencio()
+
+        # Bia cai: a presença sai no fechamento da conexão. A consulta 190 mostra o estado 0.
+        bia.writer.close()
+        for _ in range(50):
+            await ana.send(MsOp.REFRESH_FRIEND, MsRelationIdsIn((bia_id,)).pack())
+            op, body = await ana.recv()
+            assert op == MsOp.REFRESH_FRIEND_OUT
+            if body[4 + 0x11] == 0:
+                break
+            await asyncio.sleep(0.02)
+        else:
+            raise AssertionError("Bia continuou online depois da queda")
+
+        await ana.send(MsOp.SEND_WHISPER, MsSendWhisperIn("Bia", b"oi?").pack())
+        op, body = await ana.recv()
+        assert op == MsOp.SEND_WHISPER_ERROR_OUT
+        assert struct.unpack_from("<i", body, 0) == (-19,)
+
+    # Reinício do servidor: a amizade continua no banco e volta no 183 do próximo login.
+    async with (
+        _servidor(settings, MemorySessionKeyRegistry()) as server,
+        _connect(server) as ana,
+    ):
+        await _logar(ana, TOKEN)
+        await ana.send(MsOp.GET_FRIEND_LIST)
+        op, body = await ana.recv()
+        assert op == MsOp.FRIEND_LIST_OUT
+        assert struct.unpack_from("<i", body, 0) == (bia_id,)
+
+        await ana.send(MsOp.DEL_FRIEND, MsAccountIdIn(bia_id).pack())
+        op, body = await ana.recv()
+        assert op == MsOp.DEL_FRIEND_OUT
+        assert struct.unpack_from("<ii", body, 0) == (bia_id, 0)
+
+        await ana.send(MsOp.GET_FRIEND_LIST)
+        await ana.assert_silencio()  # lista vazia: nenhum pacote

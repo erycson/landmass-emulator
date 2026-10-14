@@ -4,6 +4,7 @@ import logging
 from collections.abc import Sequence
 
 from landmass_emu.domain.account import Account, hash_token, verify_token
+from landmass_emu.domain.presence import MessagePresence
 from landmass_emu.net.server import Reply
 from landmass_emu.net.session import Session
 from landmass_emu.ports.accounts import AccountRepository
@@ -26,20 +27,24 @@ class AccountHandlers:
         accounts: AccountRepository,
         sessions: SessionKeyRegistry,
         options: OptionsRepository,
+        presence: MessagePresence,
     ) -> None:
         self._accounts = accounts
         self._sessions = sessions
         self._options = options
+        self._presence = presence
 
     async def login(self, session: Session, payload: bytes) -> Sequence[Reply]:
         # Só o fluxo por token: id/pw são ignorados até a senha ser implementada (D8, argon2id).
         req = MsLoginIn.unpack(payload)
+        self._presence.unbind(session)  # re-login ou troca de conta na mesma conexão
         session.account = None
         account = await self._authenticate(req.login_num)
         if account is None:
             log.info("[%s] login recusado", session.peer)
             return [MsLoginOut(MsResult.INVALID_PASSWORD)]
         session.account = account
+        self._presence.bind(account.id, session)
         log.info("[%s] login de %s", session.peer, account.username)
         return [MsLoginOut(MsResult.OK)]
 

@@ -65,6 +65,22 @@ Fonte: [07-progression.md §4.6](07-progression.md). Modelo: `db/models.py` (`Op
 - Upsert portável: leitura e depois insert ou update, sob `asyncio.Lock` do repositório. Sem `ON CONFLICT`, que é específico de fornecedor.
 - Conta sem linha: o repositório devolve zeros. A linha nasce no primeiro 544.
 
+## Tabelas `friends` e `blocks` (F12)
+
+Fonte: [07-progression.md §4.7](07-progression.md). Modelos: `db/models.py` (`FriendRow`, `BlockRow`). Migração: `db/migrations/versions/ce9926b0fcad_create_friends_and_blocks_tables.py`, sobre `31c91374dcba`.
+
+| Coluna | Tipo | Nulo | Padrão | Uso |
+|--------|------|------|--------|-----|
+| `id` | `Integer` PK, autoincremento | não | — | Id da linha. |
+| `account_id` | `Integer` | não | — | FK `accounts.id`: dono da lista. |
+| `friend_account_id` (`friends`) ou `blocked_account_id` (`blocks`) | `Integer` | não | — | FK `accounts.id`: o alvo. |
+| `created_at`, `updated_at` | `DateTime(timezone=True)` | não | — | Criação e última gravação. |
+
+- Constraints em `friends`: `friends_account_id_foreign`, `friends_friend_account_id_foreign`, único `friends_account_id_friend_account_id_unique` e índice `friends_friend_account_id_index`. `blocks` segue o mesmo padrão com `blocked_account_id`.
+- Relação dirigida: A ter B como amigo não faz B ter A. Amizade e bloqueio são tabelas separadas.
+- Sem log: só o par e as datas (D12). Remoção apaga a linha.
+- Adição repetida: a violação do único vira `False` (idempotente). Remoção: lê a linha e apaga.
+
 ## Repositório
 
 - Contrato: `ports/accounts.py` (`AccountRepository`, Protocol). Handlers e CLI dependem só dele.

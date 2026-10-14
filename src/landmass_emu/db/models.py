@@ -1,6 +1,6 @@
 """Modelo SQLAlchemy: `accounts` (marco 1, progressão em F2 e F3, regular em F5), `account_options`
-(F1), `account_morats` (F5) e `account_items` (F4). Nomes seguem a convenção Laravel (D11). Colunas
-de `account_options` na ordem de `LmRegisterInfo`."""
+(F1), `account_morats` (F5), `account_items` (F4), `friends` e `blocks` (F12). Nomes seguem a
+convenção Laravel (D11). Colunas de `account_options` na ordem de `LmRegisterInfo`."""
 
 from datetime import datetime
 
@@ -150,5 +150,49 @@ class OptionsRow(Base):
     mirror: Mapped[int] = mapped_column(Integer, server_default="0")
     minimap: Mapped[int] = mapped_column(Integer, server_default="0")
     screenshot: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class FriendRow(Base):
+    """Amizade dirigida: adicionar B em A não muda B (07-progression §4.7)."""
+
+    __tablename__ = "friends"
+    __table_args__ = (
+        ForeignKeyConstraint(["account_id"], ["accounts.id"], name="friends_account_id_foreign"),
+        ForeignKeyConstraint(
+            ["friend_account_id"], ["accounts.id"], name="friends_friend_account_id_foreign"
+        ),
+        UniqueConstraint(
+            "account_id", "friend_account_id", name="friends_account_id_friend_account_id_unique"
+        ),
+        Index("friends_friend_account_id_index", "friend_account_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(Integer)
+    friend_account_id: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class BlockRow(Base):
+    """Bloqueio dirigido: mesma estrutura de `friends` (07-progression §4.7)."""
+
+    __tablename__ = "blocks"
+    __table_args__ = (
+        ForeignKeyConstraint(["account_id"], ["accounts.id"], name="blocks_account_id_foreign"),
+        ForeignKeyConstraint(
+            ["blocked_account_id"], ["accounts.id"], name="blocks_blocked_account_id_foreign"
+        ),
+        UniqueConstraint(
+            "account_id", "blocked_account_id", name="blocks_account_id_blocked_account_id_unique"
+        ),
+        Index("blocks_blocked_account_id_index", "blocked_account_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(Integer)
+    blocked_account_id: Mapped[int] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

@@ -248,6 +248,7 @@ Ao implementar, a tabela de índices do codec é a fonte de verdade. A conferên
 - `friends`: `account_id` e `friend_account_id` (FKs `friends_account_id_foreign` e `friends_friend_account_id_foreign`). Único: `friends_account_id_friend_account_id_unique`. Índice: `friends_friend_account_id_index`.
 - `blocks`: mesma estrutura, com `blocked_account_id`. Único: `blocks_account_id_blocked_account_id_unique`. Índice: `blocks_blocked_account_id_index`.
 - Relação direcional: adicionar B em A cria uma linha. (inferido: o cliente não tem pedido de confirmação.)
+- Migração `ce9926b0fcad` (F12), sobre `31c91374dcba`. Chave do amigo: o `account_id` do alvo, o mesmo id que o cliente devolve em 182 e 187.
 - Sem `last_seen_at`: o log de amigo (`NotifyFriendLog`) não tem opcode (dúvida 16).
 
 ### 4.8 `clans` e `clan_members`
@@ -413,9 +414,11 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 
 | Id | Regra | Fonte |
 |----|-------|-------|
-| R-SOC-01 | Amigos: `GetFriendList` (180) lista; `AddFriendList` (181) cria linha em `friends` por nick; `RefreshFriendList` (190) atualiza. Nick inexistente responde erro. | `message_server.md` §1, §4 (183, 184) |
-| R-SOC-02 | Bloqueio: `RefreshBlackList` (192) atualiza; `NotifyBlackList` (188) lista; `NotifyDelBlack` (189) confirma remoção. Opcodes de adicionar e remover bloqueio: não medidos (dúvida 16). | `message_server.md` §4 |
+| R-SOC-01 | Amigos: 180 responde 183 por amigo e 188 por bloqueado (lista vazia: nada). 181 cria a linha por nick e responde 183 com o registro. 182 remove pelo id e responde 184. 190 responde 191 só com os ids da própria lista. Pedido recusado responde registro de id 0 com `result` -11 (D35). | `protocol/message-server.md`; `re/protocol_full.md` §2 |
+| R-SOC-02 | Bloqueio: 186 cria por nick e responde 188; 187 remove pelo id e responde 189; 192 responde 193 só com os ids da própria lista. Layouts de 181, 182, 186 e 187 medidos nos wrappers (dúvida 16). O bloqueio só tem efeito no sussurro (R-SOC-04, D38). | `protocol/message-server.md`; `re/protocol_full.md` §2 |
 | R-SOC-03 | Limite de amigos e de bloqueados: não localizado (dúvida 17). | — |
+| R-SOC-04 | Sussurro (160): 161 vai só ao destinatário conectado no Message, sem confirmação ao remetente. Destinatário fora do Message, ou que bloqueou o remetente: 162 com -19. Nick inexistente: 162 com -11 (D36). | `protocol/message-server.md` |
+| R-SOC-05 | Presença: online = conexão autenticada no Message (D32). Sem aviso de entrada e saída, pois não há opcode: o estado vem nas consultas 180, 190 e 192 (D39). | `protocol/message-server.md` |
 | R-CLAN-01 | Criar, entrar e sair de clã não existem no cliente. Clãs e membros são criados pela CLI (inferido, mesma regra de D10). | features §7 |
 | R-CLAN-02 | No login, `NotifyInMessageServer` (121) traz `clan_code = clans.id` quando a conta tem clã. Com clã, o cliente pede lista e membros. | features §0.1, §7 |
 | R-CLAN-03 | Chat de clã só para membros (`clan_code > 0`). | features §5.3 |
@@ -423,7 +426,7 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 
 ## 6. Mapeamento opcode → caso de uso → tabelas
 
-Estado atual: os opcodes desta seção não são tratados hoje. Tratados (ver [channel-server.md](../protocol/channel-server.md) e [message-server.md](../protocol/message-server.md)): Channel 2, 100, 101, 111, 120–123, 141, 151 (lobby), 240, 241, 544 (F1), 600, 601, 900, 902 (F2 e F3); Message 2, 100, 101, 110, 111, 120, 121, 130, 131.
+Estado atual: os opcodes desta seção não são tratados hoje. Tratados (ver [channel-server.md](../protocol/channel-server.md) e [message-server.md](../protocol/message-server.md)): Channel 2, 100, 101, 111, 120–123, 141, 151 (lobby), 240, 241, 544 (F1), 600, 601, 900, 902 (F2 e F3); Message 2, 100, 101, 110, 111, 120, 121, 130, 131, 160–162, 180–193 (F12).
 
 Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou alguns campos; **falta** = só o nome.
 
@@ -474,25 +477,31 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 140 / 141 | C→S / S→C | Checar nickname | `accounts` | 140: corpo fixo de 17 bytes (campos não decodificados); 141: `i32 @0` | falta |
 | 150 / 151 | C→S / S→C | Criar nickname | `accounts` | 150: 55 bytes opacos; 151: `i32 @0` | falta |
 | 152 / 153 | C→S / S→C | Trocar nickname | `accounts` | 153: `i32 @0`; corpo de 152 não medido | falta |
+| 160 | C→S | Sussurro | `accounts`, `friends`, `blocks` | `char[18]` @0 destinatário; `u16 @0x12` tamanho (máx. 0x78); texto @0x14 | implementado (F12) |
+| 161 | S→C | Sussurro recebido | — | `char[18]` @0 remetente; `u16 @0x12`; texto @0x14 | implementado (F12) |
+| 162 | S→C | Erro de sussurro | — | `i32 @0` result (-11 nick inexistente; -19 offline ou bloqueado); `char[18]` @4; `u16 @0x16`; texto @0x18 | implementado (F12) |
 | 170 / 171 | C→S / S→C | Ranking (§4.10) | `accounts` (consulta) | 170: sem corpo; 171: entradas de 0x20 a partir de `@4`, até `u16 == 0`, máx. 100; campos não decodificados | falta |
 | 172 | S→C | Lista do clã | `clans`, `clan_members` | falta; pedido não medido | falta |
 | 173 | S→C | Clã removido | `clans` | `i32 @0` | falta |
 | 175 | S→C | Membro do clã | `clan_members` | `i16 @0` chave; string a partir de `@2`; `u8 @0x14`; `i32 @0x18`; `u8 @0x1c` | falta |
 | 176 | S→C | Membro removido | `clan_members` | `i16 @4` | falta |
 | 178 | S→C | Chat de clã | — | `u16 @0x12` tamanho; texto a partir de `@0x14` | falta |
-| 180 | C→S | Pedir lista de amigos | `friends` | corpo vazio | falta |
-| 181 | C→S | Adicionar amigo | `friends` | 17 bytes (nick, inferido) | falta |
-| 183 | S→C | Lista de amigos | `friends` | parcial: `i32` em `@0x00..0x20`; `u8` em `@0x14, 0x24–0x26` | falta |
-| 184 | S→C | Amigo removido | `friends` | `i32 @4` | falta |
-| 188 | S→C | Lista de bloqueio | `blocks` | parcial (igual a 183, exceto `@0x25`) | falta |
-| 189 | S→C | Bloqueio removido | `blocks` | `i32 @4` | falta |
-| 190 | C→S | Atualizar amigos | `friends` | 60 bytes (15 `u32`) | falta |
-| 191 | S→C | Lote de amigos | `friends` | `u8` contagem; registros de 0x14 não decodificados | falta |
-| 192 | C→S | Atualizar bloqueios | `blocks` | 60 bytes | falta |
-| 193 | S→C | Lote de bloqueios | `blocks` | `u8` contagem; registros de 0x14 parciais | falta |
-| 194 | C→S | Atualizar clãs | `clans` | 60 bytes | falta |
-| 195 | S→C | Lote de membros | `clan_members` | cabeçalho e registros de 0x0C parciais | falta |
-| — | C→S | Pedidos de remover amigo, adicionar e remover bloqueio, lista de clã, membros de clã e chat de clã | — | não medidos (dúvida 16) | falta |
+| 180 | C→S | Pedir lista de amigos | `friends`, `blocks` | corpo vazio; responde 183 por amigo e 188 por bloqueado | implementado (F12) |
+| 181 | C→S | Adicionar amigo | `friends`, `accounts` | `char[17]` @0 nick, NUL-terminado; responde 183 | implementado (F12) |
+| 182 | C→S | Remover amigo | `friends` | `i32 @0` id do amigo; responde 184 | implementado (F12) |
+| 183 | S→C | Registro de amigo | `friends` | 0x2C bytes: id @0, nick @4, exp @0x20, estado @0x25 (0x22 online), gate @0x28 (negativo recusa) | implementado (F12) |
+| 184 | S→C | Amigo removido | `friends` | `i32 @0` id ecoado; `i32 @4` result (remove só com 0) | implementado (F12) |
+| 186 | C→S | Adicionar bloqueado | `blocks`, `accounts` | `char[17]` @0 nick, NUL-terminado; responde 188 | implementado (F12) |
+| 187 | C→S | Remover bloqueado | `blocks` | `i32 @0` id do bloqueado; responde 189 | implementado (F12) |
+| 188 | S→C | Registro de bloqueado | `blocks` | igual a 183 | implementado (F12) |
+| 189 | S→C | Bloqueio removido | `blocks` | `i32 @0` id ecoado; `i32 @4` result (remove só com 0) | implementado (F12) |
+| 190 | C→S | Atualizar amigos | `friends` | `u8 @0` contagem (1 a 14); `i32` ids a partir de @4; responde 191 | implementado (F12) |
+| 191 | S→C | Lote de amigos | `friends` | `u8 @0` contagem; registros de 0x14 a partir de @4 (id, exp, nest, estado) | implementado (F12) |
+| 192 | C→S | Atualizar bloqueados | `blocks` | igual a 190; responde 193 | implementado (F12) |
+| 193 | S→C | Lote de bloqueados | `blocks` | igual a 191 | implementado (F12) |
+| 194 | C→S | Atualizar clãs | `clans` | 60 bytes | falta (F13) |
+| 195 | S→C | Lote de membros | `clan_members` | cabeçalho e registros de 0x0C parciais | falta (F13) |
+| — | C→S | Pedidos de lista de clã, membros de clã e chat de clã | — | não medidos (dúvida 16) | falta (F13) |
 
 Correção a [features.md §15](../../re/features.md): `GetRankingInfo` tem opcode medido, **170** ([message_server.md §1](../../re/message_server.md)). O item "lacuna" de §15 está desatualizado.
 
@@ -519,7 +528,7 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F9 | Recompensa de partida DM e OP (R-REW-*), buffs e PC-room. | Marco 4 (resultado GS_*); F0 (512); dúvidas 13, 14, 17 | Partida DM e OP com 2 jogadores: exp e LD do placar batem com a fórmula (tolerância de 1 por arredondamento). Buff de EXP ativo multiplica por 1.5. |
 | F10 | Presente (615, 616, 610, 611). | F8; dúvidas 2, 3 | A envia item a B por nick; B vê na lista paginada de 12; resgate conforme dúvida 3. |
 | F11 | Gacha (591). | F3, F4; dúvida 6 | Usar "Item Surpresa" abre popup com prêmio do servidor; item aparece no inventário. |
-| F12 | Amigos e bloqueio (Message 180–195). | Opcodes não medidos (dúvida 16) | Adicionar amigo, reconectar: permanece. Bloquear e desbloquear. |
+| F12 (implementada, sem teste no cliente real) | Amigos, bloqueio e sussurro (Message 160–162, 180–193). Clã fica na F13. | Opcodes de amigo e bloqueio medidos (dúvida 16 parcial) | Adicionar amigo, reconectar: permanece. Bloquear e desbloquear. Sussurro chega ao outro cliente online. |
 | F13 | Clã (Message 172–178, 194–195). | F0 (172, 175); dúvida 18 | Conta com clã mostra nome e membros. Chat de clã chega aos membros. |
 | F14 | Ranking (Message 170/171). | F0 (171), F3 | Lista com top 100 por `total_exp`; empates com a mesma posição (1, 1, 3). |
 
@@ -549,7 +558,7 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 13. **Arredondamento** de exp e LD (float para inteiro): proposta, truncar. Confirmar.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
 15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
-16. **Opcodes não medidos:** remover amigo, adicionar e remover bloqueio, lista de clã, membros, chat de clã, corpo de 152. Também `NotifyFriendLog` não tem opcode.
+16. **Opcodes não medidos (parcial, F12):** os de amigo e bloqueio (181, 182, 186, 187) foram medidos nos wrappers e no dispatcher. Faltam lista de clã, membros, chat de clã e corpo de 152. `NotifyFriendLog` não tem opcode.
 17. **Resultado da partida:** opcode do GS_* que entrega o resultado ao canal [bloqueia F9]. Limite de amigos e de bloqueados.
 18. **Clã:** criação e gestão só pela CLI? Confirmar.
 19. **Índice de inventário (resolvida em F4/F5, [D30](../decisions/README.md)):** `account_items` e `account_morats` têm namespaces separados. Morat usa o gate como índice; item começa em 1. Inferido do dump de `GetMoratsInfoByGate`: confirmar no cliente real.

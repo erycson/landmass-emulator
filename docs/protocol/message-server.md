@@ -16,8 +16,24 @@ Implementação: `protocol/message.py` (layouts), `handlers/message/` (comportam
 | 130 | C→S | GetChannelServerInfo | — | implementado: exige login |
 | 131 | S→C | Lista de canais | `MS_GET_CHANNEL_SERVER_OUT` (2 + 72·n bytes) | implementado |
 | 150 | C→S | CreateNickname | `MS_CREATE_NICKNAME_IN` (0x37 bytes) | não tratado (logado e ignorado) |
+| 160 | C→S | SendWhisper | `MS_SEND_WHISPER_IN` (0x14 + texto) | implementado: exige login |
+| 161 | S→C | Sussurro recebido | `MS_SEND_WHISPER_OUT` (0x14 + texto) | implementado: só ao destinatário |
+| 162 | S→C | Erro de sussurro | `MS_SEND_WHISPER_ERROR_OUT` (0x18 + texto) | implementado: `-11` nick inexistente; `-19` fora do Message ou bloqueado |
+| 180 | C→S | GetFriendList | — | implementado: exige login; responde 183 e 188 |
+| 181 | C→S | AddFriend | `MS_NICK_IN` (17 bytes) | implementado: responde 183 |
+| 182 | C→S | DelFriend | `MS_ACCOUNT_ID_IN` (4 bytes) | implementado: responde 184 |
+| 183 | S→C | Registro de amigo | `MS_CONTACT_RECORD` (0x2C bytes) | implementado |
+| 184 | S→C | Amigo removido | `MS_DEL_FRIEND_OUT` (8 bytes) | implementado |
+| 186 | C→S | AddBlack | `MS_NICK_IN` (17 bytes) | implementado: responde 188 |
+| 187 | C→S | DelBlack | `MS_ACCOUNT_ID_IN` (4 bytes) | implementado: responde 189 |
+| 188 | S→C | Registro de bloqueado | `MS_CONTACT_RECORD` (0x2C bytes) | implementado |
+| 189 | S→C | Bloqueio removido | `MS_DEL_BLACK_OUT` (8 bytes) | implementado |
+| 190 | C→S | RefreshFriend | `MS_RELATION_IDS_IN` (4 + 4·n bytes) | implementado: responde 191 |
+| 191 | S→C | Lote de amigos | `MS_REFRESH_FRIEND_OUT` (4 + 0x14·n bytes) | implementado |
+| 192 | C→S | RefreshBlack | `MS_RELATION_IDS_IN` (4 + 4·n bytes) | implementado: responde 193 |
+| 193 | S→C | Lote de bloqueados | `MS_REFRESH_BLACK_OUT` (4 + 0x14·n bytes) | implementado |
 
-Opcodes sem handler (140, 150, 180 GetFriendList, clã, ...): logados com hexdump e ignorados; a conexão continua.
+Opcodes sem handler (140, 150, 170, 172–178, 194, 195, ...): logados com hexdump e ignorados; a conexão continua.
 
 ## Comportamento
 
@@ -27,6 +43,19 @@ Opcodes sem handler (140, 150, 180 GetFriendList, clã, ...): logados com hexdum
 - Payload malformado de opcode conhecido: logado com o motivo (sem hexdump) e ignorado.
 - `login_num` nunca é logado.
 - Cada 110 com login emite uma chave de sessão nova, que invalida a anterior da conta. A chave vai no 111 e é validada pelo Channel (ver [authentication.md](authentication.md)).
+
+## Amigos, bloqueios, sussurro e presença (F12)
+
+Implementação: `handlers/message/social.py` e `whisper.py`; presença em `domain/presence.py` (D32). Tabelas `friends` e `blocks` em [04-persistence](../architecture/04-persistence.md).
+
+- Relação dirigida: A ter B como amigo não faz B ter A. Amizade e bloqueio são listas separadas. O id do amigo é o `account_id` do alvo, o mesmo que o cliente devolve em 182 e 187.
+- 180 responde 183 por amigo e, depois, 188 por bloqueado, um registro por mensagem. Lista vazia não responde.
+- 181 e 186 criam a relação pelo nick e respondem com o registro do alvo (183 ou 188). Criar de novo é idempotente. Recusa (nick inválido, nick inexistente ou a própria conta) responde com registro de id 0 e `result` `-11` no gate, sem gravar.
+- 182 e 187 removem pelo id e respondem com o mesmo id em `@0` e o resultado em `@4`: `0` removido; `-11` não existia.
+- 190 e 192 respondem em lote (191, 193) só com os ids da própria lista. Ids de outras contas são ignorados, sem vazar exp. Sem nenhum id da lista, a resposta tem contagem 0.
+- Sussurro (160): o destinatário conectado no Message recebe 161; o remetente não recebe confirmação. Destinatário fora do Message, ou que bloqueou o remetente, recebe 162 com `-19`. Nick inexistente: 162 com `-11`. Texto acima de 0x78 bytes é payload malformado e é ignorado.
+- Presença: online é ter conexão autenticada no Message. Entra no login aceito e sai ao fechar a conexão ou no início de outro login. Não há aviso de entrada e saída: o cliente consulta o estado em 180, 190 e 192 (D39).
+- Pedidos de amigo, bloqueio e sussurro sem login são ignorados, sem resposta.
 
 ## `MS_LOGIN_IN`
 
@@ -96,6 +125,80 @@ No fluxo por token, `id` e `pw` vêm vazios e são ignorados (senha fica para o 
 | 0x24 | `char[36]` | `server_name`, NUL-terminado; máximo 35 caracteres | `LANDMASS_CHANNELS[i].name` |
 
 Strings de largura fixa são truncadas no codec para caber com o NUL; nomes e hosts longos demais são recusados na configuração.
+
+## Layouts de amigos, bloqueio e sussurro (F12)
+
+Offsets do corpo, sem o cabeçalho `u16`. Pedidos (C→S) e respostas (S→C).
+
+**`MS_SEND_WHISPER_IN` (160), 0x14 + n bytes**
+
+| Offset | Tipo | Campo |
+|-------:|------|-------|
+| 0x00 | `char[18]` | `target`: nick do destinatário, NUL-terminado |
+| 0x12 | `u16` | `len` do texto (máximo 0x78) |
+| 0x14 | `char[len]` | `text` |
+
+**`MS_SEND_WHISPER_OUT` (161), 0x14 + n bytes**: mesmo layout, com `sender` (nick de quem enviou) em 0x00.
+
+**`MS_SEND_WHISPER_ERROR_OUT` (162), 0x18 + n bytes**
+
+| Offset | Tipo | Campo |
+|-------:|------|-------|
+| 0x00 | `i32` | `result`: `-11` nick inexistente; `-19` fora do Message ou bloqueado |
+| 0x04 | `char[18]` | `target` |
+| 0x16 | `u16` | `len` |
+| 0x18 | `char[len]` | `text` |
+
+**`MS_NICK_IN` (181, 186), 17 bytes**: `char[17]` `nick`, NUL-terminado.
+
+**`MS_ACCOUNT_ID_IN` (182, 187), 4 bytes**: `i32` `account_id` do amigo ou do bloqueado.
+
+**`MS_CONTACT_RECORD` (183, 188), 0x2C bytes**: um registro por mensagem.
+
+| Offset | Tipo | Campo |
+|-------:|------|-------|
+| 0x00 | `i32` | `account_id` (chave). Em recusa, `0` |
+| 0x04 | `char[17]` | `nickname`, NUL-terminado (máximo 16 bytes) |
+| 0x18, 0x1C | `i32` | reservados: `0` |
+| 0x20 | `i32` | `total_exp` |
+| 0x25 | `u8` | `online`: `0x22` conectado; `0` fora |
+| 0x28 | `i32` | gate: `0` aceita; negativo recusa (`-11`) |
+
+Os demais bytes são zero.
+
+**`MS_DEL_FRIEND_OUT` (184), `MS_DEL_BLACK_OUT` (189), 8 bytes**
+
+| Offset | Tipo | Campo |
+|-------:|------|-------|
+| 0x00 | `i32` | `account_id` ecoado (vem de 182 ou 187) |
+| 0x04 | `i32` | `result`: `0` removido; `-11` não existia. O cliente tira o nó pela chave em `@0` só com `@4 == 0` |
+
+**`MS_RELATION_IDS_IN` (190, 192), 4 + 4·n bytes**
+
+| Offset | Tipo | Campo |
+|-------:|------|-------|
+| 0x00 | `u8` | `count`: 1 a 14; fora disso, payload malformado |
+| 0x01..0x03 | `byte[3]` | padding |
+| 0x04 | `i32[count]` | ids das contas |
+
+**`MS_REFRESH_FRIEND_OUT` (191), `MS_REFRESH_BLACK_OUT` (193), 4 + 0x14·n bytes**
+
+| Offset | Tipo | Campo |
+|-------:|------|-------|
+| 0x00 | `u8` | `count` |
+| 0x01..0x03 | `byte[3]` | zeros |
+| 0x04 | registro de 0x14 bytes, `count` vezes | ver abaixo |
+
+Registro (relativo ao início do registro):
+
+| Offset | Tipo | Campo |
+|-------:|------|-------|
+| 0x00 | `i32` | `account_id` |
+| 0x04 | `i32` | `total_exp` |
+| 0x08, 0x0C | `i32` | `0` |
+| 0x10 | `u8` | `nest`: `0` |
+| 0x11 | `u8` | `online`: `0x22` conectado; `0` fora |
+| 0x12..0x13 | `byte[2]` | padding |
 
 ## Sequência esperada pelo cliente
 

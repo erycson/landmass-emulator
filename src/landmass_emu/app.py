@@ -11,8 +11,10 @@ from landmass_emu.db.engine import Migrator
 from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.db.progression import SqlProgressionRepository
+from landmass_emu.db.social import SqlSocialRepository
 from landmass_emu.domain.channel import Channel
 from landmass_emu.domain.lobby import Lobby
+from landmass_emu.domain.presence import MessagePresence
 from landmass_emu.domain.rooms import Rooms
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
 from landmass_emu.handlers.channel import ChannelHandlers
@@ -24,6 +26,7 @@ from landmass_emu.ports.inventory import InventoryRepository
 from landmass_emu.ports.options import OptionsRepository
 from landmass_emu.ports.progression import ProgressionRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
+from landmass_emu.ports.social import SocialRepository
 from landmass_emu.protocol.channel import CsHeartbeat
 from landmass_emu.protocol.header import CHANNEL_NET_CODE, MESSAGE_NET_CODE
 from landmass_emu.settings import Settings
@@ -78,12 +81,17 @@ async def message_server(
     sessions: SessionKeyRegistry,
     accounts: AccountRepository,
     options: OptionsRepository,
+    social: SocialRepository,
 ) -> AsyncIterator[asyncio.Server]:
-    handlers = MessageHandlers(accounts, channels_from(settings), sessions, options)
+    presence = MessagePresence()
+    handlers = MessageHandlers(
+        accounts, channels_from(settings), sessions, options, social, presence
+    )
     server = await Service(
         net_code=MESSAGE_NET_CODE,
         router=handlers.router,
         recv_timeout=settings.recv_timeout,
+        on_close=presence.unbind,
     ).start(settings.bind_host, settings.message_port)
     async with _listening(server) as listening:
         yield listening
@@ -126,8 +134,9 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         options = SqlOptionsRepository(db)
         progression = SqlProgressionRepository(db)
         inventory = SqlInventoryRepository(db)
+        social = SqlSocialRepository(db)
         async with (
-            message_server(settings, sessions, accounts, options) as message,
+            message_server(settings, sessions, accounts, options, social) as message,
             channel_server(
                 settings, sessions, options, progression, accounts, inventory
             ) as channel,
