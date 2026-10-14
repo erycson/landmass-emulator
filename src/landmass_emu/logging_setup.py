@@ -1,6 +1,6 @@
-"""Log do processo (D205): texto por padrão, ou uma linha JSON por registro. Sem arquivo dentro do
-container: o driver de log do Docker recolhe o stdout e o stderr. O `serve` loga no stdout; os
-comandos de CLI, no stderr, para o resultado sair limpo no stdout."""
+"""Log do processo (D205): texto por padrão, ou uma linha JSON por registro. Sem arquivo
+próprio: quem sobe o processo redireciona a saída. O `serve` loga no stdout; os comandos de CLI,
+no stderr, para o resultado sair limpo no stdout."""
 
 import json
 import logging

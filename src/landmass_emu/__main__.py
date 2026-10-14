@@ -36,7 +36,7 @@ from landmass_emu.shutdown import Shutdown, install_signals, watch_control
 
 MAX_SHUTDOWN_AFTER = 86400  # 24 h: maior prazo que o comando aceita
 MAX_SHUTDOWN_MESSAGE = 80  # bytes em cp1252; com o texto padrão, cabe no limite do cliente
-HEALTH_TIMEOUT = 3.0  # segundos por porta; o HEALTHCHECK do Docker tem o próprio limite
+HEALTH_TIMEOUT = 3.0  # segundos por porta
 
 
 class Cli:

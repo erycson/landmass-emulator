@@ -32,8 +32,8 @@ class ChannelConfig(BaseModel):
 
 
 class _SecretFiles(PydanticBaseSettingsSource):
-    """`LANDMASS_<CAMPO>_FILE` lê o valor do arquivo (padrão dos segredos do Docker). Com a variável
-    e o arquivo juntos, é erro: não se sabe qual vale."""
+    """`LANDMASS_<CAMPO>_FILE` lê o valor do arquivo (segredo fora do TOML e do ambiente).
+    Com a variável e o arquivo juntos, é erro: não se sabe qual vale."""
 
     def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
         return None, field_name, False

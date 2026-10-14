@@ -8,7 +8,7 @@ Carregue com `pydantic-settings` (`settings.py`), prefixo `LANDMASS_`. Precedên
 4. Arquivo TOML: `landmass-emu serve --config <arquivo>` ou `LANDMASS_CONFIG`. Chaves são os nomes dos campos sem o prefixo (`message_port = 7313`). Chave desconhecida e arquivo inexistente são erro. Modelo com todas as chaves: [`config.example.toml`](../../config.example.toml).
 5. Padrão do código (tabela abaixo).
 
-Segredos com `_FILE` (padrão do Docker secrets, `/run/secrets/...`): `LANDMASS_DATABASE_URL_FILE` e `LANDMASS_MATCH_LOGIN_NUM_FILE`. O fim de linha do arquivo sai; o resto fica como está. Um arquivo ilegível é erro que nomeia a variável. Produção: [`operations/production.md`](../operations/production.md).
+Segredos com `_FILE` (o valor vem de um arquivo): `LANDMASS_DATABASE_URL_FILE` e `LANDMASS_MATCH_LOGIN_NUM_FILE`. O fim de linha do arquivo sai; o resto fica como está. Um arquivo ilegível é erro que nomeia a variável. Produção: [`operations/production.md`](../operations/production.md).
 
 | Variável | Padrão | Uso | Marco |
 |----------|--------|-----|:-----:|
@@ -31,7 +31,7 @@ Segredos com `_FILE` (padrão do Docker secrets, `/run/secrets/...`): `LANDMASS_
 | `LANDMASS_MATCH_READY_TIMEOUT` | `30` | Segundos até a porta da partida aparecer em `netstat`. Entre 0 e 300 (exclusivo em 0). Vencido o prazo, a sala volta à espera e o dono recebe o erro 241000201 (D47). | 4 |
 | `LANDMASS_MATCH_LOGIN_NUM` | não definida | `login_num` que o servidor de partida recebe na linha de comando. Obrigatório junto com `LANDMASS_MATCH_SERVER_DIR`. Use o valor do `jogar_teste.bat`; não o versione (D54). | 4 |
 | `LANDMASS_AUDIT_LOG` | `data/audit/economy.jsonl` | Arquivo do log de economia: uma linha JSON por compra (550), destruição (555) e extensão (580), aprovada ou recusada. Relativo à pasta de onde o servidor roda; use caminho absoluto quando rodar de outro checkout (D120). | F8 |
-| `LANDMASS_SHUTDOWN_GRACE_SECONDS` | `300` | Prazo do desligamento (SIGINT, SIGTERM ou `landmass-emu shutdown`): segundos até as partidas serem encerradas e o processo sair. Entre 0 e 3600. O `stop_grace_period` do Swarm precisa passar disso (D202). | prod |
+| `LANDMASS_SHUTDOWN_GRACE_SECONDS` | `300` | Prazo do desligamento (SIGINT, SIGTERM ou `landmass-emu shutdown`): segundos até as partidas serem encerradas e o processo sair. Entre 0 e 3600. (D202) | prod |
 | `LANDMASS_SHUTDOWN_NOTICE_SECONDS` | `[300, 60, 10]` | Instantes de aviso antes do prazo, em segundos. Lista; no ambiente, em JSON (`[300, 60, 10]`). Cada valor entre 1 e 3600, sem repetir; a lista sai em ordem decrescente. Os avisos vão a quem está no lobby (D201, D202). | prod |
 | `LANDMASS_CONTROL_FILE` | `data/control/shutdown.json` | Arquivo do pedido de `landmass-emu shutdown`. O processo em execução lê a cada segundo; pedido pendente de execução anterior é apagado na subida (D203). | prod |
 | `LANDMASS_LOG_LEVEL` | `INFO` | Nível do log (o `serve` loga no stdout; a CLI, no stderr): `DEBUG`, `INFO`, `WARNING` ou `ERROR`. Cada conexão da sonda do HEALTHCHECK gera `conectou` e `desconectou` em INFO; com `WARNING` esses registros somem (D205). | prod |
