@@ -473,4 +473,5 @@ Os offsets de 610 a 617 e de 591 em §3.2 batem com o codec de `protocol/gift.py
 - 613: medido no dispatcher (L1526–1561): registro do item em @0..0x33, resultado em @0x34 e chave em @0x38. A linha de §3.2 estava errada e foi corrigida. Nenhum chamador de 612 foi achado no XInterface (risco 1).
 - 616: `i32` resultado @0, Cash @4, LD @8 (L1608–1625). Os códigos de recusa (-2407, -4055, -4056, 8000) são inferidos do `switch` de `NotifyItemGift`.
 - 617: corpo ignorado (L1626–1629).
+- 610: antes de listar, resgata os pendentes (D100): um 102 por item, e a página sai vazia, salvo o que não coube (count 0).
 - 591: o dispatcher lê até dois registros (`while iVar3 < 2`, L2749–2771). O tamanho de 0x110 do registro `GACHA_PRIZE` e o texto UTF-8 NUL de 260 bytes são inferidos.

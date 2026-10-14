@@ -24,6 +24,8 @@ log = logging.getLogger(__name__)
 
 # Página do Depósito: 12 registros (SupplyInvenListPanel, 12 slots).
 GIFT_PAGE_SIZE = 12
+# Chave u16 do pendente: no máximo esta quantidade de presentes pendentes por conta.
+MAX_GIFT_SLOTS = 0xFFFF
 # `CERR_NOT_NICKNAME` (layouts_f0 §7.3): nick inexistente. -4055 e -4056 têm mensagem de saldo.
 CERR_NOT_NICKNAME = -2407
 CERR_BUY_CASH_SHORTAGE = -4055
@@ -139,21 +141,35 @@ class GiftService:
         return GiftPage(page=number, gifts=tuple(gifts))
 
     async def claim(self, account_id: int, slot: int) -> ItemUnit:
+        """Resgate pelo 612, com a chave do pendente."""
         async with self._locks.of(account_id):
             gift = await self._repository.pending(account_id, slot)
             if gift is None:
                 raise GiftRefusal(SILENT, f"sem presente pendente com a chave {slot}")
-            used = [item.inventory_index for item in await self._items.items(account_id)]
-            try:
-                unit = self._inventory.new_item(
-                    account_id, gift.catalog_id, gift.duration_days, used
-                )
-            except ValueError as e:  # catálogo deixou de ser item ou não há índice livre
-                raise GiftRefusal(SILENT, str(e)) from e
-            try:
-                claimed = await self._repository.claim(gift, unit)
-            except InventoryConflict as e:
-                raise GiftRefusal(SILENT, str(e)) from e
-            if not claimed:
-                raise GiftRefusal(SILENT, f"presente {gift.id} já foi resgatado")
-            return unit
+            return await self._claim_gift(account_id, gift)
+
+    async def claim_all(self, account_id: int) -> list[ItemUnit]:
+        """Resgate automático no 610 (D100): o cliente não envia 612 na UI, então o Depósito entrega
+        os pendentes. O que não cabe (sem índice livre, guid repetido) segue pendente."""
+        units: list[ItemUnit] = []
+        async with self._locks.of(account_id):
+            for gift in await self._repository.page(account_id, 0, MAX_GIFT_SLOTS):
+                try:
+                    units.append(await self._claim_gift(account_id, gift))
+                except GiftRefusal as refusal:
+                    log.info("presente %d segue pendente: %s", gift.id, refusal)
+        return units
+
+    async def _claim_gift(self, account_id: int, gift: Gift) -> ItemUnit:
+        used = [item.inventory_index for item in await self._items.items(account_id)]
+        try:
+            unit = self._inventory.new_item(account_id, gift.catalog_id, gift.duration_days, used)
+        except ValueError as e:  # catálogo deixou de ser item ou não há índice livre
+            raise GiftRefusal(SILENT, str(e)) from e
+        try:
+            claimed = await self._repository.claim(gift, unit)
+        except InventoryConflict as e:
+            raise GiftRefusal(SILENT, str(e)) from e
+        if not claimed:
+            raise GiftRefusal(SILENT, f"presente {gift.id} já foi resgatado")
+        return unit

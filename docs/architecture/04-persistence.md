@@ -113,7 +113,7 @@ Fonte: [07-progression.md §4.8](07-progression.md). Modelos: `db/models.py` (`C
 
 ## Tabela `gifts` (F10)
 
-Migração `a3d9e6f1c402` (sobre `4b7e1d2a9c60`). Modelo `GiftRow` em `db/models.py`. Colunas, chaves e regras em [07-progression §4.9](07-progression.md). Sem tabela de log: envio, resgate e gacha vão ao log de economia (D99, D120).
+Migração `a3d9e6f1c402` (sobre `a3c7e915d2b4`). Modelo `GiftRow` em `db/models.py`. Colunas, chaves e regras em [07-progression §4.9](07-progression.md). Sem tabela de log: envio, resgate e gacha vão ao log de economia (D99, D120).
 
 ## Repositório
 
@@ -123,7 +123,7 @@ Migração `a3d9e6f1c402` (sobre `4b7e1d2a9c60`). Modelo `GiftRow` em `db/models
 - Progressão: `ports/progression.py` (`ProgressionRepository`) e `db/progression.py` (`SqlProgressionRepository`). O tutorial é um `UPDATE` com OR no banco (`bitwise_or`), sem leitura antes da escrita. O grant soma no próprio `UPDATE`.
 - Clãs: `ports/clans.py` (`ClanRepository`) e `db/clans.py` (`SqlClanRepository`). Violação de unicidade vira `ClanConflict`.
 - Ranking: `ports/ranking.py` (`RankingRepository`) e `db/ranking.py` (`SqlRankingRepository`), uma consulta sobre `accounts` sem tabela (D18).
-- Presentes: `ports/gifts.py` (`GiftRepository`) e `db/gifts.py` (`SqlGiftRepository`). O envio debita pelo `debit` de `db/shop.py` na mesma transação que cria a linha; o resgate grava a unidade e marca `claimed_at` juntos.
+- Presentes: `ports/gifts.py` (`GiftRepository`) e `db/gifts.py` (`SqlGiftRepository`). O envio debita pelo `debit` de `db/shop.py` na mesma transação que cria a linha; o resgate (612, e o 610 pelo D100) grava a unidade e marca `claimed_at` juntos.
 - Uso de item especial (560): `ports/use.py` (`UseRepository`) e `db/use.py` (`SqlUseRepository`). Consumo, crédito de LD, prêmios e contagem de gates numa transação.
 - Leitura do `landmass.wdb`: `db/catalog.py` (`WdbCatalog`), somente leitura, `mode=ro`, textos em cp1252.
 

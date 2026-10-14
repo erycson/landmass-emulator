@@ -20,9 +20,10 @@ AGORA = datetime(2026, 10, 13, tzinfo=UTC)
 QUEIMA = 308010001
 ALISTAR = 308010003
 TROCA = 308010004
-HANGAR = 308010005  # fora deste serviço: segue o caminho F6
-GACHA = 308010006  # fora deste serviço: segue o caminho F6
+HANGAR = 308010005  # fora deste serviço: vai ao ItemUseService (domain/use.py)
+GACHA = 308010006  # fora deste serviço: vai ao ItemUseService (domain/use.py)
 EXP = 308020001
+PINTURA = 307010001  # classe 7: montada pelo equipar (D136)
 
 
 def _item(
@@ -82,6 +83,19 @@ def _servico(itens: list[ItemUnit]) -> tuple[ConsumableService, Gravacao]:
     return ConsumableService(
         inventory=inventario, repository=gravacao, clock=lambda: AGORA
     ), gravacao
+
+
+async def test_especiais_buffs_e_pinturas_ficam_fora_dos_consumiveis() -> None:
+    """Item Surpresa e Adicionar Hangar vão ao ItemUseService; buffs e pinturas seguem para o
+    equipar (D136, D137). Nenhum deles pode ser consumido aqui."""
+    servico, gravacao = _servico(
+        [_item(1, GACHA), _item(2, HANGAR), _item(3, EXP), _item(4, PINTURA)]
+    )
+    for indice in (1, 2, 3, 4):
+        with pytest.raises(NotConsumable):
+            await servico.use(1, indice, 0)
+    assert gravacao.gravados == []
+    assert not any(servico.handles(catalogo) for catalogo in (GACHA, HANGAR, EXP, PINTURA))
 
 
 def test_valor_e_obrigatorio_em_alistar_e_na_faixa() -> None:

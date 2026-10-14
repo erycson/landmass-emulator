@@ -1,8 +1,9 @@
 """Depósito e presente no canal (F10): 615 envia por nick, 610 lista o Depósito e 612 resgata.
 
 Envio responde 616 (com `result` 0 e os saldos do remetente, ou um código negativo) e avisa o
-destinatário online com 617. A listagem responde 611 com a página. O resgate responde 613,
-com o item que o cliente grava no hangar sem relogar. Regras em `domain/gift.py`.
+destinatário online com 617. A listagem resgata antes os pendentes (D100: 102 de cada um) e responde
+611 com a página. O resgate pelo 612 responde 613, com o item que o cliente grava no hangar sem
+relogar. Regras em `domain/gift.py`.
 """
 
 import logging
@@ -86,8 +87,23 @@ class GiftHandlers:
             log.warning("[%s] GetGiftItem antes do login; ignorado", session.peer)
             return []
         req = CsGetGiftItemIn.unpack(payload)
+        # D100: o cliente não manda 612 na UI; o pendente vai ao hangar aqui (102) e sai da lista.
+        claimed = await self._gifts.claim_all(session.account.id)
+        for unit in claimed:
+            self._audit.record(
+                session,
+                "gift",
+                action="claim",
+                auto=True,
+                catalog_id=unit.catalog_id,
+                **unit_fields(unit),
+                result=0,
+            )
         page = await self._gifts.page(session.account.id, req.page)
-        return [CsGetGiftItemOut(page.page, tuple(_line(gift) for gift in page.gifts))]
+        return [
+            *(item_record(unit) for unit in claimed),
+            CsGetGiftItemOut(page.page, tuple(_line(gift) for gift in page.gifts)),
+        ]
 
     async def gift_item_used(self, session: Session, payload: bytes) -> Sequence[Reply]:
         if session.account is None:

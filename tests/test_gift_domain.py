@@ -2,6 +2,7 @@
 repositórios falsos: validação do presente, paginação, resgate, sorteio e contagem de gates."""
 
 import random
+import struct
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -29,6 +30,7 @@ from landmass_emu.domain.inventory import (
     ItemUnit,
     enabled_gates,
 )
+from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.shop import Requirements, SaleInfo
 from landmass_emu.domain.use import (
     ADD_GATE_ITEM,
@@ -37,6 +39,10 @@ from landmass_emu.domain.use import (
     GateAdded,
     ItemUseService,
 )
+from landmass_emu.handlers.channel.gift import GiftHandlers
+from landmass_emu.net.session import Session
+from landmass_emu.ports.inventory import InventoryConflict
+from landmass_emu.protocol.gift import CsGetGiftItemOut
 
 AGORA = datetime(2026, 10, 1, tzinfo=UTC)
 ITEM = 201020001
@@ -238,6 +244,33 @@ async def test_resgate_de_chave_inexistente_recusa() -> None:
     with pytest.raises(GiftRefusal) as recusa:
         await servico.claim(2, 42)
     assert recusa.value.result == 8000
+
+
+async def test_610_resgata_os_pendentes_e_manda_o_102_antes_da_lista_vazia() -> None:
+    servico, repo = _gift_service(contas=(BIA,), progresso=FakeProgression(ld=1000))
+    await servico.send(1, "Bia", ITEM, Currency.LD, 0)
+    await servico.send(1, "Bia", ITEM, Currency.LD, 0)
+    handlers = GiftHandlers(servico, Lobby())
+    respostas = await handlers.get_gift_item(Session(peer="bia", account=BIA), struct.pack("<i", 0))
+    *pushes, lista = respostas
+    assert [push.catalog_id for push in pushes] == [ITEM, ITEM]
+    assert isinstance(lista, CsGetGiftItemOut) and (lista.page, lista.lines) == (0, ())
+    assert repo.gifts == []
+    assert [unit.inventory_index for unit in repo.unidades] == [1, 2]
+
+
+async def test_resgate_automatico_sem_vaga_deixa_o_presente_pendente(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    servico, repo = _gift_service(contas=(BIA,), progresso=FakeProgression(ld=1000))
+    await servico.send(1, "Bia", ITEM, Currency.LD, 0)
+
+    async def sem_vaga(gift: Gift, unit: ItemUnit) -> bool:
+        raise InventoryConflict("sem vaga no hangar")
+
+    monkeypatch.setattr(repo, "claim", sem_vaga)
+    assert await servico.claim_all(2) == []
+    assert [g.slot for g in repo.gifts] == [1]
 
 
 def test_enabled_gates_segue_a_contagem_e_os_morats_ocupados() -> None:
