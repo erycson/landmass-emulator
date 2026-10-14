@@ -15,7 +15,12 @@ from landmass_emu.domain.match_stats import GameEndedPlayer, MatchRecord
 from landmass_emu.domain.progression import Progression
 from landmass_emu.domain.rooms import ROOM_PLAYING, ROOM_WAITING, Room, Rooms
 from landmass_emu.handlers.channel.records import ChannelRecords
-from landmass_emu.handlers.channel.rooms import ERR_MATCH_START, RoomHandlers
+from landmass_emu.handlers.channel.rooms import (
+    END_SHUTDOWN,
+    ERR_CREATE,
+    ERR_MATCH_START,
+    RoomHandlers,
+)
 from landmass_emu.net.session import Session
 from landmass_emu.ports.match_host import GameEndpoint, MapCatalog, MatchStartError
 from landmass_emu.protocol.channel import (
@@ -29,6 +34,7 @@ from landmass_emu.protocol.channel import (
     CsRoomPlayerInfoOut,
 )
 from landmass_emu.protocol.progression import CsProgressionOp
+from landmass_emu.shutdown import Shutdown
 
 
 class _HostFalso:
@@ -122,6 +128,7 @@ def _montagem(
     progressao: _Progressao | None = None,
     auditoria: _Auditoria | None = None,
     equipamento: _Equipamento | None = None,
+    aceitando: Callable[[], bool] | None = None,
 ) -> tuple[RoomHandlers, Lobby, Rooms]:
     lobby = Lobby()
     rooms = Rooms()
@@ -135,6 +142,7 @@ def _montagem(
         progression=progressao,
         audit=auditoria,
         loadout=equipamento,
+        accepting_matches=aceitando,
     )
     return handlers, lobby, rooms
 
@@ -488,3 +496,98 @@ async def test_volta_sem_500_encerra_partida_e_devolve_sala_a_espera() -> None:
         if op == CsOp.CHANGE_ROOM_PROPERTY_OUT and corpo[4] & ROOM_FLAG_STATE
     ]
     assert [corpo[0xF] for corpo in estados] == [ROOM_WAITING]
+
+
+class _HostParada(_HostFalso):
+    """Parada graciosa lenta: `end` demora como o servidor que ainda grava o log."""
+
+    async def end(self, room_id: int) -> tuple[GameEndedPlayer, ...]:
+        await asyncio.sleep(0.05)
+        return await super().end(room_id)
+
+
+async def test_desligamento_recusa_sala_nova_com_erro_de_criacao() -> None:
+    handlers, lobby, rooms = _montagem(_HostFalso(), _Historico(), aceitando=lambda: False)
+    ana = _entra_no_lobby(lobby, 7, "Ana")
+
+    # A recusa vem antes da leitura do corpo, por isso o payload pode ser vazio.
+    resposta = await handlers.create_room(ana, b"")
+
+    assert resposta == [CsErrorEnvelope(CsOp.CREATE_ROOM_OUT, ERR_CREATE)]
+    assert rooms.all() == []
+
+
+async def test_desligamento_recusa_inicio_de_partida_e_mantem_a_sala_a_espera() -> None:
+    host = _HostFalso()
+    aceita = [True]
+    handlers, lobby, rooms = _montagem(host, _Historico(), aceitando=lambda: aceita[0])
+    ana = _entra_no_lobby(lobby, 7, "Ana")
+    bia = _entra_no_lobby(lobby, 9, "Bia")
+    sala = _criar_sala(rooms, 7)
+    rooms.join(sala.room_id, 9, "")
+    await handlers.ready_game(bia, bytes([0]))
+    aceita[0] = False
+
+    resposta = await handlers.ready_game(ana, bytes([0]))
+
+    assert resposta == [CsErrorEnvelope(CsOp.READY_GAME_ERROR, ERR_MATCH_START)]
+    assert host.iniciados == []
+    assert sala.state == ROOM_WAITING
+
+
+async def test_desligamento_sem_partida_nao_grava_nada() -> None:
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(_HostFalso(), historico)
+    _entra_no_lobby(lobby, 7, "Ana")
+    _criar_sala(rooms, 7)
+
+    await handlers.end_matches()
+
+    assert historico.salvos == []
+
+
+async def test_desligamento_encerra_partida_e_grava_com_server_shutdown() -> None:
+    host = _HostParada()
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(host, historico)
+    _ana, _bia, sala = await _partida(handlers, lobby, rooms)
+
+    # Os jogadores continuam em jogo: o encerramento não espera que saiam.
+    await handlers.end_matches()
+
+    [gravado] = historico.salvos
+    assert gravado.end_reason == END_SHUTDOWN
+    assert host.encerrados == [sala.room_id]  # só `end`: `finish` seria abandono sem gravação
+    assert sala.state == ROOM_WAITING
+
+
+class _PortaDoCanal:
+    """Ponte mínima do desligamento para o canal, sem avisos: o teste só olha o prazo."""
+
+    def __init__(self, lobby: Lobby, handlers: RoomHandlers) -> None:
+        self._lobby = lobby
+        self._handlers = handlers
+
+    def notify(self, text: str) -> None:
+        pass
+
+    def players(self) -> int:
+        return self._lobby.size()
+
+    async def end_matches(self) -> None:
+        await self._handlers.end_matches()
+
+
+async def test_prazo_com_partida_que_nao_termina_encerra_e_grava_no_canal() -> None:
+    historico = _Historico()
+    handlers, lobby, rooms = _montagem(_HostParada(), historico)
+    _ana, _bia, sala = await _partida(handlers, lobby, rooms)  # os dois seguem em jogo
+    desliga = Shutdown()
+    desliga.attach(_PortaDoCanal(lobby, handlers))
+
+    desliga.begin(0.1)
+    await asyncio.wait_for(desliga.run(poll=0.02), timeout=5)
+
+    [gravado] = historico.salvos
+    assert gravado.end_reason == END_SHUTDOWN
+    assert sala.state == ROOM_WAITING

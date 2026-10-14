@@ -2,7 +2,7 @@
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -42,6 +42,7 @@ from landmass_emu.domain.use import ItemUseService
 from landmass_emu.handlers.channel import ChannelHandlers
 from landmass_emu.handlers.channel.equipment import EquipmentHandlers
 from landmass_emu.handlers.channel.gift import GiftHandlers
+from landmass_emu.handlers.channel.notice import GlobalNotice
 from landmass_emu.handlers.message import MessageHandlers
 from landmass_emu.hosting.fixed import FixedMatchHost
 from landmass_emu.hosting.process import ProcessHostConfig, ProcessMatchHost
@@ -61,6 +62,7 @@ from landmass_emu.ports.social import SocialRepository
 from landmass_emu.protocol.channel import CsHeartbeat
 from landmass_emu.protocol.header import CHANNEL_NET_CODE, MESSAGE_NET_CODE
 from landmass_emu.settings import Settings
+from landmass_emu.shutdown import Shutdown
 
 log = logging.getLogger(__name__)
 
@@ -118,6 +120,8 @@ async def message_server(
     social: SocialRepository,
     clans: ClanRepository,
     ranking: RankingRepository,
+    *,
+    accepting: Callable[[], bool] | None = None,
 ) -> AsyncIterator[asyncio.Server]:
     presence = MessagePresence()
     handlers = MessageHandlers(
@@ -135,6 +139,7 @@ async def message_server(
         router=handlers.router,
         recv_timeout=settings.recv_timeout,
         on_close=presence.unbind,
+        accepting=accepting,
     ).start(settings.bind_host, settings.message_port)
     async with _listening(server) as listening:
         yield listening
@@ -174,6 +179,7 @@ async def channel_server(
     profiles: PlayerProfileRepository,
     gifts: GiftService,
     loadout: LoadoutService,
+    shutdown: Shutdown,
 ) -> AsyncIterator[asyncio.Server]:
     lobby = Lobby()
     rooms = Rooms()
@@ -196,7 +202,9 @@ async def channel_server(
         profiles=profiles,
         gifts=GiftHandlers(gifts, lobby, audit),
         loadout=loadout,
+        accepting_matches=shutdown.accepting,
     )
+    shutdown.attach(_ChannelShutdown(GlobalNotice(lobby), lobby, handlers))
     server = await Service(
         net_code=CHANNEL_NET_CODE,
         router=handlers.router,
@@ -204,12 +212,31 @@ async def channel_server(
         on_close=handlers.disconnect,
         heartbeat=CsHeartbeat(),
         heartbeat_every=CHANNEL_HEARTBEAT_SECONDS,
+        accepting=shutdown.accepting,
     ).start(settings.bind_host, settings.channel_port)
     try:
         async with _listening(server) as listening:
             yield listening
     finally:
         await match.close()
+
+
+class _ChannelShutdown:
+    """Ponte do desligamento para o canal: aviso ao lobby, contagem de quem está nele e partidas."""
+
+    def __init__(self, notice: GlobalNotice, lobby: Lobby, handlers: ChannelHandlers) -> None:
+        self._notice = notice
+        self._lobby = lobby
+        self._handlers = handlers
+
+    def notify(self, text: str) -> None:
+        self._notice.send(text)
+
+    def players(self) -> int:
+        return self._lobby.size()
+
+    async def end_matches(self) -> None:
+        await self._handlers.end_matches()
 
 
 async def warn_empty_shop(items: ShopItemRepository) -> None:
@@ -219,9 +246,14 @@ async def warn_empty_shop(items: ShopItemRepository) -> None:
 
 
 @asynccontextmanager
-async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server, asyncio.Server]]:
+async def game_servers(
+    settings: Settings, shutdown: Shutdown | None = None
+) -> AsyncIterator[tuple[asyncio.Server, asyncio.Server]]:
     """Message e Channel com o mesmo registro de sessão e o mesmo banco: a chave emitida no 111
-    vale no 100, e as opções gravadas no 544 voltam no 111 do próximo login."""
+    vale no 100, e as opções gravadas no 544 voltam no 111 do próximo login. `shutdown` é o estado
+    do desligamento; sem ele, o servidor roda até ser cancelado, como antes do D202."""
+    if shutdown is None:
+        shutdown = Shutdown(settings.shutdown_notice_seconds)
     sessions = MemorySessionKeyRegistry()
     async with open_database(settings) as db:
         await warn_empty_shop(SqlShopItemRepository(db))
@@ -239,7 +271,14 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         matches = SqlMatchRepository(db)
         async with (
             message_server(
-                settings, sessions, accounts, options, social, clans, ranking
+                settings,
+                sessions,
+                accounts,
+                options,
+                social,
+                clans,
+                ranking,
+                accepting=shutdown.accepting,
             ) as message,
             channel_server(
                 settings,
@@ -255,6 +294,7 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
                 profiles,
                 gifts,
                 loadout,
+                shutdown,
             ) as channel,
         ):
             yield message, channel

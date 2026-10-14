@@ -22,8 +22,10 @@ from landmass_emu.protocol.header import (
     unpack_header,
 )
 from landmass_emu.protocol.message import LmRegisterInfo, MsLoginIn, MsOp, cstr
+from landmass_emu.protocol.notice import NOTICE_OPCODE
 from landmass_emu.protocol.progression import CsProgressionOp
 from landmass_emu.settings import Settings
+from landmass_emu.shutdown import Shutdown
 
 TOKEN_ANA = "0123456789abcdef0123456789abcdef"
 TOKEN_BIA = "fedcba9876543210fedcba9876543210"
@@ -432,3 +434,31 @@ async def test_grant_aparece_no_login_nos_pushes_e_no_lobby(tmp_path: Path) -> N
             body = await c.expect(CsOp.IN_CHANNEL_OUT)
             # O 121 sobrescreve o nó do próprio jogador: a exp não pode voltar a zero.
             assert struct.unpack_from("<i", body, 4) == (2800,)
+
+
+async def test_desligamento_fecha_conexao_nova_e_o_canal_segue_escutando(tmp_path: Path) -> None:
+    """Depois do pedido, conexão nova é fechada logo no accept; o socket segue aberto (D204)."""
+    settings = _settings(tmp_path)
+    desliga = Shutdown()
+    async with game_servers(settings, desliga) as (_msg, channel):
+        desliga.begin(300)
+        async with _connect(channel, CHANNEL_NET_CODE) as c:
+            async with asyncio.timeout(2):
+                assert await read_frame(c.reader) is None
+        assert channel.is_serving()
+
+
+async def test_aviso_do_desligamento_chega_a_quem_esta_no_lobby(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        ana = await accounts.create("ana", "Ana", hash_token(TOKEN_ANA))
+    desliga = Shutdown()
+    async with game_servers(settings, desliga) as (msg, ch):
+        chave = await _chave_de_sessao(msg, TOKEN_ANA)
+        async with _connect(ch, CHANNEL_NET_CODE) as c:
+            await _entra_no_canal(c, chave, ana.id)
+            desliga.begin(0, "Teste")  # prazo já vencido: o aviso sai e o servidor encerra
+            await desliga.run()
+            corpo = await c.expect(NOTICE_OPCODE)
+    texto = "Teste Desligamento em 0 s.".encode("cp1252")
+    assert corpo == bytes([len(texto)]) + texto + b"\x00"

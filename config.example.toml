@@ -1,0 +1,49 @@
+# Configuração do emulador LandMass (landmass-emu serve --config config.example.toml).
+#
+# Precedência: variável de ambiente LANDMASS_* > arquivo (este) > padrão do código.
+# Segredos vão em arquivo, com LANDMASS_<CAMPO>_FILE, e não aqui (ver docs/operations/production.md).
+# Os valores abaixo são os padrões. Chave desconhecida é erro na inicialização.
+
+# Banco de contas e histórico. Em produção, use o caminho do volume.
+database_url = "sqlite+aiosqlite:///data/landmass.db"
+# Interface de escuta dos serviços Message e Channel.
+bind_host = "0.0.0.0"
+# IP anunciado aos clientes na lista de canais (máximo 15 caracteres).
+public_host = "127.0.0.1"
+message_port = 7313
+channel_port = 7314
+client_version = 1245776779
+# Pasta `system` do cliente: fornece `landmass.wdb` (catálogo, mapas, lojas).
+client_dir = "../cliente/system"
+# Segundos sem tráfego antes de desconectar (mínimo 60).
+recv_timeout = 300
+
+# Canais anunciados. `address` e `port` são opcionais; ausentes usam public_host e channel_port.
+[[channels]]
+name = "Canal 1"
+max_clients = 100
+
+# Partida fixa (sem match_server_dir): o 403 aponta para game_host:game_port.
+game_host = "127.0.0.1"
+game_port = 7777
+
+# Partida por processo (só em nó Windows ou com Wine; ver docs/operations/production.md).
+# match_server_dir = "D:/servidor-partida/system"
+# match_login_num: segredo. Use LANDMASS_MATCH_LOGIN_NUM_FILE em vez de escrever aqui.
+match_port_min = 7800
+match_port_max = 7899
+match_ready_timeout = 30.0
+
+# Log de economia (compra, destruição, extensão), uma linha JSON por evento.
+audit_log = "data/audit/economy.jsonl"
+
+# Desligamento: prazo máximo de saída, em segundos, depois do pedido (SIGTERM ou comando).
+shutdown_grace_seconds = 300.0
+# Avisos aos jogadores, em segundos antes da saída. Lista em ordem livre; sem repetição.
+shutdown_notice_seconds = [300, 60, 10]
+# Arquivo que o comando `landmass-emu shutdown` escreve para o processo em execução.
+control_file = "data/control/shutdown.json"
+
+# Logs no stdout: DEBUG, INFO, WARNING ou ERROR. log_json = true emite uma linha JSON por registro.
+log_level = "INFO"
+log_json = false

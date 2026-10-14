@@ -10,7 +10,7 @@ Difusão: `lobby.broadcast` para o que o cliente aplica no canal inteiro (302 na
 
 import asyncio
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
@@ -91,6 +91,7 @@ ERR_MATCH_START = 241000201  # "Não foi possível iniciar a partida. Tente nova
 END_EXIT_PLAY = "exit_play"  # todos saíram da partida (500)
 END_SERVER_EXIT = "server_exit"  # o servidor de partida caiu depois de pronto
 END_RETURN = "return_to_room"  # o último em jogo voltou à sala sem 500 (o cliente não manda)
+END_SHUTDOWN = "server_shutdown"  # o desligamento encerrou a partida no prazo (D202)
 
 # Código de erro do 312 (short). O cliente monta a mensagem por `FUN_10021c80` (gap no RE); o
 # número é o sufixo de 211000000 + código em `msg_error` do `landmass.wdb`.
@@ -152,6 +153,7 @@ class RoomHandlers:
         progression: ProgressionRepository | None = None,
         audit: EconomyAudit | None = None,
         loadout: LoadoutService | None = None,
+        accepting_matches: Callable[[], bool] | None = None,
     ) -> None:
         self._lobby = lobby
         self._rooms = rooms
@@ -162,6 +164,8 @@ class RoomHandlers:
         self._progression = progression
         self._audit = audit
         self._loadout = loadout
+        # Falso no desligamento: sala nova e início de partida são recusados (D202).
+        self._accepting = accepting_matches or (lambda: True)
         # Histórico em curso por sala: quem jogou no início. O fim e o motivo vêm depois.
         self._open: dict[int, MatchRecord] = {}
         # Hora em que cada jogador saiu da partida (500, volta à sala ou saída), por sala.
@@ -176,6 +180,9 @@ class RoomHandlers:
         if guid is None:
             log.warning("[%s] CreateRoom fora do lobby; ignorado", session.peer)
             return []
+        if not self._accepting():
+            log.info("[%s] CreateRoom recusado: desligamento em curso", session.peer)
+            return [CsErrorEnvelope(CsOp.CREATE_ROOM_OUT, ERR_CREATE)]
         log.info("[%s] CreateRoom\n%s", session.peer, hexdump(payload))
         req = CsCreateRoomIn.unpack(payload)
         try:
@@ -304,6 +311,9 @@ class RoomHandlers:
             log.info("[%s] ReadyGame fora de sala; ignorado", session.peer)
             return []
         if room.master == guid:
+            if not self._accepting():
+                log.info("[%s] início recusado: desligamento em curso", session.peer)
+                return [CsErrorEnvelope(CsOp.READY_GAME_ERROR, ERR_MATCH_START)]
             try:
                 started = self._rooms.start(guid, req.morats)
             except RoomError as e:
@@ -519,6 +529,25 @@ class RoomHandlers:
         if record is None:
             return None
         return with_played(record, self._left.pop(room.room_id, {}), datetime.now(UTC))
+
+    async def end_matches(self) -> None:
+        """Desligamento no prazo: encerra as partidas em andamento e grava cada uma com
+        `server_shutdown`. Espera as gravações pendentes; as salas voltam à espera antes disso."""
+        records: list[MatchRecord] = []
+        for room in self._rooms.all():
+            if room.state != ROOM_PLAYING:
+                continue
+            record = self._end(room)
+            if record is not None:
+                records.append(record)
+        resultados = await asyncio.gather(
+            *(self._save(record, END_SHUTDOWN) for record in records),
+            *self._saves,
+            return_exceptions=True,
+        )
+        for erro in resultados:
+            if isinstance(erro, BaseException):
+                log.error("gravação no desligamento falhou", exc_info=erro)
 
     def _after_leave(self, room: Room) -> None:
         """Quem saiu (ou foi expulso) pode ter sido o último em jogo: então a partida acaba."""

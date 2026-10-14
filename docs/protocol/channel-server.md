@@ -78,7 +78,7 @@ Evidências: o corpo do `100` tem 33 bytes (teste com o cliente real; `u8 @32` �
 | 240 | C→S | `SEND_MESSAGE` | `u8 msg_type`, `u8 len`, texto | implementado |
 | 241 | S→C | `SEND_MESSAGE_OUT` | 8 bytes + texto | implementado |
 | 250 | C→S | `SEND_COMMAND` | `u8 todos`, `u8 len`, texto | implementado (D193): aviso de GM, só nível 9 ou mais |
-| 251 | S→C | `SEND_COMMAND_OUT` | `u8 len`, texto, NUL | implementado (D193): a todo o lobby |
+| 251 | S→C | `SEND_COMMAND_OUT` (aviso geral) | `u8 len` @0, texto cp1252 a partir de @1, NUL depois (fora do `len`); até 120 bytes (0x78, limite do chat) | implementado (D193, D201): o cliente mostra no HUD (`GMSay`) e no chat; aviso de GM e de desligamento (D202) vão a todo o lobby. Quem só está no Message não recebe |
 | 600 | C→S | `TUTORIAL_CLEAR` | `u8 passo` (0 a 2) | implementado (F2): liga o bit `1 << passo`; passo fora da faixa é logado e nada é gravado |
 | 601 | S→C | `TUTORIAL_CLEAR_OUT` | `i32` máscara @0, `i32` LD @4 | implementado (F2); o LD vai no @4 porque o cliente o grava em `iPoint` |
 | 591 | S→C | `GACHA_PRIZE_OUT` | `u16 key` @0, `i32` quantidade @4, `i32 result` @8; registros de 0x110 a partir de @0xC (`i32` item_id, `i32` size, `i32` buy_option, texto UTF-8 NUL) | implementado (F11): resposta ao 560 com `308010006`; até 2 prêmios |

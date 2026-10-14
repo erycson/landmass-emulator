@@ -1,6 +1,6 @@
 """Channel Server: monta os handlers por assunto e a tabela explícita opcode → método."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from landmass_emu.audit import EconomyAudit
 from landmass_emu.domain.loadout import LoadoutService
@@ -61,6 +61,7 @@ class ChannelHandlers:
         profiles: PlayerProfileRepository,
         gifts: GiftHandlers | None = None,
         loadout: LoadoutService | None = None,
+        accepting_matches: Callable[[], bool] | None = None,
     ) -> None:
         records = ChannelRecords(lobby)
         room_handlers = RoomHandlers(
@@ -73,6 +74,7 @@ class ChannelHandlers:
             progression=progression,
             audit=audit,
             loadout=loadout,
+            accepting_matches=accepting_matches,
         )
         progression_handlers = ProgressionHandlers(progression, ProgressionService())
         self._entry = EntryHandlers(
@@ -136,3 +138,7 @@ class ChannelHandlers:
     def disconnect(self, session: Session) -> None:
         """Queda da conexão: sai da sala e do lobby, e avisa os demais."""
         self._entry.disconnect(session)
+
+    async def end_matches(self) -> None:
+        """Desligamento: encerra e grava as partidas em andamento (D202)."""
+        await self._rooms.end_matches()

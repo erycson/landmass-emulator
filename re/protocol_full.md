@@ -214,7 +214,7 @@ Envelope de erro (op 54, L96–108): `u16 @0` = opcode real; `i32 @4` = erro; se
 | 144 | `NotifyMatchRoomDelete` | (gap) | (gap) | L1129–1143 |
 | 151 | `NotifyChannelPlayerInfo` | `u16 @0` = count; entradas de 40 bytes a partir de `@2` (`layouts_f0.md` §1.2) | (inferido) | L1147–1245 |
 | 241 | `NotifySendMsg` | `u8 @5` = len; texto a partir de `@8` (`len > 0x78` não decodificado) | 240 | L1246–1280 |
-| 251 | `NotifySendCommand` | `u8 @0` = comando; texto a partir de `@1` | 250 | L1281–1311 |
+| 251 | `NotifySendCommand` | `u8 @0` = `len`; texto cp1252 a partir de `@1`, sem NUL final (`GMSay` e `OnSendCommand`) | 250 | L1281–1311 |
 | 302 | `NotifyCreateRoom` | corpo para inserção de sala (layout (gap)) | 301 | L1312–1347 |
 | 312 | `NotifyInRoom` | `i32 @0` = resultado (<0 erro, `i16 @0` código); sucesso (gap) | 311 | L1348–1349; L2858–2934 |
 | 314 | `NotifyRoomInfo` | cabeçalho `i16 @0`, `u8 @2..@4`, `i32 @8`; a partir de `@0x0c` campos de sala (`channel_server.md` §3.1) | (gap) | L1350–1388 |
