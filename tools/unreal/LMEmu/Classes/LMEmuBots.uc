@@ -21,8 +21,21 @@ static function LMEmuBots Open(LMEmuLoadout L)
     B = new(None) class'LMEmuBots';
     B.Source = L;
     B.ChatSkill = -1;
+    UseLMPRI();
     Log("LMEmu: bots" @ L.Bots.Length @ "linhas");
     return B;
+}
+
+// Bot com o PRI de jogador do LM (D250). O cliente só calcula o fim do rastro do tiro (LM_WeaponAttachment.GetHitInfo)
+// e só põe no sensor do HUD quem tem LM_xPlayerReplicationInfo. Com o PRI padrão, o rastro do bot ia para a
+// origem do mundo, que no ONS-Airport fica acima do piso: o tiro subia na vertical. O default de cada classe é
+// próprio, então vai nas três que podem criar o bot.
+static function UseLMPRI()
+{
+    class'Bot'.default.PlayerReplicationInfoClass = class'LM_xPlayerReplicationInfo';
+    class'xBot'.default.PlayerReplicationInfoClass = class'LM_xPlayerReplicationInfo';
+    if (class'LM_xPawn'.default.ControllerClass != None)
+        class'LM_xPawn'.default.ControllerClass.default.PlayerReplicationInfoClass = class'LM_xPlayerReplicationInfo';
 }
 
 // Próxima linha: a primeira cujo apelido ainda não foi usado na partida (D231). Com o pool gasto, o
@@ -140,7 +153,8 @@ function ClaimNext(Controller C)
     Bot(C).Skill = float(Opt(Line, "Skill"));
     if (Opt(Line, "MainWeapon") != "" && !(Opt(Line, "MainWeapon") ~= "none"))
         Bot(C).FavoriteWeapon = class<Weapon>(DynamicLoadObject(Opt(Line, "MainWeapon"), class'Class'));
-    Log("LMEmu: bot" @ Opt(Line, "Name") @ "morat" @ Opt(Line, "Morat") @ "especie" @ Opt(Line, "Species") @ "skill" @ Opt(Line, "Skill"));
+    Log("LMEmu: bot" @ Opt(Line, "Name") @ "morat" @ Opt(Line, "Morat") @ "especie" @ Opt(Line, "Species") @ "skill" @ Opt(Line, "Skill")
+        @ "classe" @ string(C.Class) @ "pri" @ string(C.PlayerReplicationInfo.Class));
 }
 
 // Tira o bot mais recente da partida (vaga para um humano ou /bot remove). Falso se não há bot.

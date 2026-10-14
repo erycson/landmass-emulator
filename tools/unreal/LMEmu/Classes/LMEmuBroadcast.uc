@@ -11,12 +11,23 @@ var GameInfo Game;
 // para todos.
 function bool AcceptBroadcastText(PlayerController Receiver, PlayerReplicationInfo SenderPRI, out string Msg, optional name Type)
 {
-    if (Left(Msg, 4) ~= "/bot" && SenderPRI != None && Loadout != None && Loadout.Owner != ""
-        && class'LMEmuLoadout'.static.HexOf(SenderPRI.PlayerName) == Loadout.Owner)
+    local int p;
+    local bool bDono;
+
+    // /bot em qualquer ponto: o primeiro teste com o cliente real mostrou "/bot add 7" no chat, sem comando.
+    p = InStr(Locs(Msg), "/bot");
+    if (p >= 0 && SenderPRI != None && Loadout != None)
     {
+        bDono = Loadout.Owner != "" && class'LMEmuLoadout'.static.HexOf(SenderPRI.PlayerName) == Loadout.Owner;
         if (Receiver != None && Receiver.PlayerReplicationInfo == SenderPRI)
-            Command(SenderPRI, Msg);
-        return false;
+        {
+            Log("LMEmu: chat /bot de" @ SenderPRI.PlayerName @ "hex" @ class'LMEmuLoadout'.static.HexOf(SenderPRI.PlayerName)
+                @ "dono" @ Loadout.Owner @ "tipo" @ string(Type) @ "msg [" $ Msg $ "]");
+            if (bDono)
+                Command(SenderPRI, Mid(Msg, p));
+        }
+        if (bDono)
+            return false;
     }
     return Super.AcceptBroadcastText(Receiver, SenderPRI, Msg, Type);
 }

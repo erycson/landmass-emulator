@@ -17,6 +17,14 @@ event PostBeginPlay()
     SetTimer(1.0, true);
 }
 
+// O cliente refaz o tiro de outro pawn com o ViewPitch replicado (LM_WeaponAttachment.GetHitInfo). Nenhum script
+// do motor atualiza o do bot; sem isso o rastro sairia na horizontal (D250).
+event Tick(float DeltaTime)
+{
+    if (Dono != None)
+        Dono.UpdatePawnViewPitch();
+}
+
 event Timer()
 {
     // Lutar parado (RangedAttack) e cair não são trava. PHYS_None conta: o WhatToDoNext a desfaz.

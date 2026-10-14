@@ -96,12 +96,13 @@ classe do morat (`class_allows`); o teste com o wdb real faz o mesmo com 30 seme
 partida, 16 bytes com o prefixo, sem caractere fora de ASCII. O prefixo `[BOT]` é recusado no cadastro
 (`account create`) e no pedido de contato, sem diferenciar caixa (`tests/test_account.py`).
 
-## Comportamento (D244 a D249)
+## Comportamento (D244 a D251)
 
 - Combate: o motor do UT2004 (TacticalMove, RangedAttack, Charging) com personalidade e notas de arma do LMEmu.
 - Caça e deslocamento: rota do mapa até onde está o inimigo, com penalidade nas arestas que travam e booster em trecho longo.
 - Ataque (TDM, D249): sem inimigo, 60% das decisões mandam o bot a um nó do território inimigo (base, túneis), alvo de 30 s.
 - Time: todo bot é freelance; nenhum segue o humano.
+- PRI: o bot usa `LM_xPlayerReplicationInfo`, como o humano. Sem ele, o rastro do tiro do bot subia na vertical, e o bot não aparecia no minimapa nem no sensor do HUD (D250).
 - Trava: o `LMEmuMarker` de cada bot chama o `WhatToDoNext` se o bot fica 4 s parado sem inimigo à vista (D248).
 - Medição: `LMEmu: ia` no log (flags, personalidade e notas), `LMEmuRec` com `bRecord=True`.
 
@@ -109,7 +110,6 @@ partida, 16 bytes com o prefixo, sem caractere fora de ASCII. O prefixo `[BOT]` 
 
 | Aviso | Situação |
 |-------|----------|
-| `LM_xPawn.Setup:027B` `Accessed None 'PlayerReplicationInfo'`, dois por bot | O pawn chama `Setup` antes do possess, quando o PRI ainda não existe. Efeito: `eSpeciesType` do PRI não é gravado. Não há gancho sem trocar a classe do pawn. |
 | `Class XGame.LM_AssaultRifle` not found | `FavoriteWeapon` do registro do `MORATS.upl`, lido em `InitBot` antes da reclamação. A `FavoriteWeapon` é trocada depois pela arma da linha. |
 | `LM_TeamDeathMatch.InitGameReplicationInfo` `Teams` None | Já existe na partida sem bots. Não é de bot. |
 | `CheckEndGame` e `ControlEndReason` `Winner` None | Já existe na partida sem bots. |
