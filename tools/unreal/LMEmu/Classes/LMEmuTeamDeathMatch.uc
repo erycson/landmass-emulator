@@ -62,6 +62,21 @@ event PlayerController Login(string Portal, string Options, out string Error)
     return Super.Login(Portal, Options, Error);
 }
 
+// Humano entrou: o mínimo passa a contar com ele (D229). A vaga tirada no Login já saiu do total.
+event PostLogin(PlayerController NewPlayer)
+{
+    Super.PostLogin(NewPlayer);
+    if (Botset != None)
+        Botset.Sync(self);
+}
+
+// O XGame arredonda o mínimo para par em time. Aqui o mínimo é o total exato de jogadores e bots, para
+// que /bot add crie um bot e não dois (D229). Times com diferença de um jogador: ver docs/architecture/08-bots.md.
+function int GetMinPlayers()
+{
+    return MinPlayers;
+}
+
 // Bot criado pelo nome do registro de jogador da linha (aparencia valida); depois reclama o bot novo.
 function bool AddBot(optional string botName)
 {
@@ -73,7 +88,10 @@ function bool AddBot(optional string botName)
     Line = Botset.NextLine();
     bOk = Super.AddBot(Botset.Opt(Line, "Record"));
     if (bOk)
-        Botset.ClaimNewest(Level.ControllerList, Line);
+    {
+        Botset.Expect(Line);
+        Botset.ClaimNewest(Level.ControllerList);
+    }
     return bOk;
 }
 
@@ -82,7 +100,10 @@ function RestartPlayer(Controller aPlayer)
     local string Line;
 
     if (Botset != None && Bot(aPlayer) != None)
+    {
+        Botset.ClaimIfNew(aPlayer);
         Line = Botset.LineOf(aPlayer);
+    }
     if (Line != "")
         Botset.Current = Line;
     Super.RestartPlayer(aPlayer);

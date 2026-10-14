@@ -41,7 +41,6 @@ function Command(PlayerReplicationInfo Sender, string Msg)
 
 function Add(PlayerReplicationInfo Sender, string Digit)
 {
-    local bool bOk;
     local int Skill;
 
     if (Botset == None)
@@ -61,13 +60,7 @@ function Add(PlayerReplicationInfo Sender, string Digit)
         Skill = 0;
     if (Skill > 7)
         Skill = 7;
-    Botset.ChatSkill = Skill;
-    if (LMEmuTeamDeathMatch(Game) != None)
-        bOk = LMEmuTeamDeathMatch(Game).AddBot();
-    else if (LMEmuDeathMatch(Game) != None)
-        bOk = LMEmuDeathMatch(Game).AddBot();
-    Botset.ChatSkill = -1;
-    if (bOk)
+    if (Botset.Add(Game, Skill))
         Reply(Sender, "Bot adicionado (skill" @ string(Skill) $ ").");
     else
         Reply(Sender, "Nao foi possivel adicionar o bot.");
