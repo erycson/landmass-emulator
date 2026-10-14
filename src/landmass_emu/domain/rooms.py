@@ -319,10 +319,12 @@ class Rooms:
         return room
 
     def exit_play(self, guid: int) -> Room | None:
-        """500: o jogador deixou a partida. Continua na sala. None se não estiver em sala."""
+        """500: o jogador deixou a partida e volta à sala sem pronto (D210), porque o cliente trava
+        Sair com pronto em sala jogando. Continua na sala. None se não estiver em sala."""
         room = self.room_of(guid)
-        if room is not None:
+        if room is not None and guid in room.in_game:
             room.in_game.discard(guid)
+            room.members[guid].ready = False
         return room
 
     def finish(self, room_id: int) -> Room | None:

@@ -295,7 +295,7 @@ async def test_ultimo_a_sair_da_partida_grava_o_historico_e_devolve_a_sala_a_esp
     _corpos(ana)
     _corpos(bia)
 
-    [saida] = await handlers.exit_play(ana, b"")
+    [saida, _lista] = await handlers.exit_play(ana, b"")  # 501 e o 317 de Ana, sem pronto
     assert isinstance(saida, CsExitPlayOut)
     assert historico.salvos == [] and sala.state == ROOM_PLAYING
 
@@ -368,6 +368,31 @@ async def test_volta_com_a_partida_em_andamento_responde_so_a_quem_volta_e_nao_e
     assert _corpos(bia) == []
     assert sala.state == ROOM_PLAYING
     assert historico.salvos == []
+
+
+async def test_sair_no_meio_da_partida_devolve_317_sem_pronto_e_a_sala_destrava() -> None:
+    """Bia sai pelo 500 com Ana ainda em jogo: o 317 de Bia vem sem pronto (o cliente trava Sair
+    com pronto em sala jogando, D210), a sala segue jogando e Bia volta (311) e sai (322)."""
+    host = _HostFalso()
+    handlers, lobby, rooms = _montagem(host, _Historico())
+    ana, bia, sala = await _partida(handlers, lobby, rooms)
+    _corpos(ana)
+    _corpos(bia)
+
+    saida, lista = await handlers.exit_play(bia, b"")
+
+    assert isinstance(saida, CsExitPlayOut)
+    assert [(p.client_guid, p.ready) for p in lista.players] == [(7, True), (9, False)]
+    assert sala.state == ROOM_PLAYING and sala.in_game == {7}
+    assert _corpos(ana) == []  # Ana segue em jogo: nada é difundido para os outros (D210)
+
+    respostas = await handlers.in_room(bia, struct.pack("<i16s", sala.room_id, b""))
+
+    assert [type(r) for r in respostas] == [CsInRoomOut, CsRoomInfoOut, CsRoomPlayerInfoOut]
+    assert [(p.client_guid, p.ready) for p in respostas[2].players] == [(7, True), (9, False)]
+    assert sala.state == ROOM_PLAYING and sala.in_game == {7}
+    await handlers.out_room(bia, b"")
+    assert rooms.room_of(9) is None
 
 
 async def test_sair_da_ultima_pessoa_em_jogo_encerra_a_partida_sem_travar_a_sala() -> None:
