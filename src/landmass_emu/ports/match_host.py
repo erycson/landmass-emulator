@@ -42,6 +42,11 @@ class MatchHost(Protocol):
         servidor gravar o log."""
         ...
 
+    async def command(self, room_id: int, line: str) -> bool:
+        """Repassa um comando do dono (`/bot add 7`) à partida da sala (D254). Falso se não
+        chegou."""
+        ...
+
     async def close(self) -> None:
         """Encerra todos os servidores (desligamento do emulador)."""
         ...

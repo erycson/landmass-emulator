@@ -84,7 +84,7 @@ class ChannelHandlers:
         )
         self._login = LoginHandlers(self._entry, accounts, inventory)
         self._morats = MoratHandlers(accounts, RegularService())
-        self._chat = ChatHandlers(lobby, rooms)
+        self._chat = ChatHandlers(lobby, rooms, match)
         self._gm = GmHandlers(lobby, audit)
         self._lists = ListHandlers(lobby, rooms, records, profiles)
         self._options = OptionHandlers(player_options)

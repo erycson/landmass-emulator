@@ -6,12 +6,17 @@ var LMEmuLoadout Loadout;
 var LMEmuBots Botset;
 var LMEmuRoutes Routes;
 var bool bBake;
+var LMEmuControl Control;
+var string CtlKey;
+var int CtlPort;
 
 event InitGame(string Options, out string Error)
 {
     Super.InitGame(Options, Error);
     bBake = class'LMEmuBake'.static.Wanted(Options);
-    Loadout = class'LMEmuLoadout'.static.Open(ParseOption(Options, "lmemu"));
+    CtlKey = ParseOption(Options, "lmemu");
+    CtlPort = int(ParseOption(Options, "lmemuctl"));
+    Loadout = class'LMEmuLoadout'.static.Open(CtlKey);
     if (Loadout != None)
         Botset = class'LMEmuBots'.static.Open(Loadout);
 }
@@ -27,22 +32,11 @@ event PostBeginPlay()
     class'LMEmuRecorder'.static.Start(Level);
     if (Botset != None)
         Routes = class'LMEmuRoutes'.static.Open(Level, class'LMEmuRoutes'.static.MapOf(Level));
-    if (Botset != None && Loadout.Owner != "")
-        InstallChat();
-}
-
-// Cadeia de chat: o handler do dono fica na frente e só intercepta /bot.
-function InstallChat()
-{
-    local LMEmuBroadcast H;
-
-    H = Spawn(class'LMEmuBroadcast');
-    H.Loadout = Loadout;
-    H.Botset = Botset;
-    H.Game = self;
-    H.NextBroadcastHandler = BroadcastHandler;
-    BroadcastHandler = H;
-    Log("LMEmu: comandos /bot do dono instalados");
+    if (Botset != None && Loadout.Owner != "" && CtlPort > 0)
+    {
+        Control = Spawn(class'LMEmuControl');
+        Control.Start(self, Loadout, Botset, CtlKey, CtlPort);
+    }
 }
 
 // O cliente carrega a classe do jogo pelo nome no GRI e compara com a original (xBombingRun no HUD);

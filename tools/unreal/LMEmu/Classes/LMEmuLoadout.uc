@@ -11,7 +11,7 @@ var config array<string> Players;
 // Bots da partida (D220): uma linha `Bots=?Name=Bot1?Record=..?Morat=..?MainWeapon=..` por bot
 // possível, na ordem em que o motor cria (LMEmuBots).
 var config array<string> Bots;
-// Apelido em hex do dono da sala: só ele usa /bot add e /bot remove (LMEmuBroadcast).
+// Apelido em hex do dono da sala: só ele usa /bot add e /bot remove (LMEmuControl).
 var config string Owner;
 
 static function LMEmuLoadout Open(string Key)

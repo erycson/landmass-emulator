@@ -62,7 +62,11 @@ Bots=?Name=[BOT] Maverick?Skill=3?Species=XGame.SPECIES_DefenderB?Morat=10300000
   não com o roster do UT2004 (`Jakob` etc. não existem no LandMass).
 - O equipamento do bot entra pelo `AddDefaultInventory` do jogo (`Equip`), por `NewCreateInventory` de cada
   classe da linha. O do pawn não serve ao bot, porque lê o `PlayerController` do humano.
-- `LMEmuBroadcast` fica na frente da cadeia de `BroadcastHandler` e trata `/bot` (D223).
+- O `/bot` não passa pelo servidor de jogo: o cliente manda o chat da partida ao canal (240 com
+  ` //GAMECHAT`, `SendMsgEx`). O `ChatHandlers` do emulador separa o `/bot` do dono com a sala em
+  partida e o repassa pelo canal de comandos (`hosting/control.py`, porta local `?lmemuctl=`).
+  `LMEmuControl` (`TcpLink`) conecta, manda `hello <chave>`, executa a linha e devolve a resposta,
+  que vai ao dono por `ClientMessage` e ao log do emulador (D254).
 - `LMEmuRecorder` (`bRecord=True`): grava posições e, a cada 10 s, uma linha `LMEmu: contagem` com jogadores,
   bots, mínimo e máximo. `TesteAdd=N` (só para teste, padrão 0) faz N `/bot add` aos 15 s pelo mesmo `Botset.Add`.
 
@@ -126,8 +130,8 @@ partida, 16 bytes com o prefixo, sem caractere fora de ASCII. O prefixo `[BOT]` 
 - `LM_TeamGame.RestartPlayer` destrói bot cujo time tem dois jogadores a mais (lido no XGame). Não apareceu
   nas execuções desta fase, e nada foi mudado para isso. Se aparecer, a correção é desligar `bBalanceTeams`
   só no respawn do bot.
-- Chat `/bot add` real: o comando e a resposta não rodaram sem cliente. O disparo de teste usa o mesmo
-  `Botset.Add`, mas não o caminho `AcceptBroadcastText`.
+- Chat `/bot add` real: o canal de comandos rodou sem cliente (add, remove e comando inválido); falta o
+  teste com o cliente e conferir se o `ClientMessage` aparece no chat do LM.
 - Ordem de `CalcPawnSpeedValues` no jogador humano (D141): não testada sem cliente.
 - Ping 0 do bot: gravado no PRI, mas o placar não foi visto.
 - Recompensa: o LM escreve um bloco `GameEnded` por jogador, bots incluídos. O emulador separa os bots pela flag

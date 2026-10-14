@@ -23,5 +23,8 @@ class FixedMatchHost:
     async def end(self, room_id: int) -> tuple[GameEndedPlayer, ...]:
         return ()
 
+    async def command(self, room_id: int, line: str) -> bool:
+        return False
+
     async def close(self) -> None:
         return None

@@ -14,6 +14,7 @@ from landmass_emu.domain.match import MapRecord, MatchPlan
 from landmass_emu.domain.match_stats import GameEndedPlayer, MatchRecord
 from landmass_emu.domain.progression import Progression
 from landmass_emu.domain.rooms import ROOM_PLAYING, ROOM_WAITING, Room, Rooms
+from landmass_emu.handlers.channel.chat import ChatHandlers
 from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.handlers.channel.rooms import (
     END_SHUTDOWN,
@@ -45,6 +46,7 @@ class _HostFalso:
         self._bloco = bloco
         self.iniciados: list[tuple[int, MatchPlan]] = []
         self.encerrados: list[int] = []
+        self.comandos: list[tuple[int, str]] = []
         self.on_exit: Callable[[], Awaitable[None]] | None = None
 
     async def start(
@@ -62,6 +64,10 @@ class _HostFalso:
     async def end(self, room_id: int) -> tuple[GameEndedPlayer, ...]:
         self.encerrados.append(room_id)
         return self._bloco
+
+    async def command(self, room_id: int, line: str) -> bool:
+        self.comandos.append((room_id, line))
+        return True
 
     async def close(self) -> None:
         return None
@@ -673,3 +679,24 @@ async def test_prazo_com_partida_que_nao_termina_encerra_e_grava_no_canal() -> N
     [gravado] = historico.salvos
     assert gravado.end_reason == END_SHUTDOWN
     assert sala.state == ROOM_WAITING
+
+
+async def test_bot_do_dono_na_partida_vai_a_partida_e_nao_ao_chat() -> None:
+    """D254: o cliente manda o chat da partida pelo 240 com ` //GAMECHAT`; o `/bot` do dono segue à
+    partida pelo canal de comandos e não volta à sala. O de outro jogador é chat comum."""
+    host = _HostFalso()
+    handlers, lobby, rooms = _montagem(host)
+    ana, bia, sala = await _partida(handlers, lobby, rooms)
+    chat = ChatHandlers(lobby, rooms, host)
+    _corpos(ana)
+    _corpos(bia)
+
+    texto = b"/bot add 7 //GAMECHAT"
+    await chat.send_message(ana, bytes([0, len(texto)]) + texto)
+    assert host.comandos == [(sala.room_id, "/bot add 7")]
+    assert _corpos(bia) == []
+
+    texto = b"/bot remove //GAMECHAT"
+    await chat.send_message(bia, bytes([0, len(texto)]) + texto)
+    assert host.comandos == [(sala.room_id, "/bot add 7")]
+    assert [op for op, _ in _corpos(ana)] == [CsOp.SEND_MESSAGE_OUT]

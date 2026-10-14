@@ -27,6 +27,7 @@ from uuid import uuid4
 from landmass_emu.domain.match import MatchPlan
 from landmass_emu.domain.match_stats import GameEndedPlayer
 from landmass_emu.hosting.command import build_command, udp_listeners
+from landmass_emu.hosting.control import MatchControl
 from landmass_emu.hosting.game_end import parse_game_ended
 from landmass_emu.hosting.loadout import LoadoutFile
 from landmass_emu.hosting.window import send_exit
@@ -94,6 +95,12 @@ class ProcessMatchHost:
         self._loadouts = LoadoutFile(config.server_dir / LOADOUT_FILE)
         self._running: dict[int, _Running] = {}
         self._watchers: set[asyncio.Task[None]] = set()
+        self._control = MatchControl()
+
+    async def command(self, room_id: int, line: str) -> bool:
+        """Repassa `line` ao LMEmu da partida da sala (D254). Falso sem partida ou sem conexão."""
+        match = self._running.get(room_id)
+        return match is not None and await self._control.send(match.loadout_key, line)
 
     async def start(self, room_id: int, plan: MatchPlan, on_exit: ExitCallback) -> GameEndpoint:
         self.finish(room_id)
@@ -106,9 +113,8 @@ class ProcessMatchHost:
         except OSError as e:
             raise MatchStartError(f"LMEmu.ini não gravado: {e}") from e
         try:
-            process = await self._spawn(
-                self._argv(replace(plan, lmemu_key=key), port, log_name), self._config.server_dir
-            )
+            plan = replace(plan, lmemu_key=key, control_port=await self._control.port())
+            process = await self._spawn(self._argv(plan, port, log_name), self._config.server_dir)
         except BaseException:
             self._loadouts.remove(key)
             raise
@@ -159,6 +165,7 @@ class ProcessMatchHost:
     async def close(self) -> None:
         for room_id in list(self._running):
             self.finish(room_id)
+        await self._control.close()
 
     def _default_argv(self, plan: MatchPlan, port: int, log_name: str) -> list[str]:
         return build_command(

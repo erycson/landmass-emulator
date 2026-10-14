@@ -14,6 +14,8 @@ def match_url(plan: MatchPlan) -> str:
     `lmemu` manda o pacote LMEmu ler a seção do equipamento (D190). Com bots, `MinPlayers` leva a
     partida até o total de bots, humanos incluídos (D220); sem bots a URL não muda."""
     lmemu = f"?lmemu={plan.lmemu_key}" if plan.lmemu_key else ""
+    if plan.control_port:
+        lmemu += f"?lmemuctl={plan.control_port}"  # canal do /bot (D254)
     minimo = f"?MinPlayers={plan.bots}" if plan.bots else ""
     return (
         f"{plan.map_file}?listen?game={plan.game_class}?MaxPlayers={plan.max_players}"

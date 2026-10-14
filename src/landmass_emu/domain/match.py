@@ -55,6 +55,8 @@ class MatchPlan:
     bots: int = 0
     # Linhas `chave=valor` da mesma seção além dos `Players=` (`Bots=`, `Owner=`; D220).
     loadout_extra: tuple[tuple[str, str], ...] = ()
+    # Porta local do canal de comandos (`?lmemuctl=`, D254). Quem põe é o servidor de partida.
+    control_port: int = 0
 
 
 def game_class_for(game_mode: int, team_count: int, op_type: int) -> str:
