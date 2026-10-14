@@ -49,6 +49,10 @@ class MatchPlan:
     loadout: tuple[str, ...] = ()
     # Chave da seção do LMEmu.ini (`?lmemu=`). Quem põe é o servidor de partida ao lançar.
     lmemu_key: str = ""
+    # Bots da partida, limitados ao máximo da sala (D220): `?MinPlayers=` e uma linha `Bots=` cada.
+    bots: int = 0
+    # Linhas `chave=valor` da mesma seção além dos `Players=` (`Bots=`, `Owner=`; D220).
+    loadout_extra: tuple[tuple[str, str], ...] = ()
 
 
 def game_class_for(game_mode: int, team_count: int, op_type: int) -> str:
@@ -63,7 +67,7 @@ def game_class_for(game_mode: int, team_count: int, op_type: int) -> str:
     return GAME_DEATHMATCH
 
 
-def build_plan(room: Room, map_record: MapRecord) -> MatchPlan:
+def build_plan(room: Room, map_record: MapRecord, bots: int = 0) -> MatchPlan:
     # Limite de jogadores: o da sala, limitado pelo que o mapa comporta.
     max_players = min(max(room.max_player, MIN_PLAYERS), map_record.player_max)
     return MatchPlan(
@@ -72,4 +76,6 @@ def build_plan(room: Room, map_record: MapRecord) -> MatchPlan:
         max_players=max_players,
         time_limit=room.limit_time,
         goal_score=room.limit_score,
+        # Bot cabe na sala: o total da partida não passa do máximo de jogadores (D220).
+        bots=min(bots, max_players),
     )

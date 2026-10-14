@@ -157,3 +157,33 @@ def test_pasta_do_servidor_exige_login_num(tmp_path: Path) -> None:
 def test_faixa_de_portas_invertida_e_recusada() -> None:
     with pytest.raises(ValidationError, match="PORT_MIN"):
         Settings(_env_file=None, match_port_min=7900, match_port_max=7800)
+
+
+def test_bots_padrao_zero_e_faixa_de_0_a_31() -> None:
+    assert Settings(_env_file=None).match_bots == 0
+    assert Settings(_env_file=None, match_bots=31).match_bots == 31
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, match_bots=-1)
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, match_bots=32)
+
+
+def test_url_com_bots_leva_minplayers_antes_da_chave_lmemu() -> None:
+    plano = MatchPlan("ONS-Treino", GAME_DEATHMATCH, 8, 10, 20, lmemu_key="m1a2b3c4d", bots=4)
+
+    assert match_url(plano) == (
+        "ONS-Treino?listen?game=LMEmu.LMEmuDeathMatch?MaxPlayers=8?MaxSpectators=2"
+        "?TimeLimit=10?GoalScore=20?MinPlayers=4?lmemu=m1a2b3c4d"
+    )
+
+
+def test_url_sem_bots_nao_leva_minplayers() -> None:
+    assert "MinPlayers" not in match_url(MatchPlan("ONS-Treino", GAME_DEATHMATCH, 8, 10, 20))
+
+
+def test_plano_limita_bots_ao_maximo_da_sala() -> None:
+    mapa = MapRecord(record_id=1, file_name="ONS-Treino", player_max=32, op_type=0)
+
+    assert build_plan(_sala(max_player=8), mapa).bots == 0
+    assert build_plan(_sala(max_player=8), mapa, bots=3).bots == 3
+    assert build_plan(_sala(max_player=8), mapa, bots=40).bots == 8

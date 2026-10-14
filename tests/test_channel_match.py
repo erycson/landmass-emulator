@@ -107,10 +107,17 @@ class _Equipamento:
     """Serviço de equipamento sem banco: devolve linhas fixas, ou levanta `erro` como o catálogo
     faz quando o wdb não tem as tabelas."""
 
-    def __init__(self, linhas: tuple[str, ...] = (), erro: Exception | None = None) -> None:
+    def __init__(
+        self,
+        linhas: tuple[str, ...] = (),
+        erro: Exception | None = None,
+        bots_erro: Exception | None = None,
+    ) -> None:
         self._linhas = linhas
         self._erro = erro
+        self._bots_erro = bots_erro
         self.chamadas: list[tuple[list[LoadoutMember], str, int]] = []
+        self.pedidos_de_bot: list[int] = []
 
     async def lines(
         self, membros: list[LoadoutMember], game_class: str, team_count: int
@@ -119,6 +126,12 @@ class _Equipamento:
         if self._erro is not None:
             raise self._erro
         return self._linhas
+
+    def bot_lines(self, count: int) -> tuple[tuple[str, str], ...]:
+        self.pedidos_de_bot.append(count)
+        if self._bots_erro is not None:
+            raise self._bots_erro
+        return tuple(("Bots", f"?Name=Bot{k}") for k in range(1, count + 1))
 
 
 def _montagem(
@@ -129,6 +142,7 @@ def _montagem(
     auditoria: _Auditoria | None = None,
     equipamento: _Equipamento | None = None,
     aceitando: Callable[[], bool] | None = None,
+    bots: int = 0,
 ) -> tuple[RoomHandlers, Lobby, Rooms]:
     lobby = Lobby()
     rooms = Rooms()
@@ -143,6 +157,7 @@ def _montagem(
         audit=auditoria,
         loadout=equipamento,
         accepting_matches=aceitando,
+        match_bots=bots,
     )
     return handlers, lobby, rooms
 
@@ -233,6 +248,49 @@ async def test_plano_leva_o_equipamento_de_cada_jogador_ao_host() -> None:
         (7, "Ana", 0, 0),
         (9, "Bia", 1, 0),
     ]
+
+
+async def test_bots_e_dono_vao_na_secao_da_partida() -> None:
+    host = _HostFalso()
+    equipamento = _Equipamento()
+    handlers, lobby, rooms = _montagem(host, _Historico(), equipamento=equipamento, bots=3)
+    await _partida(handlers, lobby, rooms)
+
+    [(_, plano)] = host.iniciados
+    assert plano.bots == 3
+    assert equipamento.pedidos_de_bot == [3]
+    # Bots antes do dono; o dono é Ana (guid 7), em hex.
+    assert plano.loadout_extra == (
+        ("Bots", "?Name=Bot1"),
+        ("Bots", "?Name=Bot2"),
+        ("Bots", "?Name=Bot3"),
+        ("Owner", "0041006E0061"),
+    )
+
+
+async def test_sem_bots_so_a_linha_do_dono() -> None:
+    host = _HostFalso()
+    equipamento = _Equipamento()
+    handlers, lobby, rooms = _montagem(host, _Historico(), equipamento=equipamento)
+    await _partida(handlers, lobby, rooms)
+
+    [(_, plano)] = host.iniciados
+    assert plano.bots == 0
+    assert equipamento.pedidos_de_bot == []
+    assert plano.loadout_extra == (("Owner", "0041006E0061"),)
+
+
+async def test_sorteio_de_bot_que_falha_sobe_a_partida_sem_bots_e_com_os_jogadores() -> None:
+    host = _HostFalso()
+    equipamento = _Equipamento(
+        ("0041006E0061|?Team=0?morats=101000001",), bots_erro=ValueError("sem morat")
+    )
+    handlers, lobby, rooms = _montagem(host, _Historico(), equipamento=equipamento, bots=2)
+    await _partida(handlers, lobby, rooms)
+
+    [(_, plano)] = host.iniciados
+    assert plano.loadout == ("0041006E0061|?Team=0?morats=101000001",)
+    assert plano.loadout_extra == (("Owner", "0041006E0061"),)
 
 
 async def test_erro_do_catalogo_sobe_a_partida_sem_equipamento() -> None:

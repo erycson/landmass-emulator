@@ -33,6 +33,7 @@ game_port = 7777
 match_port_min = 7800
 match_port_max = 7899
 match_ready_timeout = 30.0
+# match_bots = 0  # total mínimo de jogadores com bots, humanos incluídos (D220); 0 a 31, só com match_server_dir
 
 # Log de economia (compra, destruição, extensão), uma linha JSON por evento.
 audit_log = "data/audit/economy.jsonl"

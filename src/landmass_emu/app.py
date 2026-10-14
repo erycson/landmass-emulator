@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import random
 from collections.abc import AsyncIterator, Callable, Sequence
 from contextlib import asynccontextmanager
 
@@ -25,6 +26,7 @@ from landmass_emu.db.ranking import SqlRankingRepository
 from landmass_emu.db.shop import SqlShopItemRepository, SqlShopRepository
 from landmass_emu.db.social import SqlSocialRepository
 from landmass_emu.db.use import SqlUseRepository
+from landmass_emu.domain.bots import BotLoadout
 from landmass_emu.domain.channel import Channel
 from landmass_emu.domain.consumables import ConsumableService
 from landmass_emu.domain.equipment import EquipService
@@ -45,6 +47,7 @@ from landmass_emu.handlers.channel.gift import GiftHandlers
 from landmass_emu.handlers.channel.notice import GlobalNotice
 from landmass_emu.handlers.message import MessageHandlers
 from landmass_emu.hosting.fixed import FixedMatchHost
+from landmass_emu.hosting.player_records import PlayerRecordFile
 from landmass_emu.hosting.process import ProcessHostConfig, ProcessMatchHost
 from landmass_emu.net.server import Service
 from landmass_emu.ports.accounts import AccountRepository
@@ -203,6 +206,7 @@ async def channel_server(
         gifts=GiftHandlers(gifts, lobby, audit),
         loadout=loadout,
         accepting_matches=shutdown.accepting,
+        match_bots=settings.match_bots,
     )
     shutdown.attach(_ChannelShutdown(GlobalNotice(lobby), lobby, handlers))
     server = await Service(
@@ -346,7 +350,12 @@ def _game_services(
         repository=SqlGiftRepository(db),
         locks=locks,
     )
-    loadout = LoadoutService(catalog=catalog, inventory=inventory, accounts=accounts)
+    # Bots (D220, D221) só com a pasta do servidor de partida: o LMEmu.ini e o MORATS.upl são dela.
+    bots = None
+    if settings.match_bots and settings.match_server_dir is not None:
+        records = PlayerRecordFile(settings.match_server_dir / "MORATS.upl")
+        bots = BotLoadout(catalog=catalog, records=records, rng=random.Random())
+    loadout = LoadoutService(catalog=catalog, inventory=inventory, accounts=accounts, bots=bots)
     handlers = EquipmentHandlers(
         equip=EquipService(
             catalog=catalog,

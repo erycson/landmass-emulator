@@ -17,7 +17,7 @@ from functools import partial
 from uuid import uuid4
 
 from landmass_emu.audit import EconomyAudit
-from landmass_emu.domain.loadout import LoadoutMember, LoadoutService
+from landmass_emu.domain.loadout import LoadoutMember, LoadoutService, owner_entries
 from landmass_emu.domain.lobby import Lobby
 from landmass_emu.domain.match import MatchPlan, build_plan
 from landmass_emu.domain.match_stats import (
@@ -154,6 +154,7 @@ class RoomHandlers:
         audit: EconomyAudit | None = None,
         loadout: LoadoutService | None = None,
         accepting_matches: Callable[[], bool] | None = None,
+        match_bots: int = 0,
     ) -> None:
         self._lobby = lobby
         self._rooms = rooms
@@ -164,6 +165,9 @@ class RoomHandlers:
         self._progression = progression
         self._audit = audit
         self._loadout = loadout
+        # Bots por partida (D220): total mínimo de jogadores, humanos incluídos. A sala continua
+        # contando só humanos (domain/rooms.py).
+        self._match_bots = match_bots
         # Falso no desligamento: sala nova e início de partida são recusados (D202).
         self._accepting = accepting_matches or (lambda: True)
         # Histórico em curso por sala: quem jogou no início. O fim e o motivo vêm depois.
@@ -626,8 +630,25 @@ class RoomHandlers:
             raise MatchStartError(f"catálogo de mapas indisponível: {e}") from e
         if record is None:
             raise MatchStartError(f"mapa {room.map_num} não existe no catálogo")
-        plan = build_plan(room, record)
-        return replace(plan, loadout=await self._loadout_of(room, plan.game_class))
+        plan = build_plan(room, record, bots=self._match_bots)
+        return replace(
+            plan,
+            loadout=await self._loadout_of(room, plan.game_class),
+            loadout_extra=self._loadout_extra(room, plan),
+        )
+
+    def _loadout_extra(self, room: Room, plan: MatchPlan) -> tuple[tuple[str, str], ...]:
+        """Linhas `Bots=` e `Owner=` da seção do LMEmu.ini (D220). Sorteio sem morat sorteável
+        (ValueError) sobe a partida sem bots; os `Players=` não dependem disso."""
+        if self._loadout is None:
+            return ()
+        extra = owner_entries(self._lobby.nickname_of(room.master))
+        if plan.bots:
+            try:
+                extra = (*self._loadout.bot_lines(plan.bots), *extra)
+            except ValueError as e:
+                log.warning("sala %d sem bots: %s", room.room_id, e)
+        return extra
 
     async def _loadout_of(self, room: Room, game_class: str) -> tuple[str, ...]:
         """Equipamento de cada jogador (LMEmu.ini, D190). Erro do catálogo não impede a partida: ela

@@ -102,7 +102,7 @@ class ProcessMatchHost:
         log_name = f"partida-{port}-{token}.log"
         key = f"m{token}"
         try:
-            self._loadouts.write(key, plan.loadout)
+            self._loadouts.write(key, [*plan.loadout, *plan.loadout_extra])
         except OSError as e:
             raise MatchStartError(f"LMEmu.ini não gravado: {e}") from e
         try:

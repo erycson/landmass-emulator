@@ -87,6 +87,9 @@ class Settings(BaseSettings):
     match_ready_timeout: Annotated[float, Field(gt=0, le=300)] = 30.0
     # login_num do servidor de partida: o mesmo do cliente de teste (re/game_server_host.md §5).
     match_login_num: Annotated[str | None, Field(max_length=36)] = None
+    # Bots (D220): total mínimo de jogadores da partida, humanos e bots (`?MinPlayers=`). Só vale
+    # com `match_server_dir`; o motor completa a partida com bots até este número.
+    match_bots: Annotated[int, Field(ge=0, le=31)] = 0
     # Log de economia (compra, destruição, extensão), uma linha JSON por evento (D120).
     audit_log: Path = Path("data/audit/economy.jsonl")
     # Desligamento (D202): prazo máximo para sair, avisos antes do prazo e arquivo do comando

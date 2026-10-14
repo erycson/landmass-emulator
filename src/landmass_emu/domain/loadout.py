@@ -12,6 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
+from landmass_emu.domain.bots import BotLoadout
 from landmass_emu.domain.equipment import SYSTEM_SLOT_COUNT
 from landmass_emu.domain.inventory import ItemUnit, MoratUnit
 from landmass_emu.domain.match import GAME_DEATHMATCH, TEAM_COUNT_FOR_TEAM_GAME
@@ -62,6 +63,12 @@ class LoadoutCatalog(Protocol):
 def nickname_hex(nickname: str) -> str:
     """Chave do jogador no LMEmu: 4 dígitos hexadecimais por caractere (`LMEmuLoadout.HexOf`)."""
     return "".join(f"{ord(c):04X}" for c in nickname)
+
+
+def owner_entries(nickname: str | None) -> tuple[tuple[str, str], ...]:
+    """Linha `Owner=` da seção, com o apelido do dono da sala em hex (D220). Sala sem dono com
+    apelido não leva linha."""
+    return (("Owner", nickname_hex(nickname)),) if nickname else ()
 
 
 def nickname_option(nickname: str) -> str:
@@ -117,10 +124,19 @@ class LoadoutService:
         catalog: LoadoutCatalog,
         inventory: InventoryRepository,
         accounts: AccountRepository,
+        bots: BotLoadout | None = None,
     ) -> None:
         self._catalog = catalog
         self._inventory = inventory
         self._accounts = accounts
+        self._bots = bots
+
+    def bot_lines(self, count: int) -> tuple[tuple[str, str], ...]:
+        """Linhas `Bots=`, uma por bot (D220). Sem bots configurados, ou `count` zero, não há linha.
+        Sorteio sem morat sorteável levanta ValueError para quem chama."""
+        if count <= 0 or self._bots is None:
+            return ()
+        return tuple(("Bots", linha) for linha in self._bots.lines(count))
 
     async def lines(
         self, members: Sequence[LoadoutMember], game_class: str, team_count: int
