@@ -15,7 +15,7 @@ Este documento cobre o que o emulador implementa: marco 2 (entrada, lobby, chat)
 | 4xx | Sala: pronto, início, slot, configuração (411/412), expulsão (451) e convite (461 a 471) | marco 3 (401 a 471) |
 | 5xx | Itens, loja, hangar, presentes | marco 5 |
 | 7xx | Expulsão pelo console (700/701) | decodificado; não executado (item 20) |
-| `GS_*` | Game Server Host ↔ Channel (autenticado por `ch_pw`) | marco 4 |
+| `GS_*` | Game Server Host ↔ Channel (autenticado por `ch_pw`) | não usado pelo DM (`re/game_server_host.md` §11) |
 
 Sequência de entrada pelo cliente, conforme `re/NOTES.md`: `101 → 111 → 151 → 141 → 121`. O emulador mantém a ordem.
 

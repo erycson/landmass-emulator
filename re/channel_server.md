@@ -283,7 +283,7 @@ Pareamento pedido/resposta: somente o log e o código observados; o resto é inf
 
 ## 4. Mensagens GS_* (Channel ↔ servidor de jogo)
 
-Estes handlers ficam em `LM_Engine.dll` e processam mensagens recebidas quando o `LM_Engine` atua como servidor de jogo (`InitServer` conecta ao Channel com `ch_ip`/`ch_port`, `re/NOTES.md`). A direção é inferida: o Channel envia `GS_IN_PLAYER` e `GS_OUT_PLAYER`; o `LM_Engine` responde a `GS_IN_PLAYER`.
+Estes handlers ficam em `LM_Engine.dll` e processam mensagens recebidas quando o `LM_Engine` atua como servidor de jogo (`InitServer` conecta ao Channel com `ch_ip`/`ch_port`, `re/NOTES.md`). A direção é inferida: o Channel envia `GS_IN_PLAYER` e `GS_OUT_PLAYER`; o `LM_Engine` responde a `GS_IN_PLAYER`. Verificado: a partida DM não usa este caminho (`game_server_host.md`, seção 11).
 
 Evidência geral: `FUN_1000bcd0` @0x1000bcd0..0x1000bedf. Frame: `u16` tamanho @0, cabeçalho @2, corpo @4. Opcode = `hdr >> 5`.
 

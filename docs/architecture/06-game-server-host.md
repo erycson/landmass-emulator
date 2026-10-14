@@ -2,7 +2,7 @@
 
 ## Problema
 
-A partida roda em um processo UE2 em modo servidor (`LandMass.exe ... -server`). O cliente só precisa do endereço e da porta no 403 (`NotifyStartGame`); o servidor abre a porta UDP sozinho. O caminho com `GS_*` (`UServerEngine` e `InitServer` de `LM_Engine.dll`) não é usado para o deathmatch. Evidência: [`../../re/game_server_host.md`](../../re/game_server_host.md), seções 9 e 10.
+A partida roda em um processo UE2 em modo servidor (`LandMass.exe ... -server`). O cliente só precisa do endereço e da porta no 403 (`NotifyStartGame`); o servidor abre a porta UDP sozinho. O caminho com `GS_*` (`UServerEngine` e `InitServer` de `LM_Engine.dll`) não é usado para o deathmatch. Evidência: [`../../re/game_server_host.md`](../../re/game_server_host.md), seções 9, 10 e 11.
 
 ## Como funciona (marco 4)
 
@@ -41,6 +41,8 @@ Nos três casos o canal faz o mesmo: encerra o processo (`MatchHost.finish`), vo
 
 Quem entra de novo na própria sala depois da partida (311) recebe 312, 314 e 317 só para si (D49).
 
+O bloco `GameEnded` do log não é lido. O servidor só o escreve no `EndGame` (último jogador ou sala vazia), e o emulador encerra a partida com `terminate`, sem saída limpa. Por isso o log pode não trazer o bloco. Métricas ficam nulas (D86; `re/game_server_host.md`, seções 11.4 e 11.5).
+
 ## Partida em memória
 
 Salas e partida em andamento ficam só em memória (D24, D52). Se o emulador cai, as salas somem e a partida começa de novo. Nada é gravado durante a partida. Ao fim, o histórico vai para `matches` e `match_players` (ver [`04-persistence.md`](04-persistence.md), "Histórico de partidas").
@@ -55,7 +57,7 @@ Salas e partida em andamento ficam só em memória (D24, D52). Se o emulador cai
 | `ServerRoom()` | Acesso ao `CServerRoom` (jogadores autorizados da sala). |
 | `UServerLevel::NotifyReceivedText` | Handshake UE2; no `LOGIN`, chama `LoginPlayer(key, name, team)`. |
 
-Este contrato só seria necessário se a validação de jogador fosse feita pelo servidor de partida. Hoje o `key` e o `team` do cliente não são conferidos no caminho de deathmatch (re/game_server_host.md, §9.2).
+Este contrato só seria necessário se a validação de jogador fosse feita pelo servidor de partida. Hoje o `key` e o `team` do cliente não são conferidos no caminho de deathmatch (re/game_server_host.md, §9.2). A subida DM não abre TCP para 7313 nem 7314 (`re/game_server_host.md`, §11.2), e o DM não lê `key` nas opções de URL (§11.3).
 
 ## Abordagens
 
@@ -73,8 +75,8 @@ Este contrato só seria necessário se a validação de jogador fosse feita pelo
 
 ## Riscos e pendências
 
-- Partida real não testada no jogo: a porta por `PORT=` (validada só pelo código do RE), o 403 atrasado, o 500 como fim e o 501 com valor 0 dependem do cliente real.
-- Estatísticas de partida: a coleta do bloco `GameEnded` do log não está implementada. Por enquanto as métricas ficam nulas (ver `04-persistence.md`).
+- Partida real não testada no jogo: a porta por `PORT=` (UDP aberta com o PID, §11.2), o 403 atrasado, o 500 como fim e o 501 com valor 0 dependem do cliente real.
+- Estatísticas de partida: o bloco `GameEnded` não é lido (D86). As métricas ficam nulas (ver `04-persistence.md`).
 - Matching de `map_num` com `RecordIndex` e unidades de `TimeLimit` são inferidos (D53).
 - Um cliente que nunca manda 500 com o servidor vivo mantém a sala em jogo até o processo cair. Sem prazo próprio de partida (ver `operations/game-server.md`).
 - Modo fixo também precisa do `landmass.wdb` e do mapa da sala: sem eles o 401 devolve 241000201. Antes do marco 4 o 403 saía sem consultar o catálogo, então é uma mudança de comportamento.

@@ -40,9 +40,9 @@ Execute `system\servidor.bat` (a janela fica aberta enquanto o servidor roda). A
 LandMass.exe ONS-Treino?listen -server -log login_server=127.0.0.1:7313?version=<V>?login_num=<L>
 ```
 
-- Argumentos do motor vêm ANTES de `login_server=`. Qualquer token depois de `login_num=...` faz o executável sair com código 0, sem log (validado em 2026-10-13: UDP 7777 aberta, `Game class is 'LM_DeathMatch'`, `Bringing Level ONS-Treino.myLevel up for play`).
+- Argumentos do motor vêm ANTES de `login_server=`. Nas execuções de 2026-10-13, a linha montada com aspas duplas no PowerShell perdeu `login_num=` e o executável saiu com código 0, sem log (`re/game_server_host.md` §11.1). Montada por concatenação, a linha sobe (validado em 2026-10-13: UDP 7777 aberta, `Game class is 'LM_DeathMatch'`, `Bringing Level ONS-Treino.myLevel up for play`).
 - `version=` e `login_num=` são copiados de `cliente\system\jogar_teste.bat`. Sem eles o executável também sai com 0 (ver [`../../re/cmdline.md`](../../re/cmdline.md)).
-- O servidor não usa `login_server=`: ele não fala com o Message Server.
+- A partida DM não abre TCP para o Message Server (7313) nem para o Channel (7314) em 15 s, mesmo com `login_server=` apontando para um listener local (`re/game_server_host.md` §11.2).
 - `-log` sem valor: o nome do arquivo de log segue o padrão do motor (`system\LandMass.log`). `-log=Server.log` não foi testado.
 - Não rode o servidor dentro de `cliente` ou `cliente2`. Cada pasta tem seu próprio `LandMass.log` e `User.ini`.
 
@@ -79,7 +79,7 @@ Arquivo: `D:\landmass\servidor-partida\system\LandMass.log`, gravado no encerram
 | Processo vivo e UDP 7777 em `netstat` | O servidor subiu. |
 | `Game class is '...'` e `Bringing Level ... up for play` | Mapa carregado (padrão observado no cliente; a linha exata do servidor não foi observada). |
 | `binding to port ... failed` (IpDrv) ou `Failed to listen` / `NetListen` (Engine) | A porta não abriu. |
-| Saída em poucos segundos, sem `LandMass.log` | Argumento depois de `login_num=`, ou falta `login_server=`/`version=`/`login_num=`. Ponha os argumentos do motor no início. |
+| Saída em poucos segundos, sem `LandMass.log` | Aspas duplas no PowerShell perdem `login_num=` (monte por concatenação), ou falta `login_server=`/`version=`/`login_num=`. Ponha os argumentos do motor no início. |
 | Log de LOGIN recusado | A validação está na lógica UnrealScript (`XGame`), não em `LM_Engine.dll` (ver `re/game_server_host.md`). |
 
 ## Partida lançada pelo emulador (marco 4)
@@ -127,7 +127,7 @@ Os logs do servidor de partida (`servidor-partida\system\LandMass.log`) só são
 
 - A partida não foi jogada por agente. Os passos 5 a 10 dependem do cliente real.
 - Não há prazo próprio de partida. Se um cliente nunca manda 500 e o servidor não cai, a sala fica jogando até alguém sair.
-- As métricas de jogador ficam nulas. O bloco `GameEnded` do log ainda não é lido (ver `04-persistence.md`, "Histórico de partidas").
+- As métricas de jogador ficam nulas. O bloco `GameEnded` não é lido (D86: o servidor só o escreve no `EndGame`, e o log não é descarregado sem saída limpa; `re/game_server_host.md` §11.4 e §11.5) (ver `04-persistence.md`, "Histórico de partidas").
 - Salas e partidas em andamento são só de memória: reiniciar o emulador zera as salas.
 
 ## Riscos e pendências
@@ -137,3 +137,4 @@ Os logs do servidor de partida (`servidor-partida\system\LandMass.log`) só são
 - Saídas precoces (~20 ms, sem log) ainda sem causa comprovada; podem afetar o servidor.
 - A conexão com o Channel (`GS_*`, `CServerRoom`) não está no caminho desta cópia. Um LOGIN recusado não vem do `LM_Engine.dll`.
 - Os patches são binários de 2008 alterados à mão. Restaure com os arquivos `.orig` se algo se comportar de forma estranha.
+- Log por partida: `LOG=<nome>.log` antes de `-log` gera um arquivo por partida (verificado, `re/game_server_host.md` §11.5). O emulador ainda não usa: todas as salas gravam em `system\LandMass.log`.

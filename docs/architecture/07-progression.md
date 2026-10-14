@@ -389,7 +389,7 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 | R-REW-08 | Ordem após o cálculo base: (1) `× ExpMult` e `× MoneyMult` se > 0 (ambos 1); (2) bônus PC-room com `pc_room`: `exp += exp × PCRoomBonusExp` e `money += money × PCRoomBonusPoint` (valor 1 = +100%, inferido); (3) bônus de evento: `exp += exp × BonusExpMult` e `money += money × BonusMoneyMult` (origem não localizada); (4) buffs: `exp × 1.5` se `bExpIncrement` (item `308020001`) e `money × 1.5` se `bLDIncrement` (item `308020002`). | `XGame` 6625–6640, 16296–16311; `ApplySysItmValue` 16852 |
 | R-REW-09 | Tipo de vitória: time vencedor (OP e TDM) ou ranking 1 (DM). Não há campo de vitória no cliente; a regra é (inferido). | (inferido) |
 | R-REW-10 | Gravação: uma transação por partida que soma `total_exp`, `ld`, `total_gamecount` e `total_win`/`total_lose`/`total_kill`/`total_death` de cada jogador. Os valores float são convertidos para inteiro (regra de arredondamento: dúvida 13). | (inferido; D20) |
-| R-REW-11 | Resultado entra no canal pelo caminho GS_* (opcode de resultado não documentado; dúvida 17). | `channel_server.md` §4 |
+| R-REW-11 | O resultado do DM não passa por GS_*. Sai no bloco `GameEnded` do log, que não é lido (D86). Quem grava exp e LD na conta não foi identificado (dúvida 17). | `re/game_server_host.md` §11 |
 
 ### 5.10 Tutorial (600, 601)
 
@@ -475,12 +475,12 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 612 | C→S | Resgatar presente (sem UI) | `gifts` | parcial: `u32 @0` | falta |
 | 615 | C→S | Enviar presente | `gifts`, `accounts` | parcial: 24 bytes (6 `u32`); nick e mensagem sem separação | falta |
 | 616 | S→C | Resultado do presente | — | inferido: `i32` | falta |
-| 512 | S→C | Resultado da partida | `accounts` | parcial: `i32 @0`, `@4`, `@8`, `i16 @0xc`, `i32 @0x10` | falta |
+| 512 | S→C | Resultado de partida (a UI chama `GetMatchGroupInfoList` depois; não é o resultado DM) | `accounts` | parcial: `i32 @0`, `@4`, `@8`, `i16 @0xc`, `i32 @0x10` | falta |
 | 151 / 317 / 549 | S→C | Registro do jogador (exp e saldo) | `accounts` | `i32 @4` = `iTotalExp` (layouts_f0 §1.2) | parcial (lobby; exp e saldo do próprio jogador vão no 101 e no 121) |
 | 900 | S→C (push) | Saldo de Cash | `accounts` | `i32 @0` | implementado (F3, no login) |
 | 901 | S→C (push) | Premium | `accounts` | falta | falta |
 | 902 | S→C (push) | Saldo de LD (bloco misto) | `accounts` | `i32 @0` | implementado (F3, no login) |
-| GS_* (1002, 1010, 1011, 1020) | GS ↔ Channel | Entrada e saída de jogadores da partida | — | documentado; **resultado da partida não tem opcode** (dúvida 17) | parcial (marco 4) |
+| GS_* (1002, 1010, 1011, 1020) | GS ↔ Channel | Entrada e saída de jogadores da partida | — | documentado; o DM não usa (`re/game_server_host.md` §11) | não usado |
 
 ### 6.2 Message (porta 7313)
 
@@ -523,7 +523,7 @@ O opcode **171** vale nas duas direções: C→S pede os dados do clã (responde
 
 ### 6.3 Pontos de contato com a partida
 
-- A recompensa (R-REW-*) é calculada no fim da partida. A entrada são estatísticas da partida, que chegam ao canal por GS_*. Sem o opcode de resultado, a fatia F9 não começa (dúvida 17).
+- A recompensa (R-REW-*) é calculada pelo servidor no `EndGame` e gravada no log (bloco `GameEnded`). No DM, nada chega ao canal por GS_* (`re/game_server_host.md` §11). Sem a leitura do log, a fatia F9 não começa (D86).
 - O cliente de partida usa `GameRewardConstant` e o próprio `XGame`. O servidor reimplementa as fórmulas; não existe, no cliente, cálculo autoritativo fora da partida.
 
 ## 7. Ordem de implementação
@@ -541,7 +541,7 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F6 (implementada, sem teste no cliente real) | Equipar e desequipar (560, 570; respostas 554, 561, 562, 572); montagem de parte e de item de sistema. | F4, F5 | Equipar arma no gate; reconectar; continua montada. Buff vai para `system_slot`. |
 | F7 (implementada, sem teste no cliente real) | Destruir e estender (555; respostas 556, 557, 559; 580; resposta 582; push 585 no login). | F4 | Destruir some do hangar após reconexão. Estender muda o prazo exibido. Vencido abre renovação. |
 | F8 (implementada, sem teste no cliente real) | Compra por LD e Cash (550, 551, 552). | F3, F4; dúvida 1 (resolvida) | Item comprado com LD debita `ld` pelo preço do wdb e cria a linha; saldo 902 atualiza. Saldo insuficiente: resultado ≠ 0 e nada muda. |
-| F9 | Recompensa de partida DM e OP (R-REW-*), buffs e PC-room. | Marco 4 (resultado GS_*); F0 (512); dúvidas 13, 14, 17 | Partida DM e OP com 2 jogadores: exp e LD do placar batem com a fórmula (tolerância de 1 por arredondamento). Buff de EXP ativo multiplica por 1.5. |
+| F9 | Recompensa de partida DM e OP (R-REW-*), buffs e PC-room. | Marco 4 (leitura do `GameEnded`, D86); F0 (512); dúvidas 13, 14, 17 | Partida DM e OP com 2 jogadores: exp e LD do placar batem com a fórmula (tolerância de 1 por arredondamento). Buff de EXP ativo multiplica por 1.5. |
 | F10 | Presente (615, 616, 610, 611). | F8; dúvidas 2, 3 | A envia item a B por nick; B vê na lista paginada de 12; resgate conforme dúvida 3. |
 | F11 | Gacha (591). | F3, F4; dúvida 6 | Usar "Item Surpresa" abre popup com prêmio do servidor; item aparece no inventário. |
 | F12 (implementada, sem teste no cliente real) | Amigos, bloqueio e sussurro (Message 160–162, 180–193). Clã fica na F13. | Opcodes de amigo e bloqueio medidos (dúvida 16 parcial) | Adicionar amigo, reconectar: permanece. Bloquear e desbloquear. Sussurro chega ao outro cliente online. |
@@ -576,7 +576,7 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
 15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
 16. **Opcodes não medidos (parcial, F12 e F13):** os de amigo e bloqueio (181, 182, 186, 187) foram medidos nos wrappers e no dispatcher. Os pedidos de clã (171, 174, 177, 194) têm cabeçalho medido, mas os pares de resposta não foram observados em captura. Faltam o corpo de 152 e `NotifyFriendLog`, que não tem opcode.
-17. **Resultado da partida:** opcode do GS_* que entrega o resultado ao canal [bloqueia F9]. Enquanto isso, nada grava `won` nem as métricas, e a ficha sai com zero nesses campos (D105, D107). Limite de amigos e de bloqueados.
+17. **Resultado da partida:** o DM não envia resultado por GS_*. O resultado está só no log (bloco `GameEnded`), que não é lido (D86). Quem grava exp e LD na conta não foi identificado Enquanto isso, nada grava `won` nem as métricas, e a ficha sai com zero nesses campos (D105, D107) [bloqueia F9]. Limite de amigos e de bloqueados.
 18. **Clã:** criação e gestão só pela CLI (`landmass-emu clan`, D55), porque o cliente não tem pedido para isso. Confirmar com o usuário.
 19. **Índice de inventário (resolvida em F4/F5, [D30](../decisions/README.md)):** `account_items` e `account_morats` têm namespaces separados. Morat usa o gate como índice; item começa em 1. Inferido do dump de `GetMoratsInfoByGate`: confirmar no cliente real.
 20. **Campo de exp e saldo no registro do jogador:** qual pacote (151, 317 ou 549) entrega `iTotalExp`, `iPoint` e `iCash` ao cliente [bloqueia F3]. **Resolvida em F3 (inferido, confirmar no cliente real):** o 101 entrega `iTutorialClear`, `iTotalExp`, `iCash` e `iPoint` (`@0x28`, `@0x2c`, `@0x48`, `@0x4c`), pelo layout de `LM_PLAYER_INFO`. O 121 de quem entra entrega `iTotalExp` em `@4`. 151, 317 e 549 também trazem `iTotalExp` (`R+0x04`): quem implementar salas precisa preenchê-lo, senão zera o nó do próprio jogador.

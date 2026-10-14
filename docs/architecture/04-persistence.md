@@ -152,7 +152,7 @@ Fonte: [07-progression.md §4.8](07-progression.md). Modelos: `db/models.py` (`C
 - Modelos: `db/models.py` (`MatchRow`, `MatchPlayerRow`). Migração: `db/migrations/versions/887ad86230f6_create_matches_and_match_players_tables.py`.
 - Constraints: `match_players_match_id_foreign` (FK) e `match_players_match_id_account_id_unique` (um jogador por partida).
 - Gravação: uma vez, no fim da partida, com `end_reason` (D48, D52). Não há tabela de eventos nem registro durante a partida.
-- Hoje só a identidade e a sala são gravadas. Métricas de jogador ficam `NULL` até haver o parser do bloco `GameEnded` do log (`re/game_server_host.md`, seção 10.4). A ficha (D107) lê essas colunas: enquanto o parser não existir, jogos, vitórias, derrotas, abates, mortes e headshots saem zero.
+- Hoje só a identidade e a sala são gravadas. Métricas de jogador ficam `NULL` até o bloco `GameEnded` ser lido, o que depende de saída limpa do servidor (D86; `re/game_server_host.md`, seção 11). A ficha (D107) lê essas colunas e sai com zero enquanto isso.
 - Contrato de resultado (D105): jogos, vitórias e derrotas contam só partidas com `won` não nulo em alguma linha. Quem não tem `won` nessa partida conta como jogo sem vitória nem derrota. No DM, o log não traz `Winner` (ver a disponibilidade abaixo).
 
 Tabela `matches` (uma linha por partida):
@@ -189,7 +189,7 @@ Tabela `match_players` (uma linha por jogador por partida):
 | `won` | `Boolean` | sim | Vitória; disponibilidade na tabela abaixo. |
 | `created_at`, `updated_at` | `DateTime(timezone=True)` | não | Criação e última gravação. |
 
-Disponibilidade das métricas: o que o jogo produz, segundo o RE do `XGame` e o bloco `GameEnded` (não reproduzido no log neste ambiente). O emulador ainda não lê esse bloco, então hoje todas as métricas ficam `NULL`.
+Disponibilidade das métricas: o que o jogo produz, segundo o RE do `XGame` e o bloco `GameEnded` (não reproduzido no log neste ambiente). O emulador não lê esse bloco (D86), então hoje todas as métricas ficam `NULL`.
 
 | Métrica | O que o jogo produz | Situação |
 |---------|---------------------|----------|

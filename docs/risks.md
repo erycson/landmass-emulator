@@ -8,3 +8,4 @@
 | Render D3D minimizado | Testes de aceitação automatizados falham | média | Janela pequena fora de foco; ver [operations/running-client.md](operations/running-client.md). |
 | NAT/firewall dos jogadores | Conexão externa falha | média | Configurar `LANDMASS_PUBLIC_HOST`; documentar portas a abrir. |
 | Vazamento de `.bat` com token | Acesso indevido à conta | baixa | Token por jogador; regerar invalida o anterior. |
+| Resultado da partida não lido: o log só é descarregado com saída limpa, e o `EndGame` do servidor só ocorre com último jogador ou sem jogadores | Histórico sem métricas; F9 bloqueada | confirmado | D86; testar com dois clientes se o bloco `GameEnded` aparece após saída limpa (`re/game_server_host.md`, §11). |

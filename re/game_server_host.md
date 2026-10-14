@@ -1,11 +1,11 @@
 # Hospedagem da partida do LandMass (UE2, build 3369)
 
-**Status (atualizado em 2026-10-13): cópia `servidor-partida` preparada com patches P1 e P-A, não testada; ver seção 9.** Estado anterior: bloqueado. Nenhuma instância de `LandMass.exe` (servidor ou cliente) chegou ao motor desde 16:22 de 2026-10-13. Nenhum servidor de partida foi confirmado. A recomendação da seção 7 é provisória.
+**Status (atualizado em 2026-10-13): cópia `servidor-partida` preparada com patches P1 e P-A; subida e sockets testados com instâncias próprias (seções 9 e 11). Partida não testada com cliente.** Estado anterior: bloqueado. Nenhuma instância de `LandMass.exe` (servidor ou cliente) chegou ao motor desde 16:22 de 2026-10-13. Nenhum servidor de partida foi confirmado. A recomendação da seção 7 é provisória.
 
 ## 1. Resumo
 
 - Última execução com log: cliente via `jogar_teste.bat`, `LandMass.log` gravado às 16:21:43–16:21:46. Depois disso, nenhuma execução gravou log.
-- A partir daí, o exe sai com código 0 em 0,02–0,05 s em todas as variantes testadas, inclusive a linha exata do `jogar_teste.bat`. Não há porta 7777 (TCP ou UDP) em uso.
+- A partir daí, o exe sai com código 0 em 0,02–0,05 s em todas as variantes testadas, inclusive a linha exata do `jogar_teste.bat`. Não há porta 7777 (TCP ou UDP) em uso. **Correção (seção 11.1):** nas minhas execuções, essa saída veio da montagem da linha no PowerShell, que perdia `login_num=`. A linha do `.bat` não foi reexecutada.
 - (Corrigido em 2026-10-13, REA; ver `re/cmdline.md`.) O parse de argumentos participa: sem `version=` o main sai com 0 (`FUN_10903A70`). Isso explica o teste N (sem argumentos). Nos testes com `version=` (A, V2, V0, V6, D), a saída sem log continua sem explicação estática.
 - Não é mutex de instância única: `UnrealIsRunning` não existe (`OpenMutexW` retorna erro 2), e `FUN_1090AD30` descarta `GetLastError()`, então o mutex nunca bloqueia. O bloqueio real é o repasse WLog (`FUN_10911EE0`, `re/cmdline.md` §3).
 - Não é `Running.ini`: removido (teste E2), o exe continua saindo antes de recriá-lo.
@@ -189,7 +189,7 @@ Fonte: pseudocódigo com base de imagem `IpDrv` 0x10700000, `Core` 0x10100000 e 
 - A porta ligada vai para `URL.Port`.
 - Outros textos que também casam, não usados pelo emulador: `-port=`, `?port=` dentro da URL e `_port=` (ex.: `ch_port=`). `xport=` não casa. `[URL] Port` do `LandMass.ini` (`Port=7777`) é o padrão sem `PORT=`. `INI=` não foi rastreado.
 - Porta ocupada com `PORT=`: o log mostra `binding to port N failed` e não tenta a seguinte. Por isso o emulador escolhe a porta antes do lançamento.
-- Não testado em execução (teste T4 de seção 4 ainda pendente).
+- Validado em execução (seção 11.2): UDP `PORT` aberta com o PID do processo (7850 a 7852). Porta ocupada com `PORT=` não testada.
 
 ### 10.3 Prontidão
 
@@ -198,10 +198,10 @@ Com o servidor aberto, `netstat -ano -p UDP` mostra `0.0.0.0:<porta>` com o PID 
 ### 10.4 Fim de partida e estatísticas
 
 - Sinais de fim no emulador: 500 `EXIT_PLAY` (sem corpo) de cada jogador em jogo, saída da última pessoa em jogo, ou queda do processo depois de pronto. A resposta 501 `EXIT_PLAY_OUT` leva `i32`; o valor 0 não foi confirmado no cliente real.
-- O log do servidor traz um bloco `GameEnded` por jogador no fim da partida, com `Kills`, `Ranking`, `Played%` (fração), `exp` e `LD` ganhos. No OP e no time, traz também `Winner`, `MissionScore` e `RoundCount`. A linha exata não foi reproduzida neste ambiente.
+- O log do servidor traz um bloco `GameEnded` por jogador no fim da partida, com `Kills`, `Ranking`, `Played%` (valor em percentual, com `%`), `exp` e `LD` ganhos. No OP e no time, traz também `Winner`, `MissionScore` e `RoundCount`. A linha exata não foi reproduzida neste ambiente.
 - Existem no motor, mas não entram no log por jogador: `PRI.Deaths` (incrementado em `Killed()`) e `m_iAssistScore` (critical frag de time, que não é assistência de CS). `DamageTypeHeadShot` existe, mas nenhum contador de headshot por partida é logado.
 - Não há fonte verificada no código extraído para balas, acertos e dano por partida.
-- Coleta prevista: ler o bloco `GameEnded` de `system\LandMass.log` depois do encerramento normal do processo, porque o arquivo fica travado enquanto o servidor roda. Não implementada. Por isso hoje as métricas ficam nulas (D52).
+- Coleta bloqueada (seções 11.4 e 11.5): o bloco só é escrito no `EndGame` do servidor, e o log não é descarregado sem saída limpa. Por isso hoje as métricas ficam nulas (D52, D86).
 
 ### 10.5 Correções a notas anteriores
 
@@ -212,4 +212,51 @@ Com o servidor aberto, `netstat -ano -p UDP` mostra `0.0.0.0:<porta>` com o PID 
 1. Teste em execução: `PORT=` com porta livre e com porta ocupada (T4).
 2. 500 e 501 com o cliente real, e aceitação do 403 atrasado.
 3. Parser do bloco `GameEnded` e gravação no fim da partida.
+
+## 11. Partida DM: sockets, entrada, fim e log (verificação de 2026-10-13)
+
+Método: instâncias próprias de `LandMass.exe -server` em `servidor-partida\system`, com `PORT=` em 7850 a 7852 e `login_server` apontando para um listener local em 7390. Conexões lidas com `netstat -ano`, filtradas pelo PID. Regras lidas no texto de `XGame.u` e `XInterface.u` (bloco `ScriptText` dos pacotes). Linhas citadas abaixo são do extrato desse texto.
+
+### 11.1 Causa das saídas precoces desta sessão
+
+- Nas execuções de 2026-10-13, as subidas que saíam em cerca de 50 ms foram montadas no PowerShell com aspas duplas: `"...version=$ver?login_num=$login"`. O PowerShell gera `version==<token>`, sem `login_num=`. `Parse("login_num=")` falha e o `main` sai com código 0 antes de `appInit` (`re/LandMass.exe/main_loop.c`, `goto LAB_109111e2`). Conferido: a string montada não contém `login_num=`.
+- Com concatenação (`'...version=' + $ver + '?login_num=' + $login`), a instância fica viva.
+- Hipótese de `Running.ini` bloqueando: refutada. Com o marcador presente, a instância sobe e abre UDP. O arquivo é criado depois de `appInit` (`FUN_1090ad30`) e apagado na saída normal (`FUN_10903a70`).
+- As tentativas da seção 4 montadas do mesmo modo têm a mesma causa provável; não foram reproduzidas uma a uma. A linha do `jogar_teste.bat` não foi reexecutada, e a causa dela não está confirmada.
+- O emulador monta a linha em Python, com lista de argumentos (`hosting/command.py`), sem esse problema.
+
+### 11.2 Sockets da partida DM
+
+- Com `ONS-Treino?listen?game=XGame.LM_DeathMatch?...` e `PORT=<p>`, o processo abre UDP `<p>` com o próprio PID (7850, 7851 e 7852). Em 15 s não houve conexão TCP do processo para o `login_server` (listener em 7390).
+- Portanto a subida DM não fala com o Message Server (7313) nem com o Channel (7314).
+- Não verificado: a conexão do jogador e o início da partida, que dependem de cliente real.
+
+### 11.3 Entrada do jogador
+
+- `EnterGame` (`XInterface.u`) monta `<protocolo>://<PendingAddress>:<PendingPort>?name=<nick>?key=<room_guid>?team=<team>?voice=<voz>` e chama `ClientTravel`. Depois do 403, `OnStartGame(strAddress, nPort)` continua a partir daí.
+- Em `LM_DeathMatch` (linhas 9193 a 9316), o `Login` lê `EVENTSLOT0` a `EVENTSLOT9` das opções. As demais opções que o DM lê (`BonusExp`, `BonusPoint`, `game_type`, `home_clan`, `away_clan`, `away_channel`, `away_room`, `home_team`; linhas 9588 a 9605) são numéricas. `key` não aparece.
+- Pelo extrato, o DM não valida `key` nem `team`, e o jogador entra sem `GS_*`. Se a partida não começa, a causa está no estado de espera (`bWaitingToStartMatch`, linha 9743) ou no transporte UE2. Nenhum dos dois foi verificado.
+
+### 11.4 Fim da partida e fonte do resultado
+
+- `CheckLastMan` (`LM_DeathMatch`, linha 9763) chama `EndGame` com `NumPlayers` igual a 1 ou 0.
+- `EndGame` chama `OnRewardGameResult_LMDeathMatch` (linha 10061), que chama `LoadGameRewardConstant`. Essa rotina lê `GameRewardConstant` com `DBCommand` do `landmass.wdb` (SQLite local, sem rede). Depois grava, por jogador, o bloco `Ended Deathmatch Exp/Money` com `Log(..., 'GameEnded')` (linhas 10245 a 10270). As linhas 9530 a 9577 gravam as constantes com a mesma etiqueta.
+- Campos do bloco: `Player`, `Reason`, `NumPlayers`, `MaxPlayers`, `LimitKills`, `Ranking`, `Kills`, `MaxKills`, `Played` (com `%` no valor), `killExp`, `TakeExp`, `WinExp`, `KillMoney`, `TakeMoney`, `WinMoney`, `EventBonusExp`, `EventBonusMoney`, `PCRoom`, `PCRoomBonusExp`, `PCRoomBonusMoney`, `ExpMult`, `MoneyMult`, `TotalExp`, `TotalMoney`.
+- O bloco não traz mortes, headshot, dano, balas nem assistências.
+- `ApplySysItmValue` roda antes dos `Log` (linha 10242). Assim, `TotalExp` e `TotalMoney` já incluem os bônus de evento e de PC-room (linhas 10239 e 10240). `pri.Experience` é o ganho da partida, não o total da conta (inferido pela ordem do script; não confirmado).
+- O emulador encerra a partida quando todos mandam 500 (`handlers/channel/rooms.py`). Pelo código, esse caminho não chama `EndGame` no servidor (inferido: `NumPlayers` conta jogadores conectados, e o 500 não desconecta o cliente; não observado).
+- O UI chama `GetMatchGroupInfoList` depois do 512 (`RefreshGameResult`, `XInterface.u`, linhas 16945 a 16952). O 512 não é o resultado DM.
+
+### 11.5 Log do servidor
+
+- O log é ASCII (`Log: ...`, `Init: ...`) e é descarregado em blocos de 8192 bytes. Após `kill`, o arquivo tem só os blocos já descarregados: 8192 bytes em execução longa, 0 bytes em execução curta.
+- `taskkill /PID` sem `/F` envia o sinal, mas o processo não sai em 15 s. Não houve saída limpa. Com `process.terminate()` (`hosting/process.py`), o trecho final do log pode ficar no buffer e não ser gravado.
+- `LOG=<nome>.log` antes de `-log` cria arquivo próprio por partida (verificado com `dmtest-7851.log`). `hosting/command.py` ainda não usa.
+- `LandMass.ini` não suprime `GameEnded` (`[Core.System] Suppress=`, linhas 57 a 75).
+
+### 11.6 Conclusão
+
+- A partida DM não usa `GS_*` (D85). Os handlers `GS_*` ficariam sem chamador.
+- O resultado não é lido: depende de o servidor chamar `EndGame` e de o log ser descarregado por saída limpa. O emulador não atende nenhuma das duas condições (D86). As métricas ficam `NULL`.
+- Para fechar: testar com dois clientes se a partida chega a `EndGame` (resta um jogador na sala) e se o bloco aparece no `LandMass.log` após uma saída limpa. Sem saída limpa, a mudança exige alterar o processo de partida, fora deste escopo.
 4. Prazo próprio de partida (não há).
