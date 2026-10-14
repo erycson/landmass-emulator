@@ -62,6 +62,7 @@ class ChannelHandlers:
         gifts: GiftHandlers | None = None,
         loadout: LoadoutService | None = None,
         accepting_matches: Callable[[], bool] | None = None,
+        match_bots: int = 0,
     ) -> None:
         records = ChannelRecords(lobby)
         room_handlers = RoomHandlers(
@@ -75,6 +76,7 @@ class ChannelHandlers:
             audit=audit,
             loadout=loadout,
             accepting_matches=accepting_matches,
+            match_bots=match_bots,
         )
         progression_handlers = ProgressionHandlers(progression, ProgressionService())
         self._entry = EntryHandlers(

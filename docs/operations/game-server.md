@@ -102,6 +102,10 @@ $env:LANDMASS_MATCH_PORT_MAX = "7899"
 uv run landmass-emu serve
 ```
 
+### Bots na partida
+
+O morat e o equipamento de cada bot saem do sorteio do emulador. Configuração: `LANDMASS_MATCH_BOTS` (padrão 0). Com ele, a URL leva `?MinPlayers=` e o `LMEmu.ini` ganha `Bots=` e `Owner=`. O dono da sala usa `/bot add [0-9]` e `/bot remove` no chat, e um bot sai quando um humano entra com a sala cheia. Detalhes, formato e o que não foi verificado no jogo: [../architecture/08-bots.md](../architecture/08-bots.md).
+
 ### Roteiro: uma partida com dois clientes
 
 Pré-requisito: `servidor-partida` com os patches conferidos (ver acima) e duas contas. As contas são `ana` e `bia`, com `account create --user ana --nickname Ana` e `account create --user bia --nickname Bia`. Os `.bat` caem em `cliente\` e `cliente2\`.

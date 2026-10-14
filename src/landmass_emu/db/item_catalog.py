@@ -56,6 +56,7 @@ class ItemCatalog:
         morat_stats: dict[int, MoratStats],
         names: dict[int, str] | None = None,
         defaults: dict[int, dict[str, int]] | None = None,
+        sections: dict[int, str] | None = None,
     ) -> None:
         self._inventory_items = inventory_items
         self._morats = morats
@@ -64,6 +65,7 @@ class ItemCatalog:
         self._morat_stats = morat_stats
         self._names = names or {}
         self._defaults = defaults or {}
+        self._sections = sections or {}
 
     @classmethod
     def open(cls, path: Path) -> ItemCatalog:
@@ -83,6 +85,7 @@ class ItemCatalog:
                 morat_fields = _attributes(conn, "Morats", "", _MORAT_NAMES)
                 names = _names(conn)
                 defaults = _default_sets(conn)
+                sections = _sections(conn)
         except sqlite3.Error as e:
             # Mesmo tratamento do `WdbCatalog`: quem consulta recebe ValueError, não erro do SQLite.
             raise ValueError(f"catálogo do cliente ilegível: {e}") from e
@@ -97,13 +100,25 @@ class ItemCatalog:
             for cid, fields in morat_fields.items()
             if "required_class" in fields
         }
-        return cls(frozenset(items), frozenset(morats), sales, equip, stats, names, defaults)
+        return cls(
+            frozenset(items),
+            frozenset(morats),
+            sales,
+            equip,
+            stats,
+            names,
+            defaults,
+            sections,
+        )
 
     def is_inventory_item(self, catalog_id: int) -> bool:
         return catalog_id in self._inventory_items
 
     def is_morat(self, catalog_id: int) -> bool:
         return catalog_id in self._morats
+
+    def morat_ids(self) -> tuple[int, ...]:
+        return tuple(sorted(self._morats))
 
     def sale(self, catalog_id: int) -> SaleInfo | None:
         return self._sales.get(catalog_id)
@@ -116,8 +131,17 @@ class ItemCatalog:
     def equip_spec(self, catalog_id: int) -> EquipSpec | None:
         return self._equip.get(catalog_id)
 
+    def equip_ids(self) -> tuple[int, ...]:
+        """Ids com requisito de equipar (`Item_Equip` com `item_slot` válido), em ordem."""
+        return tuple(sorted(self._equip))
+
     def morat_stats(self, catalog_id: int) -> MoratStats | None:
         return self._morat_stats.get(catalog_id)
+
+    def section(self, catalog_id: int) -> str | None:
+        """Classe do UnrealScript do id (`section`): espécie para morat, classe da peça para
+        equipamento. Munição do mesmo id não entra (`_sections`)."""
+        return self._sections.get(catalog_id)
 
     def name(self, catalog_id: int) -> str | None:
         return self._names.get(catalog_id)
@@ -147,14 +171,23 @@ class LazyItemCatalog:
     def is_morat(self, catalog_id: int) -> bool:
         return self._catalog().is_morat(catalog_id)
 
+    def morat_ids(self) -> tuple[int, ...]:
+        return self._catalog().morat_ids()
+
     def sale(self, catalog_id: int) -> SaleInfo | None:
         return self._catalog().sale(catalog_id)
 
     def equip_spec(self, catalog_id: int) -> EquipSpec | None:
         return self._catalog().equip_spec(catalog_id)
 
+    def equip_ids(self) -> tuple[int, ...]:
+        return self._catalog().equip_ids()
+
     def morat_stats(self, catalog_id: int) -> MoratStats | None:
         return self._catalog().morat_stats(catalog_id)
+
+    def section(self, catalog_id: int) -> str | None:
+        return self._catalog().section(catalog_id)
 
     def name(self, catalog_id: int) -> str | None:
         return self._catalog().name(catalog_id)
@@ -200,6 +233,29 @@ def _names(conn: sqlite3.Connection) -> dict[int, str]:
             if str(tipo).isdigit() and valor:
                 names[int(tipo)] = str(valor)
     return names
+
+
+def _sections(conn: sqlite3.Connection) -> dict[int, str]:
+    """Classe de cada id. Morat: a `section` da espécie. Equipamento: a seção cuja linha `item_id`
+    traz o próprio id; a munição do mesmo id (outra seção) fica de fora (D221). Id sem essa linha
+    não tem classe e não entra no sorteio de bots."""
+    classes: dict[int, str] = {}
+    try:
+        morats = conn.execute("SELECT DISTINCT type, section FROM Morats").fetchall()
+        itens = conn.execute(
+            'SELECT type, section, value FROM Item_Equip WHERE "key" = ?', ("item_id",)
+        ).fetchall()
+    except sqlite3.OperationalError:
+        # Wdb sem a coluna `section` (fixtures antigas): sem classes, e bot não sorteia. Como em
+        # `_default_sets`, a falta não derruba o catálogo.
+        return {}
+    for tipo, secao in morats:
+        if str(tipo).isdigit() and secao:
+            classes[int(tipo)] = str(secao)
+    for tipo, secao, valor in itens:
+        if str(tipo).isdigit() and str(valor) == str(tipo) and secao:
+            classes[int(tipo)] = str(secao)
+    return classes
 
 
 def _type_ids(conn: sqlite3.Connection, table: str) -> set[int]:

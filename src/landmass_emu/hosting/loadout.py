@@ -18,6 +18,9 @@ log = logging.getLogger(__name__)
 
 SECTION = "LMEmuLoadout"
 HEADER = re.compile(rb"^\s*\[([^\]]*)\]\s*$")
+# Linha da seção: texto puro é valor de `Players=` (D190); `(chave, valor)` vai como `chave=valor`
+# (`Bots=` e `Owner=`, D220).
+Linha = str | tuple[str, str]
 
 
 class LoadoutFile:
@@ -25,12 +28,9 @@ class LoadoutFile:
         self._path = path
         self._trava = threading.Lock()
 
-    def write(self, key: str, lines: Sequence[str]) -> None:
+    def write(self, key: str, lines: Sequence[Linha]) -> None:
         """Grava a seção `key`, trocando a antiga se houver. Levanta OSError se não gravar."""
-        bloco = [
-            f"[{key} {SECTION}]".encode("ascii"),
-            *(f"Players={linha}".encode("cp1252", errors="replace") for linha in lines),
-        ]
+        bloco = [f"[{key} {SECTION}]".encode("ascii"), *(_linha(item) for item in lines)]
         with self._trava:
             self._salva([*_sem_secao(self._linhas(), _nome(key)), *bloco])
 
@@ -60,6 +60,11 @@ class LoadoutFile:
         except OSError:
             temporario.unlink(missing_ok=True)
             raise
+
+
+def _linha(item: Linha) -> bytes:
+    chave, valor = ("Players", item) if isinstance(item, str) else item
+    return f"{chave}={valor}".encode("cp1252", errors="replace")
 
 
 def _nome(key: str) -> bytes:
