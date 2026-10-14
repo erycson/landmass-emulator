@@ -258,12 +258,11 @@ async def test_bots_e_dono_vao_na_secao_da_partida() -> None:
 
     [(_, plano)] = host.iniciados
     assert plano.bots == 3
-    assert equipamento.pedidos_de_bot == [3]
+    # Uma linha por vaga da sala, para o /bot add ter apelido próprio (D229, D231).
+    assert equipamento.pedidos_de_bot == [plano.max_players]
     # Bots antes do dono; o dono é Ana (guid 7), em hex.
     assert plano.loadout_extra == (
-        ("Bots", "?Name=Bot1"),
-        ("Bots", "?Name=Bot2"),
-        ("Bots", "?Name=Bot3"),
+        *(("Bots", f"?Name=Bot{k}") for k in range(1, plano.max_players + 1)),
         ("Owner", "0041006E0061"),
     )
 

@@ -638,14 +638,15 @@ class RoomHandlers:
         )
 
     def _loadout_extra(self, room: Room, plan: MatchPlan) -> tuple[tuple[str, str], ...]:
-        """Linhas `Bots=` e `Owner=` da seção do LMEmu.ini (D220). Sorteio sem morat sorteável
+        """Linhas `Bots=` e `Owner=` da seção do LMEmu.ini (D220). Uma linha por vaga da sala, para
+        o `/bot add` ter apelido e morat sem repetir (D229, D231). Sorteio sem morat sorteável
         (ValueError) sobe a partida sem bots; os `Players=` não dependem disso."""
         if self._loadout is None:
             return ()
         extra = owner_entries(self._lobby.nickname_of(room.master))
         if plan.bots:
             try:
-                extra = (*self._loadout.bot_lines(plan.bots), *extra)
+                extra = (*self._loadout.bot_lines(plan.max_players), *extra)
             except ValueError as e:
                 log.warning("sala %d sem bots: %s", room.room_id, e)
         return extra
