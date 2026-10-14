@@ -8,7 +8,7 @@ Ajustes do cliente para rodar em PC atual. Não inclui texturas novas.
 |---|---|
 | `system\D3D8.dll` | dgVoodoo2 2.87.5. Converte o Direct3D 8 do jogo para D3D11 e permite janela sem borda. |
 | `system\dgVoodoo.conf` | Configuração do dgVoodoo usada no LandMass. |
-| `aplicar.ps1` | Copia os dois arquivos para `system\`, ajusta `LandMass.ini`, `User.ini` e `dgVoodoo.conf` para a tela e faz o patch do `XInterface.u`. |
+| `aplicar.ps1` | Copia os dois arquivos para `system\`, ajusta `LandMass.ini`, `User.ini` e `dgVoodoo.conf` para a tela e com `-IniciarSozinho`, faz o patch do `XInterface.u`. |
 
 ### Ajustes do `dgVoodoo.conf`
 
@@ -29,7 +29,7 @@ Ajustes do cliente para rodar em PC atual. Não inclui texturas novas.
 
 - `DesiredFOV`, `DefaultFOV` e `FOVAngle` com a mesma visão vertical do FOV 90 em 4:3 (Hor+). Em 21:9, cerca de 122.
 
-### Patch do `XInterface.u`
+### Patch do `XInterface.u` (opcional, `-IniciarSozinho`)
 
 - `LM_RoomPlayerListPanel.IsReadyToStart` sempre verdadeiro (3 bytes em `0xE70BC`): o botão de iniciar do dono fica ativo sem outro jogador pronto, para jogar sozinho contra bots. O servidor ainda recusa o início quando falta alguém pronto e não há bots. Original em `XInterface.u.orig`.
 

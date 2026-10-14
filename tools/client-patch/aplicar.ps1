@@ -1,15 +1,17 @@
 # Aplica o Client Patch numa instalação do LandMass.
-# Uso: powershell -ExecutionPolicy Bypass -File aplicar.ps1 -Cliente "C:\caminho\LandMass" [-Largura 2560 -Altura 1080]
+# Uso: powershell -ExecutionPolicy Bypass -File aplicar.ps1 -Cliente "C:\caminho\LandMass" [-Largura 2560 -Altura 1080] [-IniciarSozinho]
 # O que faz:
 #   - Copia D3D8.dll e dgVoodoo.conf (janela sem borda; VRAM 1024).
 #   - No system\LandMass.ini: Use16bit=False, Use16bitTextures=False e TextureDetail*=UltraHigh.
 #   - Widescreen: partida na resolução da tela (padrão: monitor principal), menus em 4:3 da mesma
 #     altura e FOV com a mesma visão vertical do 4:3 (Hor+) no User.ini.
+#   - Com -IniciarSozinho: patch de 3 bytes no XInterface.u (botão de iniciar sem outro jogador pronto).
 #   - Guarda os arquivos originais como *.antes-patch na primeira aplicação.
 param(
     [Parameter(Mandatory)][string]$Cliente,
     [int]$Largura = 0,
-    [int]$Altura = 0
+    [int]$Altura = 0,
+    [switch]$IniciarSozinho
 )
 
 $ErrorActionPreference = 'Stop'
@@ -66,7 +68,7 @@ function Set-Bytes([string]$Arquivo, [int]$Offset, [byte[]]$Antes, [byte[]]$Depo
 
 # LM_RoomPlayerListPanel.IsReadyToStart: o primeiro "07 52 00" (JumpIfNot) vira "04 27 0B"
 # (return true; nothing). O dono inicia sem outro jogador pronto; o servidor ainda valida (D224).
-Set-Bytes (Join-Path $sys 'XInterface.u') 0xE70BC ([byte[]](0x07, 0x52, 0x00, 0x84)) ([byte[]](0x04, 0x27, 0x0B, 0x84))
+if ($IniciarSozinho) { Set-Bytes (Join-Path $sys 'XInterface.u') 0xE70BC ([byte[]](0x07, 0x52, 0x00, 0x84)) ([byte[]](0x04, 0x27, 0x0B, 0x84)) }
 
 if (Test-Path $user) {
     $t = [IO.File]::ReadAllText($user)
