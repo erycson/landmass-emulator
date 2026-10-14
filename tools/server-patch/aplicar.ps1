@@ -6,7 +6,8 @@
 #      patcher, dgVoodoo e backups).
 #   2. Patch de 2 bytes em system\Core.dll: o -server chega ao motor (sem janela nem renderização).
 #   3. Patch de 1 byte em system\LandMass.exe: cada partida roda no próprio processo e grava o próprio log.
-#   4. Copia o LMEmu.u (pacote só de servidor do emulador) para system\.
+#   4. Copia o LMEmu.u (pacote só de servidor do emulador) para system\, e o LMEmuRoutes.ini (rotas
+#      dos bots) se ele estiver em tools\server-patch\system\.
 # Cada patch confere os bytes originais antes de gravar e guarda o original como *.orig.
 param(
     [Parameter(Mandatory)][string]$Cliente,
@@ -47,4 +48,6 @@ Set-Bytes (Join-Path $sys 'Core.dll') 0x3F9C6 ([byte[]](0x74, 0x0E)) ([byte[]](0
 Set-Bytes (Join-Path $sys 'LandMass.exe') 0x209E4 ([byte[]](0x57)) ([byte[]](0x58))
 
 Copy-Item (Join-Path $PSScriptRoot 'system\LMEmu.u') $sys -Force
+# Rotas dos bots (gravadas pelo tools/routes/rotas.py a partir do LMEmuBake): só se o arquivo existir.
+Get-ChildItem (Join-Path $PSScriptRoot 'system') -Filter 'LMEmuRoutes.ini' | Copy-Item -Destination $sys -Force
 Write-Host "Servidor de partida pronto em $destino. No emulador: match_server_dir = `"$sys`""
