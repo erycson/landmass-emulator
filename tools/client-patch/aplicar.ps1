@@ -52,6 +52,22 @@ $t = [regex]::Replace($t, '(?m)^MenuViewportX=\d+', "MenuViewportX=$menuX")
 $t = [regex]::Replace($t, '(?m)^MenuViewportY=\d+', "MenuViewportY=$Altura")
 [IO.File]::WriteAllText($ini, $t)
 
+function Set-Bytes([string]$Arquivo, [int]$Offset, [byte[]]$Antes, [byte[]]$Depois) {
+    $b = [IO.File]::ReadAllBytes($Arquivo)
+    $atual = $b[$Offset..($Offset + $Antes.Length - 1)]
+    if (-not (Compare-Object $atual $Depois -SyncWindow 0)) { Write-Host "$Arquivo já tem o patch"; return }
+    if (Compare-Object $atual $Antes -SyncWindow 0) {
+        throw ("{0}: bytes em 0x{1:X} diferentes do esperado. Versão do cliente diferente?" -f $Arquivo, $Offset)
+    }
+    if (-not (Test-Path "$Arquivo.orig")) { Copy-Item $Arquivo "$Arquivo.orig" }
+    for ($i = 0; $i -lt $Depois.Length; $i++) { $b[$Offset + $i] = $Depois[$i] }
+    [IO.File]::WriteAllBytes($Arquivo, $b)
+}
+
+# LM_RoomPlayerListPanel.IsReadyToStart: o primeiro "07 52 00" (JumpIfNot) vira "04 27 0B"
+# (return true; nothing). O dono inicia sem outro jogador pronto; o servidor ainda valida (D224).
+Set-Bytes (Join-Path $sys 'XInterface.u') 0xE70BC ([byte[]](0x07, 0x52, 0x00, 0x84)) ([byte[]](0x04, 0x27, 0x0B, 0x84))
+
 if (Test-Path $user) {
     $t = [IO.File]::ReadAllText($user)
     $t = [regex]::Replace($t, '(?m)^(DesiredFOV|DefaultFOV|FOVAngle)=[\d.]+', "`$1=$fovTxt")
