@@ -58,6 +58,8 @@ def test_aponta_as_duas_tabelas_guarda_original_e_cria_pasta(tmp_path: Path) -> 
     assert upd == [("ftp://127.0.0.1", 7412, "jogador", "segredo", 1, "balance")]
     assert (wdb.with_name("landmass.wdb.antes-patch")).read_bytes() == original
     assert (tmp_path / "update" / "balance").is_dir()
+    # D255: sem arquivo na listagem o Launcher acusa falha de conexão
+    assert (tmp_path / "update" / "leia-me.txt").is_file()
 
 
 def test_reaplicar_mantem_o_backup_original(tmp_path: Path) -> None:

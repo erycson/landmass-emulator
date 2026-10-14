@@ -10,6 +10,7 @@ from pathlib import Path
 
 # login_id e password são varchar(20) no wdb; o Launcher lê com buffer desse tamanho.
 WDB_FIELD_BYTES = 20
+PLACEHOLDER = "leia-me.txt"
 
 
 def point_client(
@@ -51,3 +52,9 @@ def point_client(
     for remoto in remotos:
         if remoto and remoto.strip("/"):
             (update_dir / remoto.strip("/")).mkdir(parents=True, exist_ok=True)
+    # Listagem sem arquivo é "Falha ao conectar o servidor de update" (FUN_00404180). Um arquivo que
+    # não é .cmp, notification.txt nem Patcher.exe passa a contagem sem virar atualização (D255).
+    update_dir.mkdir(parents=True, exist_ok=True)
+    marca = update_dir / PLACEHOLDER
+    if not marca.exists():
+        marca.write_text("Servidor de atualização do emulador LandMass.\n", encoding="utf-8")

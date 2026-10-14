@@ -23,6 +23,12 @@ Análise estática. O `LandMass.exe` do usuário estava em execução, e a regra
 
 Resposta mínima de um servidor que deixa o Launcher passar da atualização (inferida): `220`, `230` no login, `250` no `CWD balance`, `227` no PASV, `150`/`226` na listagem, sem `.cmp` novo. É o que `src/landmass_emu/update/ftp.py` responde com `data/update/balance/` vazia (D241).
 
+## Primeiro teste (2026-10-14, D255)
+
+- `report_launcher.log` (`system\`): versão `1245776779`, `ftp: name=LM patch 03`, `remote_path=/`, `file list=0`.
+- Comandos WinINet: `USER`, `PASS`, `CWD /`, `TYPE A`, `PASV`, `LIST /`, `PWD`, e `LIST /balance` ao achar a pasta.
+- `FUN_00404180`, linha 324 do pseudocódigo: com zero arquivos na lista, mostra "Falha ao conectar o servidor de update". Com algum arquivo, separa como download os `.cmp` de nome com 14 dígitos mais novos que a versão local, `notification.txt` e `Patcher.exe` (este só junto de outro download).
+
 ## Lacunas
 
 - Origem da versão `DAT_00433D38` (int64) e a regra exata de comparação com o nome do `.cmp`.
