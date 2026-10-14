@@ -1,6 +1,6 @@
-"""Bots (D220, D221): sorteio de morat e peças, linha `Bots=`, `Owner=`, registro de jogador do
-`MORATS.upl` e classes do catálogo. O wdb e o `MORATS.upl` daqui são pequenos e feitos no teste;
-o teste com os arquivos reais é pulado sem o cliente e o servidor de partida."""
+"""Bots (D220, D221, D228, D231): sorteio de morat, apelido e peças, linha `Bots=`, `Owner=`,
+registro de jogador do `MORATS.upl` e classes do catálogo. O wdb e o `MORATS.upl` daqui são pequenos
+e feitos no teste; o teste com os arquivos reais é pulado sem o cliente e o servidor de partida."""
 
 import random
 import sqlite3
@@ -10,7 +10,8 @@ from pathlib import Path
 import pytest
 
 from landmass_emu.db.item_catalog import ItemCatalog
-from landmass_emu.domain.bots import BotLoadout, player_records
+from landmass_emu.domain.bots import BOT_NAMES, BOT_PREFIX, BotLoadout, player_records
+from landmass_emu.domain.equipment import class_allows, slot_of
 from landmass_emu.domain.loadout import LoadoutService, owner_entries
 from landmass_emu.hosting.loadout import LoadoutFile
 from landmass_emu.hosting.player_records import PlayerRecordFile
@@ -146,10 +147,12 @@ def test_linha_de_bot_tem_o_formato_exato(wdb: Callable[..., Path]) -> None:
 
     [linha] = bots.lines(1)
 
-    assert linha == (
-        "?Name=Bot1?Skill=3?Species=XGame.SPECIES_AssaultA?Morat=101000001"
+    nome, _, resto = linha.partition("?Skill=")
+    assert nome.removeprefix("?Name=" + BOT_PREFIX) in BOT_NAMES
+    assert "?Skill=" + resto == (
+        "?Skill=3?Species=XGame.SPECIES_AssaultA?Morat=101000001"
         "?MainWeapon=XGame.LM_AssaultRifle_AA?MainWeaponId=201030001"
-        "?SubWeapon=XGame.LM_BigGun_AA?SubWeaponId=201070001"
+        "?SubWeapon=none?SubWeaponId=0"  # BigGun é classe 10: o Assault não a leva (D228)
         "?MeleeWeapon=XGame.LM_Knife?MeleeWeaponId=201090001"
         "?EtcWeapon1=none?EtcWeapon1Id=0?EtcWeapon2=none?EtcWeapon2Id=0"
         "?EtcWeapon3=none?EtcWeapon3Id=0"
@@ -167,31 +170,83 @@ def test_municao_do_mesmo_id_nao_vira_peca(wdb: Callable[..., Path]) -> None:
     assert _campos(linha)["MainWeapon"] == "XGame.LM_AssaultRifle_AA"
 
 
-def test_peca_sem_candidato_de_classe_cai_no_defaultset(wdb: Callable[..., Path]) -> None:
-    # Sniper (classe 10): o rifle é de classe 1, sem candidato; o DefaultSet do morat dá o rifle.
-    [linha] = BotLoadout(
-        catalog=_catalogo(wdb), records=_Registros(SNIPER_ONLY), rng=random.Random(3)
-    ).lines(1)
+def test_sniper_nunca_recebe_o_rifle_do_defaultset_de_classe_1(wdb: Callable[..., Path]) -> None:
+    # O DefaultSet do Sniper (morat 102000001) dá o rifle de classe 1; o sorteio não o usa.
+    # Arma principal: `none` (sem candidato de classe 10 no slot 0). Sub: sai de classe 10.
+    catalogo = _catalogo(wdb)
+    for semente in range(50):
+        for linha in BotLoadout(
+            catalog=catalogo, records=_Registros(SNIPER_ONLY), rng=random.Random(semente)
+        ).lines(10):
+            campos = _campos(linha)
+            assert (campos["MainWeapon"], campos["MainWeaponId"]) == ("none", "0")
+            assert (campos["SubWeapon"], campos["SubWeaponId"]) == (
+                "XGame.LM_BigGun_AA",
+                "201070001",
+            )
 
-    campos = _campos(linha)
-    assert campos["Species"] == "XGame.SPECIES_SniperA"
-    assert (campos["MainWeapon"], campos["MainWeaponId"]) == (
-        "XGame.LM_AssaultRifle_AA",
-        "201030001",
-    )
-    assert (campos["SubWeapon"], campos["SubWeaponId"]) == ("XGame.LM_BigGun_AA", "201070001")
 
-
-def test_defaultset_sem_item_no_catalogo_vira_none(wdb: Callable[..., Path]) -> None:
+def test_peca_sem_candidato_no_slot_vira_none(wdb: Callable[..., Path]) -> None:
     [linha] = BotLoadout(
         catalog=_catalogo(wdb), records=_Registros(ASSAULT_ONLY), rng=random.Random(4)
     ).lines(1)
 
-    # EtcWeapon1 do DefaultSet é 999999999, que não está no catálogo; EtcWeapon2 e 3 não têm padrão.
+    # Não há lança-granada de classe 1 ou 0 no fixture sem `extra_etc`: EtcWeapon1..3 ficam `none`.
     campos = _campos(linha)
     assert (campos["EtcWeapon1"], campos["EtcWeapon1Id"]) == ("none", "0")
     assert (campos["EtcWeapon2"], campos["EtcWeapon2Id"]) == ("none", "0")
     assert (campos["EtcWeapon3"], campos["EtcWeapon3Id"]) == ("none", "0")
+
+
+def test_cada_peca_sai_da_classe_do_morat_e_do_slot_em_muitos_sorteios(
+    wdb: Callable[..., Path],
+) -> None:
+    # D228: nenhum sorteio sai fora da classe do morat, por slot. Vários morats, várias sementes.
+    catalogo = _catalogo(wdb, extra_etc=True)
+    registros = _Registros({**ASSAULT_ONLY, **SNIPER_ONLY})
+    classes = {"XGame.SPECIES_AssaultA": 1, "XGame.SPECIES_SniperA": 10}
+    sorteados = 0
+    for semente in range(200):
+        for linha in BotLoadout(
+            catalog=catalogo, records=registros, rng=random.Random(semente)
+        ).lines(20):
+            campos = _campos(linha)
+            classe = classes[campos["Species"]]
+            for opcao, slot in (
+                ("MainWeapon", "main_weapon"),
+                ("SubWeapon", "sub_weapon"),
+                ("MeleeWeapon", "melee_weapon"),
+                ("EtcWeapon1", "etc_weapon_00"),
+                ("EtcWeapon2", "etc_weapon_01"),
+                ("EtcWeapon3", "etc_weapon_02"),
+                ("Booster", "booster"),
+                ("Generator", "generator"),
+            ):
+                ident = int(campos[f"{opcao}Id"])
+                if ident == 0:
+                    assert campos[opcao] == "none"
+                    continue
+                spec = catalogo.equip_spec(ident)
+                assert spec is not None and spec.slot == slot_of(slot), (opcao, ident)
+                assert class_allows(spec.class_mask, classe), (opcao, ident, classe)
+                assert campos[opcao] == catalogo.section(ident)
+                sorteados += 1
+    assert sorteados > 0
+
+
+def test_nomes_de_bot_sao_distintos_e_cabem_no_limite_do_nome(wdb: Callable[..., Path]) -> None:
+    # D231: sem repetir na partida; apelido de até 10 caracteres ASCII; com o prefixo, até 16 bytes.
+    bots = BotLoadout(
+        catalog=_catalogo(wdb), records=_Registros(ASSAULT_ONLY), rng=random.Random(13)
+    )
+
+    nomes = [_campos(linha)["Name"] for linha in bots.lines(30)]
+
+    assert len(set(nomes)) == 30
+    assert all(nome.startswith(BOT_PREFIX) for nome in nomes)
+    assert len(set(BOT_NAMES)) == len(BOT_NAMES)
+    assert all(len(apelido) <= 10 and apelido.isascii() for apelido in BOT_NAMES)
+    assert all(len((BOT_PREFIX + apelido).encode("cp1252")) <= 16 for apelido in BOT_NAMES)
 
 
 def test_item_sem_linha_item_id_nao_e_sorteado(wdb: Callable[..., Path]) -> None:
@@ -273,7 +328,8 @@ def test_linha_do_bot_vem_com_prefixo_bots_e_owner_so_com_apelido(
 
     [(chave, valor)] = servico.bot_lines(1)
     assert chave == "Bots"
-    assert valor.startswith("?Name=Bot1?Skill=3?Species=XGame.SPECIES_AssaultA?Morat=101000001")
+    assert valor.startswith("?Name=" + BOT_PREFIX)
+    assert "?Skill=3?Species=XGame.SPECIES_AssaultA?Morat=101000001" in valor
     assert servico.bot_lines(0) == ()
     assert owner_entries("Ana") == (("Owner", "0041006E0061"),)
     assert owner_entries(None) == ()
@@ -287,7 +343,7 @@ def test_arquivo_de_bots_grava_bots_e_owner_sem_perder_outras_secoes(tmp_path: P
         "m00000001",
         [
             "0041006E0061|?Team=0?morats=101000001",
-            ("Bots", "?Name=Bot1?Skill=3?Species=XGame.SPECIES_AssaultA"),
+            ("Bots", "?Name=[BOT] Maverick?Skill=3?Species=XGame.SPECIES_AssaultA"),
             *owner_entries("Ana"),
         ],
     )
@@ -296,7 +352,7 @@ def test_arquivo_de_bots_grava_bots_e_owner_sem_perder_outras_secoes(tmp_path: P
         b"[LMEmu.Outra]\r\nChave=1\r\n"
         b"[m00000001 LMEmuLoadout]\r\n"
         b"Players=0041006E0061|?Team=0?morats=101000001\r\n"
-        b"Bots=?Name=Bot1?Skill=3?Species=XGame.SPECIES_AssaultA\r\n"
+        b"Bots=?Name=[BOT] Maverick?Skill=3?Species=XGame.SPECIES_AssaultA\r\n"
         b"Owner=0041006E0061\r\n"
     )
 
@@ -331,13 +387,35 @@ def test_wdb_real_classes_das_pecas_e_nove_morats_com_registro() -> None:
     ]
     assert len(com_registro) == 9
 
-    bots = BotLoadout(catalog=catalogo, records=PlayerRecordFile(UPL_REAL), rng=random.Random(12))
-    for linha in bots.lines(20):
-        campos = _campos(linha)
-        # Valor sem espaço, `?`, `|` nem `=`: o formato do LMEmu.ini não comporta.
-        assert all(not set(valor) & set(" ?|=") for valor in campos.values())
-        assert int(campos["Morat"]) in com_registro
-        assert campos["Record"] == registros[campos["Species"].lower()]
-        for peca in ("MainWeapon", "SubWeapon", "MeleeWeapon", "Booster", "Generator"):
-            ident = int(campos[f"{peca}Id"])
-            assert campos[peca] == (catalogo.section(ident) or "none"), (peca, ident)
+    for semente in range(30):
+        bots = BotLoadout(
+            catalog=catalogo, records=PlayerRecordFile(UPL_REAL), rng=random.Random(semente)
+        )
+        for linha in bots.lines(20):
+            campos = _campos(linha)
+            # Valor sem espaço, `?`, `|` nem `=`: o formato do LMEmu.ini não comporta. O apelido
+            # tem espaço (prefixo `[BOT] `), então é conferido à parte.
+            sem_nome = [valor for chave, valor in campos.items() if chave != "Name"]
+            assert all(not set(valor) & set(" ?|=") for valor in sem_nome)
+            assert campos["Name"].startswith(BOT_PREFIX)
+            assert int(campos["Morat"]) in com_registro
+            assert campos["Record"] == registros[campos["Species"].lower()]
+            stats = catalogo.morat_stats(int(campos["Morat"]))
+            assert stats is not None
+            classe = stats.morat_class
+            for peca, slot in (
+                ("MainWeapon", "main_weapon"),
+                ("SubWeapon", "sub_weapon"),
+                ("MeleeWeapon", "melee_weapon"),
+                ("EtcWeapon1", "etc_weapon_00"),
+                ("EtcWeapon2", "etc_weapon_01"),
+                ("EtcWeapon3", "etc_weapon_02"),
+                ("Booster", "booster"),
+                ("Generator", "generator"),
+            ):
+                ident = int(campos[f"{peca}Id"])
+                assert campos[peca] == (catalogo.section(ident) or "none"), (peca, ident)
+                if ident:
+                    spec = catalogo.equip_spec(ident)
+                    assert spec is not None and spec.slot == slot_of(slot), (peca, ident)
+                    assert class_allows(spec.class_mask, classe), (peca, ident, classe)

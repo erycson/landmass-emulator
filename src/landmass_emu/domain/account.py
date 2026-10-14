@@ -9,6 +9,9 @@ from datetime import datetime
 
 USERNAME_PATTERN = re.compile(r"[a-z0-9_]{1,12}")
 NICKNAME_MAX_BYTES = 16
+# Prefixo dos apelidos de bot (`domain/bots.BOT_PREFIX`, D231). Não importado: bots puxa o catálogo,
+# que puxa este módulo.
+NICKNAME_RESERVED_PREFIX = "[bot]"
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,3 +55,6 @@ def check_nickname(nickname: str) -> None:
         raise ValueError("nickname: caractere fora do cp1252") from e
     if not 1 <= len(raw) <= NICKNAME_MAX_BYTES:
         raise ValueError("nickname: de 1 a 16 caracteres")
+    # Prefixo reservado aos bots (D231): conta de jogador não pode começar com ele.
+    if nickname.casefold().startswith(NICKNAME_RESERVED_PREFIX):
+        raise ValueError("nickname: prefixo [BOT] é reservado aos bots")

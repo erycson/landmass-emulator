@@ -49,7 +49,7 @@ def _grafo(rotas: ModuleType, linhas: list[str]) -> object:
 def test_le_so_linhas_lmemurec_e_ignora_valor_invalido(rotas: ModuleType) -> None:
     texto = "\n".join(
         [
-            "LMEmu: bot Bot1 morat 1",
+            "LMEmu: bot [BOT] Maverick morat 1",
             _linha(rotas, t=1.0, x=0, y=0, z=0),
             "LMEmuRec map=ONS-AirPort t=abc pid=1 vida=1 x=0 y=0 z=0 fis=walk vz=0 boost=0",
         ]

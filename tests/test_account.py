@@ -13,7 +13,14 @@ from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.clans import SqlClanRepository
 from landmass_emu.db.models import AccountRow
 from landmass_emu.db.options import SqlOptionsRepository
-from landmass_emu.domain.account import Account, hash_token, is_banned, new_token, verify_token
+from landmass_emu.domain.account import (
+    Account,
+    check_nickname,
+    hash_token,
+    is_banned,
+    new_token,
+    verify_token,
+)
 from landmass_emu.domain.passwords import PasswordHasher
 from landmass_emu.domain.presence import MessagePresence
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
@@ -46,6 +53,23 @@ def test_hash_ignora_caixa_e_espacos() -> None:
     assert hash_token(" ABCDEF ") == hash_token("abcdef")
     assert verify_token("ABCDEF", hash_token("abcdef"))
     assert not verify_token("abcdef0", hash_token("abcdef"))
+
+
+def test_nickname_com_prefixo_de_bot_e_recusado_em_qualquer_caixa() -> None:
+    # D231: [BOT] é reservado aos bots. Só o começo conta: `Ana[BOT]` e `BOT` são nomes comuns.
+    for nome in ("[BOT] Ana", "[bot]Ana", "[Bot]", "[BOT]"):
+        with pytest.raises(ValueError, match="reservado"):
+            check_nickname(nome)
+    for nome in ("Ana[BOT]", "BOT", "Bot1", "xBOT"):
+        check_nickname(nome)
+
+
+async def test_cadastro_recusa_nickname_com_prefixo_de_bot(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    async with open_accounts(settings) as accounts:
+        with pytest.raises(ValueError, match="reservado"):
+            await AccountAdmin(accounts, settings).create("ana", "[bot] Ana", tmp_path)
+        assert await accounts.find_by_username("ana") is None
 
 
 def _token_do_bat(bat: Path) -> str:
