@@ -95,6 +95,7 @@ Não use `Launcher.exe`: ele tenta FTP de patch inexistente. Inicie `LandMass.ex
 
 - Máximo de 4 instâncias simultâneas. Duas instâncias não compartilham pasta (`LandMass.log`, `User.ini`, `Running.ini`): use `D:\landmass\cliente` e `D:\landmass\cliente2`.
 - O cliente encaminha a linha de comando para uma instância já aberta (janela de classe `WLog` com a propriedade `IsBrowser`) e fecha. No `LandMass.exe` da segunda pasta, troque o byte do offset `0x209E4` de `0x57` (`W`) para `0x58` (`X`); o original fica em `LandMass.exe.orig`.
+- AFK do cliente (`User.ini`, `GameAfkLimit`, `RoomAfkLimit`, `HangerAfkLimit`; padrão 3): o próprio cliente expulsa quem fica sem entrada, e da partida isso sai como deserção (500). Em teste com dois clientes, o que não está em foco fica parado e é expulso, então nos clientes de teste o limite é 60 (backup `User.ini.bak-afk`).
 - `scripts/launch.ps1 cliente:teste cliente2:teste2` fecha os clientes abertos e inicia cada pasta pelo seu `jogar_<usuário>.bat`.
 - Captura do Windows (GDI/`PrintWindow`) sai branca com o swapchain D3D11. Use o screenshot do próprio jogo (`F11` = `shot`, grava em `..\ScreenShots`).
 - O cursor da GUI é movido por deltas (DirectInput), não por `SetCursorPos`, e não é limitado às bordas.
