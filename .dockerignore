@@ -1,0 +1,24 @@
+# Contexto mínimo: o build copia só pyproject, uv.lock, .python-version, README.md e src/.
+.git
+.gitignore
+.claude
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.uv-cache
+**/__pycache__
+**/*.pyc
+captures
+data
+docs
+deploy
+re
+scripts
+tests
+unreal
+.env
+*.db
+*.jsonl
+Dockerfile
+.dockerignore
