@@ -73,11 +73,10 @@ class EntryHandlers:
         if account is None:
             log.warning("[%s] InChannel antes do login; ignorado", session.peer)
             return []
-        # shortcut: a 151 da lista sai com total_exp zero (ChannelRecords só tem o nick); a
-        # exp do banco vai no 121 e no 101. Revisar com a 151 do cliente real.
+        # A exp do banco fica no lobby (151, 317, 548 e 549 a leem) e vai no 121 e no 101.
         exp = await self._progression.total_exp(account.id)
         # Entra antes de montar a lista: a 151 traz o próprio jogador (ver ChannelRecords).
-        self._lobby.join(account.id, session, account.nickname)
+        self._lobby.join(account.id, session, account.nickname, exp)
         me = CsChannelPlayer(client_guid=account.id, nick=account.nickname, total_exp=exp)
         players = self._records.lobby_players()
         self._lobby.broadcast(reply_body(CsInChannelOut(me), CHANNEL_NET_CODE), exclude=session)

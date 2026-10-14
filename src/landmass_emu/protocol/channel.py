@@ -27,7 +27,16 @@ ROOM_INFO_SIZE = 0x38  # 56: 314 lê até @0x36 + 2
 ROOM_PLAYER_SIZE = 0x30  # 48: entrada de jogador de 317 (`disp@1389-1473`)
 MAX_ROOM_ENTRIES = 955
 MAX_ROOM_PLAYERS = 255  # `u8 count` de 317
-ROOM_STATE_MASK_STATE = 0x20  # máscara de 412: bit5 = STATE (u8 @0xf)
+# Bits de 411 (`flags`) e de 412 (`mask`): os mesmos (dispatcher `0x19c`, re/layouts_f0.md §7.2).
+ROOM_FLAG_MAP = 0x01  # map_num: u16 @2 em 411; i16 @6 em 412
+ROOM_FLAG_MODE = 0x02  # game_mode @4 e team_count @5 em 411; @8 e @9 em 412
+ROOM_FLAG_LIMIT_PLAYER = 0x04  # max_player: u8 @6 em 411; @0xa em 412
+ROOM_FLAG_LIMIT_SCORE = 0x08  # limit_score: u16 @8 em 411; i16 @0xc em 412
+ROOM_FLAG_LIMIT_TIME = 0x10  # limit_time: u8 @7 em 411; @0xb em 412
+ROOM_FLAG_STATE = 0x20  # só em 412: state u8 @0xf
+ROOM_FLAG_OPEN = 0x40  # só em 412: open u8 @0xe
+NICK_SIZE = 17  # char[17] de nick nos pedidos 451, 461 e 700 e no convite 463 (este inferido)
+ROOM_NAME_SIZE = 51  # char[51] do nome: 301 (@2) e o registro de sala (@4, até @0x36)
 # 312 de erro: `i32 @0` = código - 0x10000 (negativo para o cliente; `i16 @0` = código).
 ERROR_JOIN_ROOM_OFFSET = 0x10000
 
@@ -60,9 +69,17 @@ class CsOp(IntEnum):
     READY_GAME = 401
     READY_GAME_OUT = 402
     START_GAME_OUT = 403
+    CHANGE_ROOM_PROPERTY = 411
     CHANGE_ROOM_PROPERTY_OUT = 412
     CHANGE_ROOM_SLOT = 420
     CHANGE_ROOM_SLOT_OUT = 421
+    ROOM_EXPEL = 451  # sem resposta: o 452 não tem caso no dispatcher
+    ROOM_INVITE = 461
+    ROOM_INVITE_OUT = 462
+    ROOM_INVITE_NOTIFY = 463
+    ROOM_INVITE_ANSWER = 471
+    PLAYER_DETAIL_OUT = 543
+    ROOM_ENTRY_OUT = 549
     EXPEL_PLAYER = 700
     EXPEL_PLAYER_OUT = 701
     SAVE_OPTION = 544
@@ -362,37 +379,130 @@ class CsChangeRoomSlotIn:
 
 @dataclass(frozen=True, slots=True)
 class CsExpelPlayerIn:
-    """EXPEL_PLAYER (700), 18 bytes: `i32 position` @0 (slot do alvo). O nickname não é lido.
+    """EXPEL_PLAYER (700), 18 bytes: `u8 kind` @0 e `char nick[17]` @1 (wrapper `0x10017bb0`).
 
-    shortcut: rooms.md §7 deixa o mapeamento de `position` e de `u16 @16` em aberto; o slot é a
-    leitura mais simples de `ExpelPlayer(position, nickname)`. Confirmar no cliente real."""
+    `kind`: 0x10 WEB, 0x21 CHANNEL, 0x22 LOBBY. É o `/EXPEL` do console (`XInterface` L21290), não
+    a expulsão do dono da sala (essa é o 451). O servidor não executa: o emulador não tem papel de
+    administrador, e expulsar a pedido de qualquer jogador deixaria tirar qualquer um do canal.
 
-    position: int
-    _FIXED = struct.Struct("<i")
+    shortcut: revisar com papel de administrador (`ucAccess`); até lá o 700 é ignorado."""
+
+    kind: int
+    nickname: str
 
     @classmethod
     def unpack(cls, payload: bytes) -> CsExpelPlayerIn:
-        if len(payload) < cls._FIXED.size:
+        if len(payload) < 1 + NICK_SIZE:
             raise ValueError(f"CS_EXPEL_PLAYER_IN curto: {len(payload)} bytes")
-        return cls(cls._FIXED.unpack_from(payload)[0])
+        return cls(payload[0], cstr(payload[1 : 1 + NICK_SIZE]))
+
+    def pack(self) -> bytes:
+        return bytes((self.kind,)) + cfield(self.nickname, NICK_SIZE)
+
+
+@dataclass(frozen=True, slots=True)
+class CsRoomExpelIn:
+    """ROOM_EXPEL (451), 18 bytes: `@0` não é preenchido pelo cliente (lixo, ignorado) e
+    `char nick[17]` @1 (wrapper `0x10017a10`). Pedido do dono da sala. A resposta 452 não tem caso
+    no dispatcher, então não há resposta. A UI não chama (`XInterface` L29174, comentado)."""
+
+    nickname: str
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> CsRoomExpelIn:
+        if len(payload) < 1 + NICK_SIZE:
+            raise ValueError(f"CS_ROOM_EXPEL_IN curto: {len(payload)} bytes")
+        return cls(cstr(payload[1 : 1 + NICK_SIZE]))
+
+    def pack(self) -> bytes:
+        return b"\0" + cfield(self.nickname, NICK_SIZE)
+
+
+@dataclass(frozen=True, slots=True)
+class CsRoomInviteIn:
+    """ROOM_INVITE (461), 17 bytes: `char nick[17]` @0, NUL-terminado (wrapper `0x10017a90`).
+    Só o dono convida (`NetRoomInvite`, `XInterface` L17344)."""
+
+    nickname: str
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> CsRoomInviteIn:
+        if len(payload) < NICK_SIZE:
+            raise ValueError(f"CS_ROOM_INVITE_IN curto: {len(payload)} bytes")
+        return cls(cstr(payload[:NICK_SIZE]))
+
+
+@dataclass(frozen=True, slots=True)
+class CsInviteResultOut:
+    """ROOM_INVITE_OUT (462), 4 bytes: `i32 result` @0, resposta ao convidador. 0 = convite
+    enviado; CERR negativo = recusado (`re/layouts_f0.md` §7.3). O envelope de -4061 (quem não é
+    dono) não mostra nada no cliente (dispatcher `0x1ce`, `disp@407-415`)."""
+
+    result: int
+    opcode: ClassVar[int] = CsOp.ROOM_INVITE_OUT
+    _FIXED = struct.Struct("<i")
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(self.result)
+
+
+@dataclass(frozen=True, slots=True)
+class CsRoomInviteOut:
+    """ROOM_INVITE_NOTIFY (463), ao convidado: `i32 room_guid` @0 (vira `DAT_1005aa90`, a sala do
+    aceite sem argumento) e `char nick[17]` @4 com o nick de quem convida (`NotifyRoomInvite(int,
+    string)`, wrapper `0x100044f0`, que lê de @4 até NUL).
+
+    shortcut: os 17 bytes de @4 são inferidos dos demais nicks (o RE não os fixa); o cliente lê
+    até NUL. Revisar na primeira captura de convite."""
+
+    room_id: int
+    inviter: str
+    opcode: ClassVar[int] = CsOp.ROOM_INVITE_NOTIFY
+    _FIXED = struct.Struct("<i")
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(self.room_id) + cfield(self.inviter, NICK_SIZE)
+
+
+@dataclass(frozen=True, slots=True)
+class CsRoomInviteAnswerIn:
+    """ROOM_INVITE_ANSWER (471): `i32 room_id` @0 e `u8 accept` @4 (1 se o cliente mandou 'Y' ou
+    'y'). @5..7 não são preenchidos pelo cliente (lixo, ignorado). Wrapper `0x10017b10`."""
+
+    room_id: int
+    accept: bool
+    _FIXED = struct.Struct("<iB")
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> CsRoomInviteAnswerIn:
+        if len(payload) < cls._FIXED.size:
+            raise ValueError(f"CS_ROOM_INVITE_ANSWER_IN curto: {len(payload)} bytes")
+        room_id, accept = cls._FIXED.unpack_from(payload)
+        return cls(room_id, bool(accept))
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(self.room_id, int(self.accept)) + bytes(3)
 
 
 @dataclass(frozen=True, slots=True)
 class CsRoom:
     """Registro de sala: corpo do 302 (612 bytes) e, nos 68 primeiros, a entrada de 141.
 
-    Offsets (relativos ao valor do nó, rooms.md §1, §2 e §5 e o 412):
+    Offsets relativos ao valor do nó (nó + 0x10), o que `execGetRoomInfo` lê (`LM_Engine`
+    `0x10008000`, com a ordem de `LM_ROOM_INFO` em `LM_Engine.src.txt`):
       0x00 i32 room_id (chave de busca de 302, 312, 322, 332, 342 e 412)
-      0x04 u8 scale | 0x10 char[32] name | 0x30 u8 has_password (inferido)
+      0x04 char[51] name, NUL-terminado (o cliente lê até NUL; 301 limita a 50 bytes + NUL)
+      0x37 u8 has_password (bool `password` do `LM_ROOM_INFO`)
       0x38 u8 state (1 espera, 2 jogando; 402 compara com 1) | 0x39 u8 game_mode
       0x3A u8 team_count | 0x3B u8 curr_player (conta o dono) | 0x3C u8 curr_spectator
       0x3D u8 max_player | 0x3E u8 open | 0x40 i16 map_num | 0x44 i16 limit_score
-      0x46 u8 limit_time | 0x4C i32 master
+      0x46 u8 limit_time | 0x47 u8 game_scale | 0x48 u8 team_damage (zero aqui)
+      0x4C i32 master
       0x50 + 4*i, i < 70: guid do slot i, -1 se vazio (`ROOM_SLOTS`)
       0x174 + 4*j, j < 60: espectadores, -1 se vazio (`ROOM_SPECTATORS`)
 
-    shortcut: name (0x10..0x2F), has_password (0x30) e scale (0x04) não têm campo decodificado no
-    RE; a posição é suposição. Os demais campos seguem 412 e 314. Confirmar no cliente real."""
+    shortcut: a entrada de 141 tem 0x44 bytes, então a escala (0x47) não chega à lista do lobby:
+    a sala aparece com escala 0 até o 302 ou o 314 da sala. Revisar com captura da lista."""
 
     room_id: int
     name: str
@@ -416,9 +526,8 @@ class CsRoom:
             raise ValueError(f"sala com {len(self.slots)} slots; o registro tem {ROOM_SLOTS}")
         buf = bytearray(ROOM_RECORD_SIZE)
         _I32.pack_into(buf, 0x00, self.room_id)
-        buf[0x04] = self.scale
-        buf[0x10:0x30] = cfield(self.name, 32)
-        buf[0x30] = int(self.has_password)
+        buf[0x04 : 0x04 + ROOM_NAME_SIZE] = cfield(self.name, ROOM_NAME_SIZE)
+        buf[0x37] = int(self.has_password)
         buf[0x38] = self.state
         buf[0x39] = self.game_mode
         buf[0x3A] = self.team_count
@@ -429,6 +538,7 @@ class CsRoom:
         _I16.pack_into(buf, 0x40, self.map_num)
         _I16.pack_into(buf, 0x44, self.limit_score)
         buf[0x46] = self.limit_time
+        buf[0x47] = self.scale
         _I32.pack_into(buf, 0x4C, self.master)
         for i, guid in enumerate(self.slots):
             _I32.pack_into(buf, 0x50 + 4 * i, guid)
@@ -504,10 +614,11 @@ class CsInRoomError:
 @dataclass(frozen=True, slots=True)
 class CsRoomInfoOut:
     """ROOM_INFO_OUT (314), 56 bytes: estado da sala para quem entrou. Usa os mesmos campos do
-    registro, com offsets do corpo: `i16 limit_score` @0, `u8 limit_time` @2, `i32 master` @8,
-    `i32 room_id` @0x0c (chave de busca, `FUN_10019e90(body+0xc)`), `u8` state, mode, team, max e
-    open em @0x10..0x14, `i16 map` @0x16. Depois deve vir a lista 317 completa (o 314 zera os
-    slots)."""
+    registro, com offsets do corpo: `i16 limit_score` @0, `u8 limit_time` @2, `u8 game_scale` @3
+    (node+0x57, confirmado pelo `execGetRoomInfo`), `i32 master` @8, `i32 room_id` @0x0c (chave de
+    busca, `FUN_10019e90(body+0xc)`), `u8` state, mode, team, max e open em @0x10..0x14, `i16 map`
+    @0x16. Não leva a senha: o 314 não grava o bit de senha (0x37). Depois deve vir a lista 317
+    completa (o 314 zera os slots)."""
 
     room: CsRoom
     opcode: ClassVar[int] = CsOp.ROOM_INFO_OUT
@@ -517,6 +628,7 @@ class CsRoomInfoOut:
         buf = bytearray(ROOM_INFO_SIZE)
         _I16.pack_into(buf, 0x00, r.limit_score)
         buf[0x02] = r.limit_time
+        buf[0x03] = r.scale
         _I32.pack_into(buf, 0x08, r.master)
         _I32.pack_into(buf, 0x0C, r.room_id)
         buf[0x10] = r.state
@@ -535,18 +647,24 @@ class CsRoomPlayer:
     sala), `u8 ready` @0x29 (bit0), `u8` flag de estado @0x2a (0: o cliente põe 0x23, em sala),
     `u8` pc_room @0x2b (zero) e `i32 morats` @0x2c (`select_morats_id`, +0xb4).
 
+    Usada em 317 (lista da sala) e em 549 (entrada de quem chegou; mesmo registro de 48 bytes).
+
     shortcut: slot (0x28), flag (0x2a) e a posição de morats (0x2c) são inferidos do RE. A sala do
-    jogador não vai na entrada: 317 a copia do próprio jogador (disp@1438). Confirmar no cliente."""
+    jogador não vai na entrada: 317 e 549 a copiam do próprio jogador (disp@1438, disp@650).
+    Confirmar no cliente."""
 
     client_guid: int
     slot: int
     ready: bool
     morats: int
     nick: str = ""
+    total_exp: int = 0
     _TAIL = struct.Struct("<BBBBi")
 
     def pack(self) -> bytes:
-        head = CsChannelPlayer(client_guid=self.client_guid, nick=self.nick).pack()
+        head = CsChannelPlayer(
+            client_guid=self.client_guid, nick=self.nick, total_exp=self.total_exp
+        ).pack()
         return head + self._TAIL.pack(self.slot, int(self.ready), 0, 0, self.morats)
 
 
@@ -580,10 +698,12 @@ class CsOutRoomOut:
 
 @dataclass(frozen=True, slots=True)
 class CsChangeRoomMasterOut:
-    """CHANGE_ROOM_MASTER_OUT (332), 8 bytes: `i32 room_id` @0 e `i32 new_master` @4.
+    """CHANGE_ROOM_MASTER_OUT (332), 8 bytes: `i32 room_guid` @0 e `i32 client_guid` @4 (novo
+    dono). Ordem pela assinatura `NotifyChangeRoomMaster(int room_guid, int client_guid)`
+    (re/protocol_full.md §7, item 7).
 
-    shortcut: layout inferido de `disp@2358` (body+4 vira o dono da sala, +0x5c); o rótulo é
-    `NotifyChangeRoomMaster` (gap no RE). Confirmar no cliente real."""
+    shortcut: a ordem vem da assinatura do evento, sem captura; o efeito no nó (+0x5c) não está
+    confirmado. Revisar na primeira troca de dono capturada."""
 
     room_id: int
     master: int
@@ -596,10 +716,11 @@ class CsChangeRoomMasterOut:
 
 @dataclass(frozen=True, slots=True)
 class CsRemoveRoomOut:
-    """REMOVE_ROOM_OUT (342), 4 bytes: `i32 room_id` @0.
+    """REMOVE_ROOM_OUT (342), 4 bytes: `i32 room_guid` @0 (assinatura `NotifyRemoveRoom(int
+    room_guid)`, re/protocol_full.md §7, item 7).
 
-    shortcut: o RE não decodifica o corpo de 342 (gap); a chave é body@0 (`disp@285-298`).
-    Confirmar no cliente real que não lê mais que 4 bytes."""
+    shortcut: os 4 bytes vêm da assinatura do evento; sem captura de 342 para confirmar que o
+    cliente não lê mais que isso. Revisar na primeira captura de sala removida."""
 
     room_id: int
     opcode: ClassVar[int] = CsOp.REMOVE_ROOM_OUT
@@ -628,8 +749,9 @@ class CsStartGameOut:
     """START_GAME_OUT (403), 18 bytes: `char address[16]` @0 (NUL-terminado) e `u16 port` @16.
     Vai só a quem está na sala.
 
-    shortcut: os 16 bytes de endereço são hipótese (rooms.md §8: `_DAT_1005ac34..40`, 4 dwords).
-    Se o cliente não conectar, a falha aparece em `OnStartGame` → `OnReadyGameError(0)`."""
+    Conversão fechada em `NotifyStartGame_0x10004440.c` (endereço = C-string de @0..15, porta = u16
+    @0x10). shortcut: a ligação aos parâmetros do evento é inferida; se o cliente não conectar, a
+    falha aparece em `OnStartGame` → `OnReadyGameError(0)`."""
 
     address: str
     port: int
@@ -641,20 +763,149 @@ class CsStartGameOut:
 
 
 @dataclass(frozen=True, slots=True)
-class CsRoomStateOut:
-    """CHANGE_ROOM_PROPERTY_OUT (412), 16 bytes: `i32 room_id` @0, máscara `u8` @4 (0x20 = STATE)
-    e `u8 state` @0xf. Só o campo de estado vai no quadro; os demais bits ficam zero."""
+class CsChangeRoomPropertyIn:
+    """CHANGE_ROOM_PROPERTY (411), corpo de 10 bytes (wrapper `FUN_10017820`,
+    re/layouts_f0.md §7.2): `u8 flags` @0; `u16 map_num` @2 (se MAP); `u8 game_mode` @4 e
+    `u8 team_count` @5 (se MODE); `u8 max_player` @6; `u8 limit_time` @7; `u16 limit_score` @8.
+    @1 e @9 não são usados.
+
+    Os bits de `flags` dizem o que mudar. O cliente sempre manda max, tempo e pontos, mas só
+    valem os campos com bit ligado.
+
+    shortcut: o RE diz que max, tempo e pontos são sempre escritos; o emulador só os aplica com o
+    bit ligado. Revisar na primeira captura de troca de configuração."""
+
+    flags: int
+    map_num: int
+    game_mode: int
+    team_count: int
+    max_player: int
+    limit_time: int
+    limit_score: int
+    _FIXED = struct.Struct("<BxHBBBBH")
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> CsChangeRoomPropertyIn:
+        if len(payload) < cls._FIXED.size:
+            raise ValueError(f"CS_CHANGE_ROOM_PROPERTY_IN curto: {len(payload)} bytes")
+        flags, map_num, mode, team, max_player, limit_time, limit = cls._FIXED.unpack_from(payload)
+        return cls(flags, map_num, mode, team, max_player, limit_time, limit)
+
+
+@dataclass(frozen=True, slots=True)
+class CsChangeRoomPropertyOut:
+    """CHANGE_ROOM_PROPERTY_OUT (412), 16 bytes: `i32 room_id` @0 (chave de busca), `u8 mask` @4
+    e os campos dos bits ligados (dispatcher `0x19c`, `disp@352-381`): MAP `i16 @6`; MODE
+    `game_mode @8` e `team_count @9`; LIMIT_PLAYER `u8 @0xa`; LIMIT_TIME `u8 @0xb`; LIMIT_SCORE
+    `i16 @0xc`; OPEN `u8 @0xe`; STATE `u8 @0xf`. Campo `None` fica de fora da máscara e não muda
+    no cliente. Os nomes seguem o nó que cada campo grava (`execGetRoomInfo`: limit_time é
+    nó+0x46, map é nó+0x50)."""
 
     room_id: int
-    state: int
+    map_num: int | None = None
+    game_mode: int | None = None
+    team_count: int | None = None
+    max_player: int | None = None
+    limit_time: int | None = None
+    limit_score: int | None = None
+    is_open: bool | None = None
+    state: int | None = None
     opcode: ClassVar[int] = CsOp.CHANGE_ROOM_PROPERTY_OUT
 
     def pack(self) -> bytes:
+        if (self.game_mode is None) != (self.team_count is None):
+            raise ValueError("MODE exige game_mode e team_count juntos")
         buf = bytearray(16)
         _I32.pack_into(buf, 0, self.room_id)
-        buf[4] = ROOM_STATE_MASK_STATE
-        buf[0xF] = self.state
+        mask = 0
+        if self.map_num is not None:
+            mask |= ROOM_FLAG_MAP
+            _I16.pack_into(buf, 6, self.map_num)
+        if self.game_mode is not None and self.team_count is not None:
+            mask |= ROOM_FLAG_MODE
+            buf[8] = self.game_mode
+            buf[9] = self.team_count
+        if self.max_player is not None:
+            mask |= ROOM_FLAG_LIMIT_PLAYER
+            buf[0xA] = self.max_player
+        if self.limit_time is not None:
+            mask |= ROOM_FLAG_LIMIT_TIME
+            buf[0xB] = self.limit_time
+        if self.limit_score is not None:
+            mask |= ROOM_FLAG_LIMIT_SCORE
+            _I16.pack_into(buf, 0xC, self.limit_score)
+        if self.is_open is not None:
+            mask |= ROOM_FLAG_OPEN
+            buf[0xE] = int(self.is_open)
+        if self.state is not None:
+            mask |= ROOM_FLAG_STATE
+            buf[0xF] = self.state
+        buf[4] = mask
         return bytes(buf)
+
+
+@dataclass(frozen=True, slots=True)
+class CsRoomEntryOut:
+    """ROOM_ENTRY_OUT (549), 48 bytes: o registro de quem entrou (`CsRoomPlayer`, o mesmo de 317).
+    Vai só a quem já está na sala. O cliente cria o nó do entrante, grava o slot na sala de quem
+    recebe e soma 1 no contador de jogadores (`disp@608-691`). Por isso não vai a quem recebe 312,
+    que também soma: ver `RoomHandlers._joined`.
+
+    shortcut: a divisão de quem recebe 549 e quem recebe 312 é decisão deste servidor (o RE mostra
+    os dois efeitos, não quem os envia em cada caso). Revisar na primeira captura com dois clientes
+    na sala."""
+
+    player: CsRoomPlayer
+    opcode: ClassVar[int] = CsOp.ROOM_ENTRY_OUT
+
+    def pack(self) -> bytes:
+        return self.player.pack()
+
+
+@dataclass(frozen=True, slots=True)
+class CsPlayerDetailOut:
+    """PLAYER_DETAIL_OUT (543): corpo de `LM_PLAYER_DETAIL_INFO` (evento `NotifyDetailPlayerInfo`,
+    `result` vem do envelope, não do corpo). Layout de `re/protocol_full.md` §3.2: nick @0; oito
+    `i32` a partir de @0x14 (rank, jogos, vitórias, derrotas, abates, mortes, headshots, exp);
+    `u8 nest` @0x34; `i32 clan_mark` @0x38; clã @0x3c, NUL-terminado.
+
+    shortcut: a ordem dos campos segue `LM_PLAYER_DETAIL_INFO` em `LM_Engine.src.txt` (nove inteiros
+    entre o nick e o clã, como no RE); o nick ocupa @0..0x13 (20 bytes) e o clã 17 bytes. Ambos são
+    inferidos: o RE não fixa o tamanho. Sem handler: 542 não é roteado."""
+
+    nickname: str
+    rank: int = 0
+    games: int = 0
+    wins: int = 0
+    losses: int = 0
+    kills: int = 0
+    deaths: int = 0
+    headshots: int = 0
+    total_exp: int = 0
+    nest: int = 0
+    clan_mark: int = 0
+    clan: str = ""
+    opcode: ClassVar[int] = CsOp.PLAYER_DETAIL_OUT
+    _INTS = struct.Struct("<8i")
+
+    def pack(self) -> bytes:
+        head = bytearray(0x3C)
+        head[0:0x14] = cfield(self.nickname, 0x14)
+        self._INTS.pack_into(
+            head,
+            0x14,
+            self.rank,
+            self.games,
+            self.wins,
+            self.losses,
+            self.kills,
+            self.deaths,
+            self.headshots,
+            self.total_exp,
+        )
+        head[0x34] = self.nest
+        _I32.pack_into(head, 0x38, self.clan_mark)
+        return bytes(head) + cfield(self.clan, NICK_SIZE)
 
 
 @dataclass(frozen=True, slots=True)
@@ -781,8 +1032,8 @@ class CsRefreshRoomListOut:
     `curr_spectator` +8, `max_player` +9, `open` +10, 1 de padding, `u16 map_num` +12 e 2 de
     padding.
 
-    shortcut: `map_num` segue §4.2 (u16 em +12). O 302 grava o mapa em outro offset; o RE tem
-    conflito marcado (gap). Confirmar no cliente real."""
+    shortcut: `map_num` (u16 em +12, nó+0x50) é o mesmo campo que 302, 314 e 412 gravam, segundo
+    `execGetRoomInfo`. Falta captura de 547 para confirmar a leitura."""
 
     rooms: tuple[CsRoom, ...]
     opcode: ClassVar[int] = CsOp.REFRESH_ROOM_LIST_OUT

@@ -1,9 +1,11 @@
-"""Salas: 301 criar, 311 entrar, 321 sair, 401 pronto e início, 420 slot, 700 expulsar.
+"""Salas: 301 criar, 311 entrar, 321 sair, 401 pronto e início, 411 configurar, 420 slot,
+451 expulsar, 461 convidar e 471 responder ao convite.
 
-Regras em `domain/rooms.py`; layouts em `protocol/channel.py`; evidências em `re/rooms.md`.
+Regras em `domain/rooms.py`; layouts em `protocol/channel.py`; evidências em `re/rooms.md` e
+`re/protocol_full.md`. O 700 (`/EXPEL` do console) não é executado: ver `CsExpelPlayerIn`.
 Difusão: `lobby.broadcast` para o que o cliente aplica no canal inteiro (302 na criação, 312, 322,
-332, 342, 412); `lobby.send_to` para quem está na sala (402, 403, 421). Entrar na sala não tira o
-jogador do lobby: continua recebendo a lista e o chat do canal.
+332, 342, 412). Na entrada, quem já está na sala recebe 549 e não 312 (ver `_joined`);
+`lobby.send_to` para quem está na sala (402, 403, 421) e para o convidado (463).
 """
 
 import logging
@@ -16,25 +18,35 @@ from landmass_emu.handlers.channel.records import ChannelRecords
 from landmass_emu.net.server import Reply, reply_body
 from landmass_emu.net.session import Session
 from landmass_emu.protocol.channel import (
+    ROOM_FLAG_LIMIT_PLAYER,
+    ROOM_FLAG_LIMIT_SCORE,
+    ROOM_FLAG_LIMIT_TIME,
+    ROOM_FLAG_MAP,
+    ROOM_FLAG_MODE,
     ROOM_SLOTS,
     CsChangeRoomMasterOut,
+    CsChangeRoomPropertyIn,
+    CsChangeRoomPropertyOut,
     CsChangeRoomSlotIn,
     CsChangeRoomSlotOut,
     CsCreateRoomIn,
     CsCreateRoomOut,
     CsErrorEnvelope,
-    CsExpelPlayerIn,
-    CsExpelPlayerOut,
     CsInRoomError,
     CsInRoomIn,
     CsInRoomOut,
+    CsInviteResultOut,
     CsOp,
     CsOutRoomOut,
     CsReadyGameIn,
     CsReadyGameOut,
     CsRemoveRoomOut,
+    CsRoomEntryOut,
+    CsRoomExpelIn,
     CsRoomInfoOut,
-    CsRoomStateOut,
+    CsRoomInviteAnswerIn,
+    CsRoomInviteIn,
+    CsRoomInviteOut,
     CsStartGameOut,
 )
 from landmass_emu.protocol.header import CHANNEL_NET_CODE
@@ -46,17 +58,30 @@ log = logging.getLogger(__name__)
 ERR_CREATE_NAME_SHORT = 211000202  # "O nome da sala deve ter no mínimo 3 caracteres." (302)
 ERR_CREATE = 211000201  # "Não pode criar Sala. Tente novamente." (302)
 ERR_NOT_READY = 241002702  # "Ninguem está pronto nesta sala." (404)
-ERR_NOT_OWNER = 241000302  # "%p não é o líder da sala." (701)
-ERR_NOT_IN_ROOM = 241001202  # "Este jogador não encontra-se na sala." (701)
 
 # Código de erro do 312 (short). O cliente monta a mensagem por `FUN_10021c80` (gap no RE); o
-# número é o sufixo de 211000000 + código em `msg_error`.
+# número é o sufixo de 211000000 + código em `msg_error` do `landmass.wdb`.
 JOIN_CODES: dict[RoomReason, int] = {
     RoomReason.NOT_FOUND: 1001,  # 211001001 "Esta sala não existe"
     RoomReason.FULL: 1202,  # 211001202 "Sala está cheia"
     RoomReason.WRONG_PASSWORD: 1701,  # 211001701 "Senha inválida"
     # shortcut: 212000200 "partida já iniciada" tem prefixo 212, que o short não carrega; revisar.
     RoomReason.STARTED: 200,
+}
+
+# CERR de `Core.u` (re/layouts_f0.md §7.3) para a resposta 462 ao convite.
+CERR_INVITE_ROOM_NOT_ADMIN = -4061  # quem não é dono: envelope, e o cliente não mostra nada
+CERR_FIND_PLAYER = -2460  # convidado fora do canal
+CERR_NOT_ROOM = -2408  # quem convida não está em sala
+CERR_FULL_ROOM = -2406  # sala cheia
+CERR_IN_ROOM = -2411  # convidado já está em sala (ou é o próprio dono)
+CERR_CANNOT_INVITE = -2412  # partida já começou
+INVITE_CODES: dict[RoomReason, int] = {
+    RoomReason.NOT_OWNER: CERR_INVITE_ROOM_NOT_ADMIN,
+    RoomReason.NOT_IN_ROOM: CERR_NOT_ROOM,
+    RoomReason.FULL: CERR_FULL_ROOM,
+    RoomReason.ALREADY_IN_ROOM: CERR_IN_ROOM,
+    RoomReason.STARTED: CERR_CANNOT_INVITE,
 }
 
 
@@ -66,6 +91,28 @@ class GameEndpoint:
 
     host: str
     port: int
+
+
+def _clamp(value: int, low: int, high: int) -> int:
+    return min(max(value, low), high)
+
+
+def _settings(req: CsChangeRoomPropertyIn) -> dict[str, int]:
+    """Campos de 411 que o bit de `flags` manda mudar, já limitados como na criação (301)."""
+    flags = req.flags
+    out: dict[str, int] = {}
+    if flags & ROOM_FLAG_MAP:
+        out["map_num"] = _clamp(req.map_num, 0, 32767)
+    if flags & ROOM_FLAG_MODE:
+        out["game_mode"] = _clamp(req.game_mode, 0, 255)
+        out["team_count"] = _clamp(req.team_count, 0, 255)
+    if flags & ROOM_FLAG_LIMIT_PLAYER:
+        out["max_player"] = _clamp(req.max_player, 1, ROOM_SLOTS)
+    if flags & ROOM_FLAG_LIMIT_TIME:
+        out["limit_time"] = _clamp(req.limit_time, 0, 255)
+    if flags & ROOM_FLAG_LIMIT_SCORE:
+        out["limit_score"] = _clamp(req.limit_score, 0, 32767)
+    return out
 
 
 class RoomHandlers:
@@ -91,25 +138,22 @@ class RoomHandlers:
                 guid,
                 name=req.name,
                 password=req.password,
-                scale=self._clamp(req.scale, 0, 255),
-                game_mode=self._clamp(req.game_mode, 0, 255),
-                map_num=self._clamp(req.map_num, 0, 32767),
-                max_player=self._clamp(req.max_player, 1, ROOM_SLOTS),
-                team_count=self._clamp(req.team_count, 0, 255),
-                limit_time=self._clamp(req.limit_time, 0, 255),
-                limit_score=self._clamp(req.limit_score, 0, 32767),
+                scale=_clamp(req.scale, 0, 255),
+                game_mode=_clamp(req.game_mode, 0, 255),
+                map_num=_clamp(req.map_num, 0, 32767),
+                max_player=_clamp(req.max_player, 1, ROOM_SLOTS),
+                team_count=_clamp(req.team_count, 0, 255),
+                limit_time=_clamp(req.limit_time, 0, 255),
+                limit_score=_clamp(req.limit_score, 0, 32767),
             )
         except RoomError as e:
             log.info("[%s] CreateRoom recusado: %s", session.peer, e.reason.value)
             code = ERR_CREATE_NAME_SHORT if e.reason is RoomReason.BAD_NAME else ERR_CREATE
             return [CsErrorEnvelope(CsOp.CREATE_ROOM_OUT, code)]
-        snapshot = self._records.room(room)
         log.info("[%s] sala %d criada: %s", session.peer, room.room_id, room.name)
-        # Ordem: 302 cria o nó em todo o lobby; 312 põe o criador no slot 0 (+0xa4 e contagem);
-        # 314 e 317 vão só a ele, que refaz slots e estado da sala.
-        self._to_lobby(CsCreateRoomOut(snapshot))
-        self._to_lobby(CsInRoomOut(room.room_id, guid, 0))
-        return [CsRoomInfoOut(snapshot), self._records.room_players(room)]
+        # 302 cria o nó em todo o lobby; depois a entrada do criador (312, 314 e 317).
+        self._to_lobby(CsCreateRoomOut(self._records.room(room)))
+        return self._joined(room, guid)
 
     async def in_room(self, session: Session, payload: bytes) -> Sequence[Reply]:
         guid = self._lobby.guid_of(session)
@@ -131,12 +175,25 @@ class RoomHandlers:
             target = self._rooms.get(req.room_id)
             snap = None if target is None else self._records.room(target)
             return [CsInRoomError(code, req.room_id, snap)]
-        snapshot = self._records.room(room)
+        log.info("[%s] entrou na sala %d", session.peer, room.room_id)
+        return self._joined(room, guid)
+
+    def _joined(self, room: Room, guid: int) -> Sequence[Reply]:
+        """Entrada de `guid` na sala: 549 a quem já está nela; 312 ao lobby, menos a quem já está
+        nela; 314 e 317 ao entrante.
+
+        O 312 soma 1 no contador de jogadores de quem o recebe (`disp@2908-2912`), e o 549 também:
+        mandar os dois a quem já está na sala contaria duas vezes. Por isso esses clientes recebem
+        só o 549, que traz o nó e o slot do entrante.
+        """
+        others = [g for g in room.members if g != guid]
+        entering = self._records.room_player(room, guid)
+        self._lobby.send_to(others, reply_body(CsRoomEntryOut(entering), CHANNEL_NET_CODE))
         slot = room.members[guid].slot
-        log.info("[%s] entrou na sala %d no slot %d", session.peer, room.room_id, slot)
-        # 312 vai ao canal: o cliente põe o jogador na sala e soma no contador de todos.
-        self._to_lobby(CsInRoomOut(room.room_id, guid, slot))
-        return [CsRoomInfoOut(snapshot), self._records.room_players(room)]
+        self._lobby.broadcast(
+            reply_body(CsInRoomOut(room.room_id, guid, slot), CHANNEL_NET_CODE), skip=others
+        )
+        return [CsRoomInfoOut(self._records.room(room)), self._records.room_players(room)]
 
     def leave(self, guid: int) -> None:
         """Tira o jogador da sala, se houver, e avisa o canal: 322 sempre; 332 se trocou o dono; 342
@@ -178,7 +235,7 @@ class RoomHandlers:
                     return [CsErrorEnvelope(CsOp.READY_GAME_ERROR, ERR_NOT_READY)]
                 return []
             log.info("[%s] partida iniciada na sala %d", session.peer, started.room_id)
-            self._to_lobby(CsRoomStateOut(started.room_id, started.state))
+            self._to_lobby(CsChangeRoomPropertyOut(started.room_id, state=started.state))
             self._to_room(started, CsStartGameOut(self._game.host, self._game.port))
             return []
         try:
@@ -187,6 +244,32 @@ class RoomHandlers:
             log.info("[%s] pronto recusado: %s", session.peer, e.reason.value)
             return []
         self._to_room(room, CsReadyGameOut(guid, ready, req.morats))
+        return []
+
+    async def change_room_property(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        """411: o dono muda os campos marcados nas flags. A mudança vai ao canal inteiro (412)."""
+        guid = self._lobby.guid_of(session)
+        if guid is None:
+            return []
+        req = CsChangeRoomPropertyIn.unpack(payload)
+        changes = _settings(req)
+        try:
+            room = self._rooms.configure(guid, changes)
+        except RoomError as e:
+            log.info("[%s] configuração recusada: %s", session.peer, e.reason.value)
+            return []
+        log.info("[%s] sala %d configurada: %s", session.peer, room.room_id, changes)
+        self._to_lobby(
+            CsChangeRoomPropertyOut(
+                room.room_id,
+                map_num=changes.get("map_num"),
+                game_mode=changes.get("game_mode"),
+                team_count=changes.get("team_count"),
+                max_player=changes.get("max_player"),
+                limit_time=changes.get("limit_time"),
+                limit_score=changes.get("limit_score"),
+            )
+        )
         return []
 
     async def change_room_slot(self, session: Session, payload: bytes) -> Sequence[Reply]:
@@ -202,24 +285,69 @@ class RoomHandlers:
         self._to_room(room, CsChangeRoomSlotOut(guid, req.slot))
         return []
 
-    async def expel_player(self, session: Session, payload: bytes) -> Sequence[Reply]:
+    async def room_expel(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        """451: o dono tira do jogador da sala pelo nick. Não há resposta (452 não tem caso)."""
         guid = self._lobby.guid_of(session)
         if guid is None:
             return []
-        req = CsExpelPlayerIn.unpack(payload)
+        req = CsRoomExpelIn.unpack(payload)
+        room = self._rooms.room_of(guid)
+        if room is None:
+            return []
+        target = next((g for g in room.members if self._lobby.nickname_of(g) == req.nickname), None)
+        if target is None:
+            log.info("[%s] expulsão: %r não está na sala", session.peer, req.nickname)
+            return []
         try:
-            expelled = self._rooms.expel(guid, req.position)
+            expelled = self._rooms.expel(guid, target)
         except RoomError as e:
             log.info("[%s] expulsão recusada: %s", session.peer, e.reason.value)
-            code = ERR_NOT_OWNER if e.reason is RoomReason.NOT_OWNER else ERR_NOT_IN_ROOM
-            return [CsErrorEnvelope(CsOp.EXPEL_PLAYER_OUT, code)]
-        log.info("[%s] expulsou %d da sala %d", session.peer, expelled.guid, expelled.room.room_id)
+            return []
+        log.info("[%s] expulsou %d da sala %d", session.peer, expelled.guid, room.room_id)
         self._to_lobby(CsOutRoomOut(expelled.room.room_id, expelled.guid))
-        return [CsExpelPlayerOut(0)]
+        return []
 
-    @staticmethod
-    def _clamp(value: int, low: int, high: int) -> int:
-        return min(max(value, low), high)
+    async def room_invite(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        """461: o dono convida um nick do canal. O convidado recebe 463; o dono, 462."""
+        guid = self._lobby.guid_of(session)
+        if guid is None:
+            return []
+        req = CsRoomInviteIn.unpack(payload)
+        room = self._rooms.room_of(guid)
+        if room is not None and room.master != guid:
+            return [CsErrorEnvelope(CsOp.ROOM_INVITE_OUT, CERR_INVITE_ROOM_NOT_ADMIN)]
+        target = self._lobby.guid_of_nick(req.nickname)
+        if target is None:
+            return [CsInviteResultOut(CERR_FIND_PLAYER)]
+        try:
+            room = self._rooms.invite(guid, target)
+        except RoomError as e:
+            log.info("[%s] convite recusado: %s", session.peer, e.reason.value)
+            return [CsInviteResultOut(INVITE_CODES[e.reason])]
+        inviter = self._lobby.nickname_of(guid) or ""
+        self._lobby.send_to(
+            [target], reply_body(CsRoomInviteOut(room.room_id, inviter), CHANNEL_NET_CODE)
+        )
+        log.info("[%s] convidou %r para a sala %d", session.peer, req.nickname, room.room_id)
+        return [CsInviteResultOut(0)]
+
+    async def room_invite_answer(self, session: Session, payload: bytes) -> Sequence[Reply]:
+        """471: o convidado aceita ou recusa. Aceite entra na sala (como 311, sem senha) só com
+        convite pendente para ela; sem convite, o pedido é recusado."""
+        guid = self._lobby.guid_of(session)
+        if guid is None:
+            return []
+        req = CsRoomInviteAnswerIn.unpack(payload)
+        if not req.accept:
+            self._rooms.decline_invite(guid)
+            return []
+        try:
+            room = self._rooms.accept_invite(guid, req.room_id)
+        except RoomError as e:
+            log.info("[%s] aceite de convite recusado: %s", session.peer, e.reason.value)
+            return []
+        log.info("[%s] entrou na sala %d pelo convite", session.peer, room.room_id)
+        return self._joined(room, guid)
 
     def _to_lobby(self, reply: Reply) -> None:
         self._lobby.broadcast(reply_body(reply, CHANNEL_NET_CODE))

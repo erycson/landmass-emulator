@@ -29,9 +29,11 @@ class ListHandlers:
         if self._lobby.guid_of(session) is None:
             return []
         req = CsRefreshPlayerListIn.unpack(payload)
-        # shortcut: total_exp, clã e nest saem zerados até o marco 5 (progressão).
+        # shortcut: clã e nest saem zerados (o lobby guarda só nick e exp).
         found = tuple(
-            CsPlayerProperty(client_guid=g) for g in req.client_guids if self._lobby.is_member(g)
+            CsPlayerProperty(client_guid=g, total_exp=self._lobby.exp_of(g))
+            for g in req.client_guids
+            if self._lobby.is_member(g)
         )
         if not found:
             return []

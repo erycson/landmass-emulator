@@ -39,19 +39,21 @@ class ChannelRecords:
     def lobby_players(self) -> tuple[CsChannelPlayer, ...]:
         """Todos do lobby, na ordem de entrada, cada um com o nick da conta."""
         return tuple(
-            CsChannelPlayer(client_guid=guid, nick=nick) for guid, nick in self._lobby.players()
+            CsChannelPlayer(client_guid=guid, nick=nick, total_exp=self._lobby.exp_of(guid))
+            for guid, nick in self._lobby.players()
+        )
+
+    def room_player(self, room: Room, guid: int) -> CsRoomPlayer:
+        """Registro de um jogador da sala (317 e 549): nick e exp vêm do lobby."""
+        member = room.members[guid]
+        return CsRoomPlayer(
+            client_guid=guid,
+            slot=member.slot,
+            ready=member.ready,
+            morats=member.morats,
+            nick=self._lobby.nickname_of(guid) or "",
+            total_exp=self._lobby.exp_of(guid),
         )
 
     def room_players(self, room: Room) -> CsRoomPlayerInfoOut:
-        return CsRoomPlayerInfoOut(
-            tuple(
-                CsRoomPlayer(
-                    client_guid=guid,
-                    slot=member.slot,
-                    ready=member.ready,
-                    morats=member.morats,
-                    nick=self._lobby.nickname_of(guid) or "",
-                )
-                for guid, member in room.members.items()
-            )
-        )
+        return CsRoomPlayerInfoOut(tuple(self.room_player(room, g) for g in room.members))

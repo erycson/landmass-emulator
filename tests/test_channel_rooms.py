@@ -11,6 +11,8 @@ from landmass_emu.protocol.channel import (
     ROOM_RECORD_SIZE,
     ROOM_SLOTS,
     CsChangeRoomMasterOut,
+    CsChangeRoomPropertyIn,
+    CsChangeRoomPropertyOut,
     CsChangeRoomSlotIn,
     CsChangeRoomSlotOut,
     CsChannelRoomInfoOut,
@@ -22,20 +24,27 @@ from landmass_emu.protocol.channel import (
     CsInRoomError,
     CsInRoomIn,
     CsInRoomOut,
+    CsInviteResultOut,
     CsOp,
     CsOutRoomOut,
+    CsPlayerDetailOut,
     CsReadyGameIn,
     CsReadyGameOut,
     CsRefreshRoomListIn,
     CsRefreshRoomListOut,
     CsRemoveRoomOut,
     CsRoom,
+    CsRoomEntryOut,
+    CsRoomExpelIn,
     CsRoomInfoOut,
+    CsRoomInviteAnswerIn,
+    CsRoomInviteIn,
+    CsRoomInviteOut,
     CsRoomPlayer,
     CsRoomPlayerInfoOut,
-    CsRoomStateOut,
     CsStartGameOut,
 )
+from landmass_emu.protocol.message import cfield, cstr
 
 
 def _sala(**kw: object) -> CsRoom:
@@ -86,12 +95,12 @@ def test_entrar_sala_entrada_de_311_offsets() -> None:
 
 
 def test_registro_de_sala_tem_612_bytes_e_offsets_do_no() -> None:
-    raw = _sala(has_password=True, name="Sala Azul").pack()
+    raw = _sala(has_password=True, name="Sala Azul", scale=0x21).pack()
     assert len(raw) == ROOM_RECORD_SIZE == 612
     assert struct.unpack_from("<i", raw, 0x00) == (7,)  # chave de busca de 302, 312, 322...
-    assert raw[0x10 : 0x10 + 9] == b"Sala Azul"
-    assert raw[0x10 + 9] == 0  # NUL do char[32]
-    assert raw[0x30] == 1  # senha
+    assert cstr(raw[0x04:0x37]) == "Sala Azul"  # char[51], de @4 até @0x36
+    assert raw[0x04 + 9] == 0  # NUL depois do nome
+    assert raw[0x37] == 1  # senha (bool `password` de LM_ROOM_INFO)
     assert raw[0x38] == 1  # estado: espera (402 compara value+0x38 com 1)
     assert raw[0x39] == 2  # modo de jogo
     assert raw[0x3A] == 3  # times
@@ -101,6 +110,7 @@ def test_registro_de_sala_tem_612_bytes_e_offsets_do_no() -> None:
     assert struct.unpack_from("<h", raw, 0x40) == (9,)  # mapa
     assert struct.unpack_from("<h", raw, 0x44) == (50,)  # limite de pontos
     assert raw[0x46] == 10  # limite de tempo
+    assert raw[0x47] == 0x21  # escala (game_scale)
     assert struct.unpack_from("<i", raw, 0x4C) == (0x0102,)  # dono
 
 
@@ -142,10 +152,11 @@ def test_criacao_302_e_o_registro_inteiro() -> None:
 
 
 def test_sala_info_314_offsets_do_corpo() -> None:
-    raw = CsRoomInfoOut(_sala(limit_time=10, limit_score=50)).pack()
+    raw = CsRoomInfoOut(_sala(limit_time=10, limit_score=50, scale=0x21)).pack()
     assert len(raw) == ROOM_INFO_SIZE == 0x38
     assert struct.unpack_from("<h", raw, 0x00) == (50,)  # limite de pontos (node+0x54)
     assert raw[0x02] == 10  # limite de tempo (node+0x56)
+    assert raw[0x03] == 0x21  # escala (node+0x57)
     assert struct.unpack_from("<i", raw, 0x08) == (0x0102,)  # dono (node+0x5c)
     assert struct.unpack_from("<i", raw, 0x0C) == (7,)  # chave de busca (body+0xc)
     assert raw[0x10] == 1 and raw[0x11] == 2 and raw[0x12] == 3 and raw[0x13] == 4
@@ -176,11 +187,13 @@ def test_entrada_de_jogador_317_tem_48_bytes_e_offsets() -> None:
     assert CsRoomPlayerInfoOut(()).pack() == b"\x00"
 
 
-def test_jogador_de_sala_tem_o_nick_do_registro_de_151() -> None:
+def test_jogador_de_sala_tem_o_nick_e_o_total_exp_do_registro_de_151() -> None:
     entrada = CsRoomPlayer(client_guid=5, slot=0, ready=False, morats=0, nick="Ana").pack()
     assert len(entrada) == 48
     assert entrada[0x08:0x18] == b"Ana" + bytes(13)
     assert entrada[0x18:0x28] == bytes(16)  # campos sem valor no lobby
+    com_exp = CsRoomPlayer(client_guid=5, slot=0, ready=False, morats=0, total_exp=1234).pack()
+    assert struct.unpack_from("<i", com_exp, 0x04) == (1234,)
 
 
 def test_pedido_545_limita_a_9_salas_e_resposta_547_offsets() -> None:
@@ -257,35 +270,146 @@ def test_pronto_402_e_inicio_403_offsets() -> None:
     assert CsStartGameOut.opcode == CsOp.START_GAME_OUT == 403
 
 
-def test_estado_412_com_mascara_de_state_no_byte_0xf() -> None:
-    raw = CsRoomStateOut(7, 2).pack()
+def test_411_flags_e_campos_no_corpo_de_10_bytes() -> None:
+    payload = struct.pack("<BxHBBBBH", 0x07, 9, 2, 3, 4, 10, 50)
+    assert len(payload) == 10
+    assert CsChangeRoomPropertyIn.unpack(payload) == CsChangeRoomPropertyIn(
+        0x07, 9, 2, 3, 4, 10, 50
+    )
+    with pytest.raises(ValueError):
+        CsChangeRoomPropertyIn.unpack(bytes(9))
+
+
+def test_412_so_os_campos_marcados_e_mascara_no_byte_4() -> None:
+    raw = CsChangeRoomPropertyOut(
+        7, map_num=9, game_mode=2, team_count=3, max_player=4, limit_time=10, limit_score=50
+    ).pack()
     assert len(raw) == 16
     assert struct.unpack_from("<i", raw, 0) == (7,)
-    assert raw[4] == 0x20
-    assert raw[0xF] == 2
-    assert CsRoomStateOut.opcode == CsOp.CHANGE_ROOM_PROPERTY_OUT == 412
+    assert raw[4] == 0x1F  # MAP | MODE | LIMIT_PLAYER | LIMIT_SCORE | LIMIT_TIME
+    assert struct.unpack_from("<h", raw, 6) == (9,)
+    assert raw[8:10] == bytes((2, 3))
+    assert raw[0xA] == 4 and raw[0xB] == 10
+    assert struct.unpack_from("<h", raw, 0xC) == (50,)
+    assert raw[0xE] == 0 and raw[0xF] == 0  # OPEN e STATE desligados
+    assert CsChangeRoomPropertyOut.opcode == CsOp.CHANGE_ROOM_PROPERTY_OUT == 412
 
 
-def test_slot_420_421_e_expulsao_700_701() -> None:
+def test_412_estado_e_aberta_usam_seus_bits() -> None:
+    estado = CsChangeRoomPropertyOut(7, state=2).pack()
+    assert estado[4] == 0x20 and estado[0xF] == 2
+    aberta = CsChangeRoomPropertyOut(7, is_open=False).pack()
+    assert aberta[4] == 0x40 and aberta[0xE] == 0
+
+
+def test_412_modo_exige_modo_e_times_juntos() -> None:
+    with pytest.raises(ValueError):
+        CsChangeRoomPropertyOut(7, game_mode=2).pack()
+
+
+def test_slot_420_421_e_pronto_401() -> None:
     assert CsChangeRoomSlotIn.unpack(b"\x03") == CsChangeRoomSlotIn(3)
     with pytest.raises(ValueError):
         CsChangeRoomSlotIn.unpack(b"")
     assert CsChangeRoomSlotOut(0x11, 3).pack() == struct.pack("<iB3x", 0x11, 3)
-    assert CsExpelPlayerIn.unpack(struct.pack("<i", 2) + bytes(14)) == CsExpelPlayerIn(2)
-    with pytest.raises(ValueError):
-        CsExpelPlayerIn.unpack(b"\x01")
-    assert CsExpelPlayerOut().pack() == bytes(4)
     assert CsChangeRoomSlotOut.opcode == CsOp.CHANGE_ROOM_SLOT_OUT == 421
-    assert CsExpelPlayerOut.opcode == CsOp.EXPEL_PLAYER_OUT == 701
-
-
-def test_pronto_401_le_um_byte() -> None:
     assert CsReadyGameIn.unpack(b"\x05") == CsReadyGameIn(5)
     with pytest.raises(ValueError):
         CsReadyGameIn.unpack(b"")
 
 
-def test_envelope_de_erro_com_opcode_real_e_codigo() -> None:
+def test_451_expulsao_pelo_nick_com_pad_no_inicio() -> None:
+    raw = CsRoomExpelIn("Ana").pack()
+    assert len(raw) == 18
+    assert raw[0] == 0  # @0 não é preenchido pelo cliente
+    assert cstr(raw[1:18]) == "Ana"
+    assert CsRoomExpelIn.unpack(raw) == CsRoomExpelIn("Ana")
+    with pytest.raises(ValueError):
+        CsRoomExpelIn.unpack(bytes(17))
+
+
+def test_700_expulsao_do_console_kind_e_nick() -> None:
+    raw = CsExpelPlayerIn(0x21, "Ana").pack()
+    assert len(raw) == 18
+    assert raw[0] == 0x21
+    assert cstr(raw[1:18]) == "Ana"
+    assert CsExpelPlayerIn.unpack(raw) == CsExpelPlayerIn(0x21, "Ana")
+    with pytest.raises(ValueError):
+        CsExpelPlayerIn.unpack(bytes(17))
+    assert CsExpelPlayerOut().pack() == bytes(4)
+    assert CsOp.EXPEL_PLAYER == 700
+    assert CsExpelPlayerOut.opcode == CsOp.EXPEL_PLAYER_OUT == 701
+
+
+def test_461_convite_pedido_com_nick_de_17_bytes() -> None:
+    assert CsRoomInviteIn.unpack(cfield("Bia", 17)) == CsRoomInviteIn("Bia")
+    with pytest.raises(ValueError):
+        CsRoomInviteIn.unpack(bytes(16))
+    assert CsOp.ROOM_INVITE == 461
+
+
+def test_462_resposta_ao_convidador_com_i32_e_cerr() -> None:
+    assert CsInviteResultOut(0).pack() == bytes(4)
+    assert CsInviteResultOut(-2460).pack() == struct.pack("<i", -2460)
+    assert CsInviteResultOut.opcode == CsOp.ROOM_INVITE_OUT == 462
+
+
+def test_463_convite_ao_convidado_com_sala_e_nick_de_quem_convida() -> None:
+    raw = CsRoomInviteOut(7, "Ana").pack()
+    assert len(raw) == 21
+    assert struct.unpack_from("<i", raw, 0) == (7,)
+    assert cstr(raw[4:21]) == "Ana"
+    assert CsRoomInviteOut.opcode == CsOp.ROOM_INVITE_NOTIFY == 463
+
+
+def test_471_resposta_ao_convite_com_aceite_no_byte_4() -> None:
+    raw = CsRoomInviteAnswerIn(7, True).pack()
+    assert raw == struct.pack("<iB3x", 7, 1)
+    assert CsRoomInviteAnswerIn.unpack(raw) == CsRoomInviteAnswerIn(7, True)
+    recusa = struct.pack("<iB3x", 7, 0)
+    assert CsRoomInviteAnswerIn.unpack(recusa) == CsRoomInviteAnswerIn(7, False)
+    with pytest.raises(ValueError):
+        CsRoomInviteAnswerIn.unpack(bytes(4))
+    assert CsOp.ROOM_INVITE_ANSWER == 471
+
+
+def test_549_entrada_de_quem_chegou_e_o_registro_de_317() -> None:
+    jogador = CsRoomPlayer(
+        client_guid=0x22, slot=1, ready=False, morats=0, nick="Bia", total_exp=900
+    )
+    raw = CsRoomEntryOut(jogador).pack()
+    assert raw == jogador.pack()
+    assert len(raw) == 48
+    assert struct.unpack_from("<i", raw, 0x04) == (900,)
+    assert raw[0x28] == 1  # slot
+    assert CsRoomEntryOut.opcode == CsOp.ROOM_ENTRY_OUT == 549
+
+
+def test_543_detalhe_do_jogador_offsets() -> None:
+    raw = CsPlayerDetailOut(
+        "Ana",
+        rank=1,
+        games=2,
+        wins=3,
+        losses=4,
+        kills=5,
+        deaths=6,
+        headshots=7,
+        total_exp=8,
+        nest=9,
+        clan_mark=10,
+        clan="Gx",
+    ).pack()
+    assert len(raw) == 0x3C + 17
+    assert cstr(raw[0:0x14]) == "Ana"
+    assert struct.unpack_from("<8i", raw, 0x14) == (1, 2, 3, 4, 5, 6, 7, 8)
+    assert raw[0x34] == 9  # nest
+    assert struct.unpack_from("<i", raw, 0x38) == (10,)  # clan_mark
+    assert cstr(raw[0x3C:]) == "Gx"
+    assert CsPlayerDetailOut.opcode == CsOp.PLAYER_DETAIL_OUT == 543
+
+
+def test_erro_envelope_de_404_com_opcode_real_e_codigo() -> None:
     raw = CsErrorEnvelope(CsOp.READY_GAME_ERROR, 241002702).pack()
     assert len(raw) == 8
     assert struct.unpack_from("<H", raw, 0) == (404,)
@@ -353,7 +477,7 @@ def test_dominio_sair_transfere_dono_e_esvaziar_remove() -> None:
     assert rooms.leave(2) is None
 
 
-def test_dominio_pronto_inicio_e_expulsao() -> None:
+def test_dominio_pronto_inicio_e_entrada_tardia() -> None:
     rooms = Rooms()
     sala = _criar(rooms, 1)
     rooms.join(1, 2, "")
@@ -377,7 +501,61 @@ def test_dominio_so_o_dono_expulsa_e_nao_expulsa_a_si_mesmo() -> None:
         rooms.expel(2, 0)
     assert nao_dono.value.reason is RoomReason.NOT_OWNER
     with pytest.raises(RoomError) as si_mesmo:
-        rooms.expel(1, 0)
+        rooms.expel(1, 1)
     assert si_mesmo.value.reason is RoomReason.NO_SUCH_PLAYER
-    expulso = rooms.expel(1, 1)
+    expulso = rooms.expel(1, 2)
     assert expulso.guid == 2 and rooms.room_of(2) is None
+
+
+def test_dominio_configurar_so_o_dono_com_sala_esperando() -> None:
+    rooms = Rooms()
+    sala = _criar(rooms, 1)
+    rooms.join(1, 2, "")
+    with pytest.raises(RoomError) as nao_dono:
+        rooms.configure(2, {"map_num": 5})
+    assert nao_dono.value.reason is RoomReason.NOT_OWNER
+    rooms.configure(1, {"map_num": 5, "limit_time": 3})
+    assert sala.map_num == 5 and sala.limit_time == 3
+    with pytest.raises(RoomError) as campo:
+        rooms.configure(1, {"master": 9})
+    assert campo.value.reason is RoomReason.BAD_SETTING
+    with pytest.raises(RoomError) as pequena:
+        rooms.configure(1, {"max_player": 1})  # já há dois jogadores
+    assert pequena.value.reason is RoomReason.BAD_SETTING
+    rooms.toggle_ready(2, 0)
+    rooms.start(1, 0)
+    with pytest.raises(RoomError) as tarde:
+        rooms.configure(1, {"map_num": 6})
+    assert tarde.value.reason is RoomReason.STARTED
+
+
+def test_dominio_convite_fica_pendente_ate_o_aceite() -> None:
+    rooms = Rooms()
+    sala = _criar(rooms, 1)
+    assert rooms.invite(1, 2) is sala
+    assert rooms.accept_invite(2, sala.room_id) is sala
+    assert rooms.room_of(2) is sala and sala.members[2].slot == 1
+    rooms.invite(1, 3)
+    with pytest.raises(RoomError) as outra:
+        rooms.accept_invite(3, sala.room_id + 99)
+    assert outra.value.reason is RoomReason.NOT_INVITED
+    with pytest.raises(RoomError) as sem:
+        rooms.accept_invite(3, sala.room_id)
+    assert sem.value.reason is RoomReason.NOT_INVITED
+
+
+def test_dominio_convite_recusado_e_restrito_ao_dono() -> None:
+    rooms = Rooms()
+    sala = _criar(rooms, 1, max_player=3)
+    rooms.join(1, 2, "")
+    with pytest.raises(RoomError) as nao_dono:
+        rooms.invite(2, 3)
+    assert nao_dono.value.reason is RoomReason.NOT_OWNER
+    with pytest.raises(RoomError) as dentro:
+        rooms.invite(1, 2)
+    assert dentro.value.reason is RoomReason.ALREADY_IN_ROOM
+    rooms.invite(1, 3)
+    rooms.decline_invite(3)
+    with pytest.raises(RoomError) as recusado:
+        rooms.accept_invite(3, sala.room_id)
+    assert recusado.value.reason is RoomReason.NOT_INVITED

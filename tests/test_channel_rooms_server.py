@@ -101,7 +101,7 @@ async def test_dois_clientes_na_mesma_sala_ficam_prontos_e_recebem_o_inicio(
             criada = await a.expect(CsOp.CREATE_ROOM_OUT)
             assert await b.expect(CsOp.CREATE_ROOM_OUT) == criada
             sala = struct.unpack_from("<i", criada, 0)[0]
-            assert cstr(criada[0x10:0x30]) == "Sala Azul"
+            assert cstr(criada[0x04:0x37]) == "Sala Azul"
             assert struct.unpack_from("<i", criada, 0x4C) == (ana.id,)
             for x in (a, b):
                 assert struct.unpack("<iii", await x.expect(CsOp.IN_ROOM_OUT)) == (sala, ana.id, 0)
@@ -109,10 +109,13 @@ async def test_dois_clientes_na_mesma_sala_ficam_prontos_e_recebem_o_inicio(
             assert struct.unpack_from("<i", await a.expect(CsOp.ROOM_INFO_OUT), 0x0C) == (sala,)
             assert _jogadores(await a.expect(CsOp.ROOM_PLAYER_INFO_OUT)) == {ana.id: (0, True)}
 
-            # B entra: o 312 vai ao canal; 314 e 317 só a B, que vê os dois nos slots.
+            # B entra: A, que já está na sala, recebe só o 549 (quem chegou); B recebe o 312.
+            # 314 e 317 só a B, que vê os dois nos slots.
             await b.send(CsOp.IN_ROOM, _payload_entrar(sala))
-            for x in (a, b):
-                assert struct.unpack("<iii", await x.expect(CsOp.IN_ROOM_OUT)) == (sala, bia.id, 1)
+            assert struct.unpack("<iii", await b.expect(CsOp.IN_ROOM_OUT)) == (sala, bia.id, 1)
+            entrada = await a.expect(CsOp.ROOM_ENTRY_OUT)
+            assert struct.unpack_from("<i", entrada, 0) == (bia.id,)
+            assert entrada[0x28] == 1  # slot de B
             await b.expect(CsOp.ROOM_INFO_OUT)
             assert _jogadores(await b.expect(CsOp.ROOM_PLAYER_INFO_OUT)) == {
                 ana.id: (0, True),
@@ -162,8 +165,8 @@ async def test_sair_passa_o_dono_e_a_sala_vazia_some_da_lista(tmp_path: Path) ->
 
             sala = await _cria_sala(a, b, "Sala Azul")
             await b.send(CsOp.IN_ROOM, _payload_entrar(sala))
-            for x in (a, b):
-                await x.expect(CsOp.IN_ROOM_OUT)
+            await b.expect(CsOp.IN_ROOM_OUT)
+            await a.expect(CsOp.ROOM_ENTRY_OUT)
             await b.expect(CsOp.ROOM_INFO_OUT)
             await b.expect(CsOp.ROOM_PLAYER_INFO_OUT)
 
@@ -234,12 +237,12 @@ async def test_senha_errada_e_recusada_e_quem_entra_no_lobby_ve_a_sala(tmp_path:
 
             sala = await _cria_sala(a, b, "Sala Azul", SENHA)
 
-            # C entra depois: o 141 já traz a sala, com o nome e o bit de senha (@0x30).
+            # C entra depois: o 141 já traz a sala, com o nome (@0x04) e o bit de senha (@0x37).
             lista = await _entra_com_outros(c, chave_cris, cris.id, a, b)
             assert struct.unpack_from("<H", lista, 0) == (1,)
             assert struct.unpack_from("<i", lista, 2) == (sala,)
-            assert cstr(lista[2 + 0x10 : 2 + 0x30]) == "Sala Azul"
-            assert lista[2 + 0x30] == 1
+            assert cstr(lista[2 + 0x04 : 2 + 0x37]) == "Sala Azul"
+            assert lista[2 + 0x37] == 1
 
             # Senha errada: só B recebe a recusa (312 com código 1701 em i16); ninguém mais.
             await b.send(CsOp.IN_ROOM, _payload_entrar(sala, "errada"))
@@ -250,9 +253,10 @@ async def test_senha_errada_e_recusada_e_quem_entra_no_lobby_ve_a_sala(tmp_path:
             await c.assert_silencio()
             await b.assert_silencio()
 
-            # Com a senha certa, entra: 312 ao canal; 314 e 317 só a B.
+            # Com a senha certa, entra: A (já na sala) recebe 549; B e C, 312; 314 e 317 só a B.
             await b.send(CsOp.IN_ROOM, _payload_entrar(sala, SENHA))
-            for x in (a, b, c):
+            for x in (b, c):
                 assert struct.unpack("<iii", await x.expect(CsOp.IN_ROOM_OUT)) == (sala, bia.id, 1)
+            assert struct.unpack_from("<i", await a.expect(CsOp.ROOM_ENTRY_OUT), 0) == (bia.id,)
             await b.expect(CsOp.ROOM_INFO_OUT)
             assert len(_jogadores(await b.expect(CsOp.ROOM_PLAYER_INFO_OUT))) == 2

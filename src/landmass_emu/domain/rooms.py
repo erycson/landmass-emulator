@@ -14,6 +14,10 @@ NAME_MIN_BYTES = 3
 # 301 traz char[51] e char[13] (re/layouts_f0.md §7.1).
 NAME_MAX_BYTES = 50
 PASSWORD_MAX_BYTES = 12
+# Campos que o dono muda por 411 (`configure`).
+SETTING_FIELDS = frozenset(
+    {"map_num", "game_mode", "team_count", "max_player", "limit_time", "limit_score"}
+)
 
 
 class RoomReason(Enum):
@@ -29,6 +33,8 @@ class RoomReason(Enum):
     NO_SUCH_PLAYER = "jogador não está na sala"
     BAD_NAME = "nome fora de 3..50 bytes"
     BAD_PASSWORD = "senha longa demais"
+    BAD_SETTING = "configuração inválida para a sala"
+    NOT_INVITED = "sem convite pendente para esta sala"
 
 
 class RoomError(Exception):
@@ -91,6 +97,9 @@ class Rooms:
     def __init__(self) -> None:
         self._rooms: dict[int, Room] = {}
         self._room_of: dict[int, int] = {}
+        # convidado -> sala do convite pendente.
+        # shortcut: sem expiração; o convite fica até a resposta (471). Revisar com captura.
+        self._invites: dict[int, int] = {}
         self._last_id = 0
 
     def all(self) -> list[Room]:
@@ -143,6 +152,35 @@ class Rooms:
         return room
 
     def join(self, room_id: int, guid: int, password: str) -> Room:
+        return self._enter(room_id, guid, password)
+
+    def invite(self, owner: int, target: int) -> Room:
+        """Convite do dono (461): fica pendente para `target` até a resposta (471)."""
+        room = self.room_of(owner)
+        if room is None:
+            raise RoomError(RoomReason.NOT_IN_ROOM)
+        if room.master != owner:
+            raise RoomError(RoomReason.NOT_OWNER)
+        if room.state != ROOM_WAITING:
+            raise RoomError(RoomReason.STARTED)
+        if self.room_of(target) is not None:
+            raise RoomError(RoomReason.ALREADY_IN_ROOM)
+        if len(room.members) >= room.max_player:
+            raise RoomError(RoomReason.FULL)
+        self._invites[target] = room.room_id
+        return room
+
+    def accept_invite(self, guid: int, room_id: int) -> Room:
+        """Aceite (471 com aceite): entra sem senha, mas só com convite pendente para esta sala."""
+        if self._invites.pop(guid, None) != room_id:
+            raise RoomError(RoomReason.NOT_INVITED)
+        return self._enter(room_id, guid, None)
+
+    def decline_invite(self, guid: int) -> None:
+        self._invites.pop(guid, None)
+
+    def _enter(self, room_id: int, guid: int, password: str | None) -> Room:
+        """Põe `guid` no primeiro slot livre. `password` None pula a conferência (convite)."""
         if self.room_of(guid) is not None:
             raise RoomError(RoomReason.ALREADY_IN_ROOM)
         room = self._rooms.get(room_id)
@@ -150,7 +188,7 @@ class Rooms:
             raise RoomError(RoomReason.NOT_FOUND)
         if room.state != ROOM_WAITING:
             raise RoomError(RoomReason.STARTED)
-        if room.password and room.password != password:
+        if password is not None and room.password and room.password != password:
             raise RoomError(RoomReason.WRONG_PASSWORD)
         slot = room.free_slot()
         if slot is None or len(room.members) >= room.max_player:
@@ -215,14 +253,33 @@ class Rooms:
         room.state = ROOM_PLAYING
         return room
 
-    def expel(self, owner: int, slot: int) -> Expelled:
+    def configure(self, owner: int, changes: dict[str, int]) -> Room:
+        """Muda campos da sala (411). Só o dono, com a sala esperando, e sem deixar `max_player`
+        abaixo de quem já está sentado (jogadores ou slot ocupado)."""
         room = self.room_of(owner)
         if room is None:
             raise RoomError(RoomReason.NOT_IN_ROOM)
         if room.master != owner:
             raise RoomError(RoomReason.NOT_OWNER)
-        target = next((g for g, m in room.members.items() if m.slot == slot), None)
-        if target is None or target == owner:
+        if room.state != ROOM_WAITING:
+            raise RoomError(RoomReason.STARTED)
+        if not set(changes) <= SETTING_FIELDS:
+            raise RoomError(RoomReason.BAD_SETTING)
+        if "max_player" in changes:
+            ocupados = max((m.slot + 1 for m in room.members.values()), default=0)
+            if changes["max_player"] < max(len(room.members), ocupados):
+                raise RoomError(RoomReason.BAD_SETTING)
+        for name, value in changes.items():
+            setattr(room, name, value)
+        return room
+
+    def expel(self, owner: int, target: int) -> Expelled:
+        room = self.room_of(owner)
+        if room is None:
+            raise RoomError(RoomReason.NOT_IN_ROOM)
+        if room.master != owner:
+            raise RoomError(RoomReason.NOT_OWNER)
+        if target == owner or target not in room.members:
             raise RoomError(RoomReason.NO_SUCH_PLAYER)
         del room.members[target]
         del self._room_of[target]
