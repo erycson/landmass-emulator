@@ -73,3 +73,25 @@ def test_bloco_gameended_leva_kills_colocacao_exp_e_ld_pelo_nick() -> None:
     assert (ana.kills, ana.ranking, ana.exp, ana.money) == (12, 1, 3341, 1710)
     assert ana.won is None  # DM não traz `Winner`: fica sem vencedor
     assert (bia.kills, bia.exp, bia.money) == (None, None, None)  # sem bloco, sem recompensa
+
+
+def test_espectador_no_bloco_gameended_nao_entra_no_historico() -> None:
+    # Espectador não está em `record.players` (D197): se o log citar o nick dele, nada muda.
+    bloco = (
+        GameEndedPlayer(
+            nickname="Espec",
+            reason="TimeLimit",
+            kills=5,
+            ranking=2,
+            played_percent=100.0,
+            total_exp=900,
+            total_money=300,
+            winner=None,
+            mission_score=None,
+        ),
+    )
+
+    resultado = with_game_end(_partida(), bloco)
+
+    assert [p.nickname for p in resultado.players] == ["Ana", "Bia"]
+    assert all(p.exp is None and p.money is None for p in resultado.players)

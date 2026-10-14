@@ -51,6 +51,8 @@ class LoadoutMember:
     nickname: str
     slot: int
     gate: int
+    # Espectador (slot >= 60) não tem morat: a linha só leva `?SpectatorOnly=1` (D197).
+    spectator: bool = False
 
 
 class LoadoutCatalog(Protocol):
@@ -134,6 +136,8 @@ class LoadoutService:
     async def _options(
         self, membro: LoadoutMember, game_class: str, team_count: int
     ) -> list[tuple[str, int | str]] | None:
+        if membro.spectator:
+            return [("SpectatorOnly", 1)]
         morats = await self._inventory.morats(membro.account_id)
         morat = next((m for m in morats if m.gate_index == membro.gate and m.id is not None), None)
         if morat is None:

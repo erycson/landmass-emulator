@@ -4,7 +4,14 @@ import struct
 
 import pytest
 
-from landmass_emu.domain.rooms import ROOM_PLAYING, ROOM_WAITING, RoomError, RoomReason, Rooms
+from landmass_emu.domain.rooms import (
+    ROOM_PLAYER_SLOTS,
+    ROOM_PLAYING,
+    ROOM_WAITING,
+    RoomError,
+    RoomReason,
+    Rooms,
+)
 from landmass_emu.protocol.channel import (
     ROOM_HEAD_SIZE,
     ROOM_INFO_SIZE,
@@ -485,11 +492,14 @@ def test_dominio_senha_cheia_e_sala_inexistente() -> None:
         rooms.join(1, 2, "errada")
     assert wrong.value.reason is RoomReason.WRONG_PASSWORD
     rooms.join(1, 2, "segredo")
+    # Sem vaga de jogador, quem entra vai para o slot de espectador (D197); o teto é 2.
+    assert rooms.join(1, 3, "segredo").members[3].slot == ROOM_PLAYER_SLOTS
+    rooms.join(1, 4, "segredo")
     with pytest.raises(RoomError) as full:
-        rooms.join(1, 3, "segredo")
+        rooms.join(1, 5, "segredo")
     assert full.value.reason is RoomReason.FULL
     with pytest.raises(RoomError) as missing:
-        rooms.join(99, 3, "")
+        rooms.join(99, 9, "")
     assert missing.value.reason is RoomReason.NOT_FOUND
 
 

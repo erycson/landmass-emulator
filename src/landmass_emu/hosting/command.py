@@ -15,6 +15,7 @@ def match_url(plan: MatchPlan) -> str:
     lmemu = f"?lmemu={plan.lmemu_key}" if plan.lmemu_key else ""
     return (
         f"{plan.map_file}?listen?game={plan.game_class}?MaxPlayers={plan.max_players}"
+        f"?MaxSpectators={plan.max_spectators}"
         f"?TimeLimit={plan.time_limit}?GoalScore={plan.goal_score}{lmemu}"
     )
 

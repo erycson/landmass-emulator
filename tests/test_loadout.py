@@ -186,6 +186,20 @@ async def test_servico_monta_a_linha_com_o_morat_do_gate_escolhido() -> None:
     assert (opcoes["clan"], opcoes["costume"]) == ("0", "0")
 
 
+async def test_espectador_leva_so_a_opcao_de_espectador_sem_morat() -> None:
+    servico = LoadoutService(
+        catalog=_Catalogo(),
+        inventory=_Inventario([], []),  # sem morat nenhum: o espectador não precisa de um (D197)
+        accounts=_Contas(),
+    )
+
+    [linha] = await servico.lines(
+        [LoadoutMember(9, "Bia", slot=60, gate=0, spectator=True)], GAME_TEAM, 2
+    )
+
+    assert linha == nickname_hex("Bia") + "|?SpectatorOnly=1"
+
+
 async def test_dm_nao_leva_grupo_e_gate_sem_morat_fica_sem_linha(
     caplog: pytest.LogCaptureFixture,
 ) -> None:

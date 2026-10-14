@@ -342,8 +342,8 @@ Offsets relativos ao valor do nó (`re/rooms.md` §1, §2, §5 e 412). Bytes nã
 | 0x46 | `u8` | `limit_time` |
 | 0x47 | `u8` | `scale` (game_scale; a lista 141 não o traz) |
 | 0x4C | `i32` | `master` (guid do dono) |
-| 0x50 + 4·i, i < 70 | `i32` | guid do slot i, -1 se vazio |
-| 0x174 + 4·j, j < 60 | `i32` | espectador j, -1 se vazio (fim do registro em 0x264) |
+| 0x50 + 4·i, i < 70 | `i32` | guid do slot i, -1 se vazio. Slots 60 a 69 são de espectador (D197) |
+| 0x174 + 4·j, j < 60 | `i32` | sem uso confirmado; sai sempre -1 (fim do registro em 0x264). O nome `espectador j` era chute: o provável é `enemy_player[MAX_ROOM_PLAYER]` (D198) |
 
 **311 IN_ROOM (C→S), 20 bytes**
 

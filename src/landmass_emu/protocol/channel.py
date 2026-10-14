@@ -20,7 +20,7 @@ MAX_LOBBY_ENTRIES = 1600
 
 # Registro de sala (re/rooms.md §1 e §2; offsets relativos ao valor do nó, ver `CsRoom`).
 ROOM_SLOTS = 70  # node+0x60..0x177 (`FUN_10019e90` + `0x18*4`; 421 e 549 usam o mesmo bloco)
-ROOM_SPECTATORS = 60  # node+0x184..0x273
+ROOM_SPECTATORS = 60  # node+0x184..0x273; sem uso confirmado, sempre -1 (espectador é slot 60..69)
 ROOM_RECORD_SIZE = 0x264  # 612: 302 copia 0x99 dwords para o nó (`disp@1312-1347`)
 ROOM_HEAD_SIZE = 0x44  # 68: entrada de 141 (`disp@1039-1081`, passo 0x44)
 ROOM_INFO_SIZE = 0x38  # 56: 314 lê até @0x36 + 2
@@ -549,8 +549,10 @@ class CsRoom:
       0x3D u8 max_player | 0x3E u8 open | 0x40 i16 map_num | 0x44 i16 limit_score
       0x46 u8 limit_time | 0x47 u8 game_scale | 0x48 u8 team_damage (zero aqui)
       0x4C i32 master
-      0x50 + 4*i, i < 70: guid do slot i, -1 se vazio (`ROOM_SLOTS`)
-      0x174 + 4*j, j < 60: espectadores, -1 se vazio (`ROOM_SPECTATORS`)
+      0x50 + 4*i, i < 70: guid do slot i, -1 se vazio (`ROOM_SLOTS`). Slots 60..69 são de
+          espectador (D197): o cliente lê `MySlot >= 60` nessa lista
+      0x174 + 4*j, j < 60: bloco sem uso confirmado (provável `enemy_player[MAX_ROOM_PLAYER]`);
+          sai sempre -1 (`ROOM_SPECTATORS`)
 
     shortcut: a entrada de 141 tem 0x44 bytes, então a escala (0x47) não chega à lista do lobby:
     a sala aparece com escala 0 até o 302 ou o 314 da sala. Revisar com captura da lista."""

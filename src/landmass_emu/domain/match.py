@@ -9,7 +9,7 @@ nativo (`LM_Engine` `CServerRoom::Init`, `re/LM_Engine.dll/all/100163d0_Init.c`,
 
 from dataclasses import dataclass
 
-from landmass_emu.domain.rooms import Room
+from landmass_emu.domain.rooms import MAX_SPECTATORS, Room
 
 # Classes do pacote LMEmu (`unreal/build_lmemu.py`). Herdam das de XGame e leem o equipamento de
 # cada jogador do `LMEmu.ini` pela chave `?lmemu=` (D190).
@@ -43,6 +43,8 @@ class MatchPlan:
     max_players: int
     time_limit: int  # limit_time da sala, em minutos (inferido pela UI; ver re/game_server_host.md)
     goal_score: int  # limit_score da sala
+    # `?MaxSpectators=` da URL: o teto de espectadores da sala (D197).
+    max_spectators: int = MAX_SPECTATORS
     # Valores `Players=` da seção do LMEmu.ini, uma linha por jogador (D190). Vazio se não há.
     loadout: tuple[str, ...] = ()
     # Chave da seção do LMEmu.ini (`?lmemu=`). Quem põe é o servidor de partida ao lançar.

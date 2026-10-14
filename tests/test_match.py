@@ -104,8 +104,8 @@ def test_linha_de_comando_leva_a_porta_antes_do_login() -> None:
 
     assert argv[1] == match_url(plano)
     assert match_url(plano) == (
-        "ONS-Treino?listen?game=LMEmu.LMEmuDeathMatch?MaxPlayers=8?TimeLimit=10?GoalScore=20"
-        "?lmemu=m1a2b3c4d"
+        "ONS-Treino?listen?game=LMEmu.LMEmuDeathMatch?MaxPlayers=8?MaxSpectators=2"
+        "?TimeLimit=10?GoalScore=20?lmemu=m1a2b3c4d"
     )
     assert argv[2:] == [
         "-server",
