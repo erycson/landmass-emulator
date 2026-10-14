@@ -256,3 +256,43 @@ class MatchPlayerRow(Base):
     money: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ClanRow(Base):
+    """Clã (F13, 07-progression §4.8). Sem tabela de log: `tbl_clanlog` é log (D12)."""
+
+    __tablename__ = "clans"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["master_account_id"], ["accounts.id"], name="clans_master_account_id_foreign"
+        ),
+        UniqueConstraint("name", name="clans_name_unique"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(16))
+    master_account_id: Mapped[int] = mapped_column(Integer)
+    mark: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class ClanMemberRow(Base):
+    """Membro de clã. Uma conta, no máximo um clã (D60)."""
+
+    __tablename__ = "clan_members"
+    __table_args__ = (
+        ForeignKeyConstraint(["clan_id"], ["clans.id"], name="clan_members_clan_id_foreign"),
+        ForeignKeyConstraint(
+            ["account_id"], ["accounts.id"], name="clan_members_account_id_foreign"
+        ),
+        UniqueConstraint("account_id", name="clan_members_account_id_unique"),
+        Index("clan_members_clan_id_index", "clan_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    clan_id: Mapped[int] = mapped_column(Integer)
+    account_id: Mapped[int] = mapped_column(Integer)
+    grade: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

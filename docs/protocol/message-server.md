@@ -12,13 +12,21 @@ Implementação: `protocol/message.py` (layouts), `handlers/message/` (comportam
 | 110 | C→S | Register | — | implementado: exige login; emite a chave de sessão |
 | 111 | S→C | Resultado do register | `MS_REGISTER_OUT` (0x4C bytes) | implementado: opções gravadas da conta (zeros se não houver) e chave de sessão |
 | 120 | C→S | InMessageServer | — (1 byte opcional, ignorado) | implementado: exige login |
-| 121 | S→C | Resultado da entrada | `MS_IN_MESSAGE_SERVER_OUT` (0x1C bytes) | implementado |
+| 121 | S→C | Resultado da entrada | `MS_IN_MESSAGE_SERVER_OUT` (0x1C bytes) | implementado: `clan_code` é o id do clã da conta (0 sem clã) |
 | 130 | C→S | GetChannelServerInfo | — | implementado: exige login |
 | 131 | S→C | Lista de canais | `MS_GET_CHANNEL_SERVER_OUT` (2 + 72·n bytes) | implementado |
 | 150 | C→S | CreateNickname | `MS_CREATE_NICKNAME_IN` (0x37 bytes) | não tratado (logado e ignorado) |
 | 160 | C→S | SendWhisper | `MS_SEND_WHISPER_IN` (0x14 + texto) | implementado: exige login |
 | 161 | S→C | Sussurro recebido | `MS_SEND_WHISPER_OUT` (0x14 + texto) | implementado: só ao destinatário |
 | 162 | S→C | Erro de sussurro | `MS_SEND_WHISPER_ERROR_OUT` (0x18 + texto) | implementado: `-11` nick inexistente; `-19` fora do Message ou bloqueado |
+| 170 | C→S | GetRankingInfo | — | implementado: exige login; responde 171. Só por comando de console (a UI não envia) |
+| 171 | C→S | GetClanInfo | — | implementado: exige login e clã; responde 172 |
+| 171 | S→C | Ranking (resposta a 170) | `MS_RANKING_INFO_OUT` (0x20 por linha, sentinela zerada se houver menos de 100) | implementado: top 100 por `total_exp` |
+| 172 | S→C | Clã (resposta a 171) | 88 bytes | implementado: layout parcial, ver abaixo |
+| 174 | C→S | GetClanMember | — | implementado: exige login e clã; responde 175 por membro |
+| 175 | S→C | Membro do clã | `MS_CLAN_MEMBER_OUT` (0x20 bytes) | implementado |
+| 177 | C→S | SendClanMessage | `u16 len` + texto (máx. 0x78) | implementado: exige clã; entrega 178 aos membros online |
+| 178 | S→C | Chat de clã | `MS_CLAN_MESSAGE_OUT` (0x14 + texto) | implementado |
 | 180 | C→S | GetFriendList | — | implementado: exige login; responde 183 e 188 |
 | 181 | C→S | AddFriend | `MS_NICK_IN` (17 bytes) | implementado: responde 183 |
 | 182 | C→S | DelFriend | `MS_ACCOUNT_ID_IN` (4 bytes) | implementado: responde 184 |
@@ -32,8 +40,10 @@ Implementação: `protocol/message.py` (layouts), `handlers/message/` (comportam
 | 191 | S→C | Lote de amigos | `MS_REFRESH_FRIEND_OUT` (4 + 0x14·n bytes) | implementado |
 | 192 | C→S | RefreshBlack | `MS_RELATION_IDS_IN` (4 + 4·n bytes) | implementado: responde 193 |
 | 193 | S→C | Lote de bloqueados | `MS_REFRESH_BLACK_OUT` (4 + 0x14·n bytes) | implementado |
+| 194 | C→S | RefreshClan | `MS_RELATION_IDS_IN` (4 + 4·n bytes) | implementado: exige clã; responde 195 |
+| 195 | S→C | Lote de membros do clã | `MS_REFRESH_CLAN_OUT` (0x0C + 0x0C·n bytes) | implementado |
 
-Opcodes sem handler (140, 150, 170, 172–178, 194, 195, ...): logados com hexdump e ignorados; a conexão continua.
+Opcodes sem handler (140, 150, 152, ...): logados com hexdump e ignorados; a conexão continua. 173 (clã removido) e 176 (membro removido) não são emitidos: nenhum pedido do cliente os dispara e a saída de clã é feita pela CLI (D55).
 
 ## Comportamento
 
@@ -56,6 +66,20 @@ Implementação: `handlers/message/social.py` e `whisper.py`; presença em `doma
 - Sussurro (160): o destinatário conectado no Message recebe 161; o remetente não recebe confirmação. Destinatário fora do Message, ou que bloqueou o remetente, recebe 162 com `-19`. Nick inexistente: 162 com `-11`. Texto acima de 0x78 bytes é payload malformado e é ignorado.
 - Presença: online é ter conexão autenticada no Message. Entra no login aceito e sai ao fechar a conexão ou no início de outro login. Não há aviso de entrada e saída: o cliente consulta o estado em 180, 190 e 192 (D39).
 - Pedidos de amigo, bloqueio e sussurro sem login são ignorados, sem resposta.
+
+## Clã e ranking (F13, F14)
+
+Implementação: `handlers/message/clan.py` e `ranking.py`; layouts em `protocol/message.py`; tabelas `clans` e `clan_members` em [04-persistence](../architecture/04-persistence.md). Criar, entrar, sair, renomear e marcar são feitos pela CLI (`landmass-emu clan`, D55): o cliente não tem pedido para isso.
+
+- 121 leva `clan_code` = id do clã da conta (0 sem clã). Com clã, o cliente pede 171 e 174 (features §0.1).
+- 171 (GetClanInfo) responde 172 com o clã da conta; sem clã, não responde. Layout de 88 bytes: `i32` @0 = 0 (índice da lista do cliente, inferido); nome `char[17]` @4 (inferido: `execGetClanInfo` lê corpo+4); `i32` id do clã @0x18 (decodificado: `node+0x28`); mestre `char[17]` @0x1D (inferido: `execGetClanInfo` lê corpo+0x1D); `i32` marca @0x4C (decodificado: `node+0x2C`); `u8` @0x50 = 0 (`node+0x30`, sem leitor identificado).
+- 174 responde 175 por membro, um por pacote, como 183. 175: chave `i16` @0 (id da conta; contas acima de 32767 são omitidas, ver shortcut em `handlers/message/clan.py`), nick `char[17]` @2, estado `u8` @0x14 (0x22 conectado), `i32` exp @0x18. `u8` @0x1C = 0: `+0x23` no cliente não tem leitor identificado, e o grau do membro não sai no protocolo.
+- 177 (SendClanMessage): `u16 len` @0, texto a partir de @2. `len` acima de 0x78 ou payload menor que `2 + len` é malformado e é ignorado sem entregar (o cliente copia sem limite). Só quem tem clã envia; sem clã, ignora. 178 vai aos membros online do clã, inclusive a quem enviou, como o chat geral (D58). Layout igual ao de 161.
+- 194 (RefreshClanList) usa `MS_RELATION_IDS_IN`, como 190, e responde 195 só com os ids do próprio clã (sem vazar exp de outro clã). 195: cabeçalho de 12 bytes com `i32` clã @0, `i32` marca @4, `u8` @8 = 0 e `u8` contagem @9; registros de 0x0C a partir de @0x0C: `i32` conta @0, `i32` exp @4, `u8` estado @8.
+- 170 (GetRankingInfo) responde 171 com o top 100 por `total_exp` decrescente, com empate pelo id da conta. Entrada de 0x20: `i32` índice @0 (slot 0 a 99, sequencial), `u16` posição @4 (empate na menor posição: 1, 1, 3), nick `char[17]` @6, `i32` exp @0x18, `u16` clã @0x1C. Com menos de 100 linhas, a última entrada é zerada: o laço do cliente não confere o tamanho e para em posição 0 (D56).
+- Ranking por nest (oddeye, shadow, leon) não cabe no protocolo: 170 não tem corpo e 171 não tem campo de nest. Fica fora (dúvida 22).
+- 173 e 176 não são emitidos (D55).
+- Limites conhecidos: 171 usa `u16` para o clã, então um clã acima de 65535 sai como 0; 175 usa `i16` para a conta.
 
 ## `MS_LOGIN_IN`
 

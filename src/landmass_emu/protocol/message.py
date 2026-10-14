@@ -35,6 +35,18 @@ class MsOp(IntEnum):
     REFRESH_FRIEND_OUT = 191
     REFRESH_BLACK = 192
     REFRESH_BLACK_OUT = 193
+    GET_RANKING = 170
+    RANKING_INFO_OUT = 171
+    # Alias intencional: 171 também é o pedido C→S GetClanInfo. Direções diferentes, mesmo número.
+    # `.name` deste membro sai como RANKING_INFO_OUT; o roteador usa só o valor.
+    GET_CLAN_INFO = 171
+    CLAN_INFO_OUT = 172
+    GET_CLAN_MEMBER = 174
+    CLAN_MEMBER_OUT = 175
+    SEND_CLAN_MESSAGE = 177
+    CLAN_MESSAGE_OUT = 178
+    REFRESH_CLAN = 194
+    REFRESH_CLAN_OUT = 195
 
 
 class MsResult(IntEnum):
@@ -468,3 +480,155 @@ class MsWhisperErrorOut:
     def pack(self) -> bytes:
         head = self._HEAD.pack(self.result, cfield(self.receiver, 18), len(self.text))
         return head + self.text
+
+
+# Ranking (F14), clã (F13). Layouts: re/protocol_full.md §2.1 e §2.2; re/message_server.md §4.
+# Os trechos marcados (inferido) não têm leitor identificado no cliente; ver 07-progression §7.
+
+MAX_RANKING_ENTRIES = 100  # o laço de 171 do cliente para em 100 entradas
+MAX_CLAN_TEXT = 0x78  # o cliente copia o chat de clã até `len` (case 178); acima disso, recusa
+CLAN_INFO_SIZE = 88  # 22 dwords copiados pelo cliente (case 172)
+
+
+@dataclass(frozen=True, slots=True)
+class RankingEntry:
+    """Uma linha de 171. `index` é o slot do array de ranking do cliente (0 a 99). `rank` é a
+    posição, com empate na menor (1, 1, 3). Zero em `rank` encerra a lista no cliente."""
+
+    index: int
+    rank: int
+    nickname: str
+    total_exp: int
+    clan: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class MsRankingInfoOut:
+    """RANKING_INFO_OUT (171): entradas de 0x20 a partir de @0. `i32 index` @0, `u16 rank` @4,
+    `char nick[17]` @6 (NUL), `i32 total_exp` @0x18, `u16 clan` @0x1C.
+
+    Com menos de 100 linhas, a última entrada é zerada: o laço do cliente não confere o tamanho e
+    só para em `rank == 0` (inferido: o zero encerra, ver re/LM_Engine.dll/NotifyRankingInfo)."""
+
+    entries: tuple[RankingEntry, ...]
+    opcode: ClassVar[int] = MsOp.RANKING_INFO_OUT
+    _ENTRY = struct.Struct("<iH17sxiH2x")
+
+    def pack(self) -> bytes:
+        if len(self.entries) > MAX_RANKING_ENTRIES:
+            raise ValueError(f"ranking com {len(self.entries)} linhas (máximo 100)")
+        out = bytearray()
+        for e in self.entries:
+            if e.rank < 1:
+                raise ValueError("posição de ranking deve ser maior que zero")
+            out += self._ENTRY.pack(e.index, e.rank, cfield(e.nickname, 17), e.total_exp, e.clan)
+        if len(self.entries) < MAX_RANKING_ENTRIES:
+            out += bytes(self._ENTRY.size)  # sentinela: rank 0 encerra
+        return bytes(out)
+
+
+@dataclass(frozen=True, slots=True)
+class MsClanChatIn:
+    """SEND_CLAN_MESSAGE (177): `u16 len` @0 (máx. 0x78), texto `len` bytes a partir de @2."""
+
+    text: bytes
+    _HEAD = struct.Struct("<H")
+
+    @classmethod
+    def unpack(cls, payload: bytes) -> MsClanChatIn:
+        (length,) = cls._HEAD.unpack_from(payload)  # payload curto: struct.error, logado
+        if length > MAX_CLAN_TEXT or len(payload) < cls._HEAD.size + length:
+            raise ValueError(f"chat de clã inconsistente: len={length}")
+        return cls(payload[cls._HEAD.size : cls._HEAD.size + length])
+
+
+@dataclass(frozen=True, slots=True)
+class MsClanChatOut:
+    """CLAN_MESSAGE_OUT (178): mesmo layout de 161 (remetente @0, `u16 len` @0x12, texto @0x14)."""
+
+    sender: str
+    text: bytes
+    opcode: ClassVar[int] = MsOp.CLAN_MESSAGE_OUT
+    _HEAD = struct.Struct("<18sH")
+
+    def pack(self) -> bytes:
+        return self._HEAD.pack(cfield(self.sender, 18), len(self.text)) + self.text
+
+
+@dataclass(frozen=True, slots=True)
+class MsClanInfoOut:
+    """CLAN_INFO_OUT (172): 88 bytes que o cliente copia como 22 dwords.
+
+    @0 `i32` índice da lista (0: a conta tem um clã só) (inferido: `GetClanInfo(0)` acha a chave 0);
+    @4 nome `char[17]` NUL (inferido: `execGetClanInfo` lê `node+0x1C`, que é corpo+4);
+    @0x18 `i32` id do clã (decodificado: `node+0x28` em 172, comparado com os membros);
+    @0x1D mestre `char[17]` NUL (inferido: `execGetClanInfo` lê `node+0x35`);
+    @0x4C `i32` marca (decodificado: `node+0x2C`); @0x50 `u8` zero (`node+0x30`, sem leitor).
+    """
+
+    clan_id: int
+    name: str
+    master: str
+    mark: int
+    opcode: ClassVar[int] = MsOp.CLAN_INFO_OUT
+
+    def pack(self) -> bytes:
+        body = bytearray(CLAN_INFO_SIZE)
+        body[4:21] = cfield(self.name, 17)
+        struct.pack_into("<i", body, 0x18, self.clan_id)
+        body[0x1D:0x2E] = cfield(self.master, 17)
+        struct.pack_into("<i", body, 0x4C, self.mark)
+        return bytes(body)
+
+
+@dataclass(frozen=True, slots=True)
+class MsClanMemberOut:
+    """CLAN_MEMBER_OUT (175), um por membro, como 183. `i16 key` @0 (o cliente guarda como short),
+    nick `char[17]` @2 (NUL, até @0x12), `u8 estado` @0x14 (0x22 conectado), `i32 total_exp` @0x18,
+    `u8` @0x1C zero (`+0x23` sem leitor; o grau do membro não sai no protocolo)."""
+
+    account_id: int
+    nickname: str
+    total_exp: int = 0
+    online: bool = False
+    opcode: ClassVar[int] = MsOp.CLAN_MEMBER_OUT
+    _FIXED = struct.Struct("<h17sxBxxxiBxxx")
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(
+            self.account_id,
+            cfield(self.nickname, 17),
+            ONLINE_STATE if self.online else 0,
+            self.total_exp,
+            0,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class MsClanRecord:
+    """Registro de 0x0C de 195: `i32 account_id` @0 (chave), `i32 total_exp` @4, `u8 estado` @8."""
+
+    account_id: int
+    total_exp: int
+    online: bool = False
+    _FIXED = struct.Struct("<iiBxxx")
+
+    def pack(self) -> bytes:
+        return self._FIXED.pack(self.account_id, self.total_exp, ONLINE_STATE if self.online else 0)
+
+
+@dataclass(frozen=True, slots=True)
+class MsRefreshClanOut:
+    """REFRESH_CLAN_OUT (195): cabeçalho de 12 bytes e registros de 0x0C a partir de @0x0C.
+    `i32 clan_id` @0 (vira o clã do nó), `i32 mark` @4, `u8` @8 zero (sem leitor identificado),
+    `u8 count` @9, dois bytes de padding. O cliente lê `count` registros; lote vazio é válido."""
+
+    clan_id: int
+    mark: int
+    records: tuple[MsClanRecord, ...]
+    opcode: ClassVar[int] = MsOp.REFRESH_CLAN_OUT
+    _HEAD = struct.Struct("<iiBBxx")
+
+    def pack(self) -> bytes:
+        head = self._HEAD.pack(self.clan_id, self.mark, 0, len(self.records))
+        return head + b"".join(r.pack() for r in self.records)

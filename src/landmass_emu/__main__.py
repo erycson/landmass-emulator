@@ -8,17 +8,21 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from landmass_emu import sniffer
 from landmass_emu.admin import AccountAdmin, ProgressionAdmin
+from landmass_emu.admin_clan import ClanAdmin
 from landmass_emu.admin_inventory import InventoryAdmin, StarterKitAdmin
 from landmass_emu.app import game_servers, open_accounts, open_database
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
+from landmass_emu.db.clans import SqlClanRepository
 from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.item_catalog import ItemCatalog
 from landmass_emu.db.progression import SqlProgressionRepository
+from landmass_emu.domain.clan import ClanRules
 from landmass_emu.domain.inventory import InventoryService
 from landmass_emu.domain.progression import Grant, ProgressionService
 from landmass_emu.domain.starter_kit import StarterKit
 from landmass_emu.ports.accounts import AccountConflict
+from landmass_emu.ports.clans import ClanConflict
 from landmass_emu.ports.inventory import InventoryConflict
 from landmass_emu.settings import Settings
 
@@ -61,6 +65,21 @@ class Cli:
                 WdbCatalog(self._settings.client_dir / "landmass.wdb"),
             )
             return await admin.grant(args.user, grant)
+
+    async def clan(self, args: argparse.Namespace) -> str:
+        async with open_database(self._settings) as db:
+            admin = ClanAdmin(SqlAccountRepository(db), SqlClanRepository(db), ClanRules())
+            if args.action == "create":
+                return await admin.create(args.name, args.master, args.mark)
+            if args.action == "join":
+                return await admin.join(args.username, args.clan, args.grade)
+            if args.action == "leave":
+                return await admin.leave(args.username)
+            if args.action == "rename":
+                return await admin.rename(args.clan, args.to)
+            if args.action == "mark":
+                return await admin.mark(args.clan, args.mark)
+            return await admin.show(args.clan)
 
     def _inventory_service(self) -> InventoryService:
         return InventoryService(ItemCatalog.open(self._settings.client_dir / "landmass.wdb"))
@@ -143,6 +162,26 @@ def _parser() -> argparse.ArgumentParser:
         "apply", help="aplica o kit a uma conta existente (pula gates ocupados)"
     )
     kit_apply.add_argument("username")
+    clan = sub.add_parser("clan", help="clãs (sem aviso ao servidor em execução)")
+    clan_actions = clan.add_subparsers(dest="action", required=True)
+    clan_create = clan_actions.add_parser("create", help="cria o clã com o mestre como membro")
+    clan_create.add_argument("name")
+    clan_create.add_argument("--master", required=True, help="usuário do mestre")
+    clan_create.add_argument("--mark", type=int, default=0)
+    clan_join = clan_actions.add_parser("join", help="põe a conta num clã")
+    clan_join.add_argument("username")
+    clan_join.add_argument("--clan", required=True)
+    clan_join.add_argument("--grade", type=int, default=0)
+    clan_leave = clan_actions.add_parser("leave", help="tira a conta do clã")
+    clan_leave.add_argument("username")
+    clan_rename = clan_actions.add_parser("rename", help="muda o nome do clã")
+    clan_rename.add_argument("clan")
+    clan_rename.add_argument("--to", required=True)
+    clan_mark = clan_actions.add_parser("mark", help="muda a marca do clã")
+    clan_mark.add_argument("clan")
+    clan_mark.add_argument("--mark", type=int, required=True)
+    clan_show = clan_actions.add_parser("show", help="mostra o clã e os membros")
+    clan_show.add_argument("clan")
     return parser
 
 
@@ -160,8 +199,8 @@ def main() -> None:
             asyncio.run(cli.serve())
         else:
             try:
-                saida = asyncio.run(cli.account(args))
-            except (ValueError, AccountConflict, InventoryConflict) as e:
+                saida = asyncio.run(cli.clan(args) if args.cmd == "clan" else cli.account(args))
+            except (ValueError, AccountConflict, InventoryConflict, ClanConflict) as e:
                 raise SystemExit(f"erro: {e}") from None
             print(saida)
 

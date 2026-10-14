@@ -10,7 +10,9 @@ import pytest
 
 from landmass_emu.app import message_server, open_accounts, open_database
 from landmass_emu.db.accounts import SqlAccountRepository
+from landmass_emu.db.clans import SqlClanRepository
 from landmass_emu.db.options import SqlOptionsRepository
+from landmass_emu.db.ranking import SqlRankingRepository
 from landmass_emu.db.social import SqlSocialRepository
 from landmass_emu.domain.account import hash_token
 from landmass_emu.domain.session_keys import MemorySessionKeyRegistry
@@ -86,6 +88,8 @@ async def _servidor(
             SqlAccountRepository(db),
             SqlOptionsRepository(db),
             SqlSocialRepository(db),
+            SqlClanRepository(db),
+            SqlRankingRepository(db),
         ) as server,
     ):
         yield server
@@ -133,14 +137,14 @@ async def test_sem_login_nao_responde_e_opcode_desconhecido_nao_derruba(tmp_path
         _connect(server) as c,
     ):
         await c.send(MsOp.GET_CHANNEL_SERVER_INFO)
-        await c.send(170, b"\x01\x02")  # GetRankingInfo: sem handler
+        await c.send(1, b"\x01\x02")  # opcode 1 não tem handler no Message
         await c.send(MsOp.HEARTBEAT)
         await c.send(MsOp.LOGIN, b"\x01")  # payload curto: ignorado
         await c.send(MsOp.LOGIN, MsLoginIn(login_num=TOKEN).pack())
         op, body = await c.recv()
         assert op == MsOp.LOGIN_OUT and struct.unpack_from("<i", body, 4) == (0,)
 
-        await c.send(170, b"\x01\x02")
+        await c.send(1, b"\x01\x02")
         await c.send(MsOp.GET_CHANNEL_SERVER_INFO)
         op, _ = await c.recv()
         assert op == MsOp.GET_CHANNEL_SERVER_OUT

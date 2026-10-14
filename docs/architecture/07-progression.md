@@ -256,6 +256,7 @@ Ao implementar, a tabela de índices do codec é a fonte de verdade. A conferên
 - `clans`: `name` (`String(16)`, único: `clans_name_unique`), `master_account_id` (FK `clans_master_account_id_foreign`) e `mark` (`Integer`, id do ícone; `clan_mark`).
 - `clan_members`: `clan_id` (FK `clan_members_clan_id_foreign`, índice `clan_members_clan_id_index`), `account_id` (FK `clan_members_account_id_foreign`, único `clan_members_account_id_unique`: uma conta, um clã) e `grade` (`Integer`, `member_grade`).
 - Não há `clan_logs`. O legado `tbl_clanlog` é log (D12).
+- Migração `3f8a1c0d9e27` (F13), sobre `ce9926b0fcad`. Uma conta, um clã (D60). O mestre entra como membro de grau 0 (D61).
 
 ### 4.9 `gifts`
 
@@ -279,6 +280,8 @@ Decisão em [D18](../decisions/README.md). A lista é consulta sobre `accounts`:
 - Sem cache. O volume é de dezenas de contas por canal; se a consulta pesar, o índice `accounts_total_exp_index` resolve antes de qualquer cache.
 
 Justificativa: o legado mantinha `tbl_ranking` por job (`usp_renew_ranking`), uma cópia derivada que D12 não admite. O cliente só lê a lista; não há escrita a sincronizar.
+
+Implementado em F14: `domain/ranking.py` (posições) e `db/ranking.py` (consulta, com `outerjoin` em `clan_members` para o id do clã). Ranking por nest não cabe no protocolo: 170 não tem corpo e 171 não tem campo de nest (D56, dúvida 22).
 
 ## 5. Regras de negócio
 
@@ -420,9 +423,11 @@ Cálculo por jogador, no fim da partida. Constantes de `GameRewardConstant` (val
 | R-SOC-03 | Limite de amigos e de bloqueados: não localizado (dúvida 17). | — |
 | R-SOC-04 | Sussurro (160): 161 vai só ao destinatário conectado no Message, sem confirmação ao remetente. Destinatário fora do Message, ou que bloqueou o remetente: 162 com -19. Nick inexistente: 162 com -11 (D36). | `protocol/message-server.md` |
 | R-SOC-05 | Presença: online = conexão autenticada no Message (D32). Sem aviso de entrada e saída, pois não há opcode: o estado vem nas consultas 180, 190 e 192 (D39). | `protocol/message-server.md` |
-| R-CLAN-01 | Criar, entrar e sair de clã não existem no cliente. Clãs e membros são criados pela CLI (inferido, mesma regra de D10). | features §7 |
-| R-CLAN-02 | No login, `NotifyInMessageServer` (121) traz `clan_code = clans.id` quando a conta tem clã. Com clã, o cliente pede lista e membros. | features §0.1, §7 |
+| R-CLAN-01 | Criar, entrar e sair de clã não existem no cliente. Clãs e membros são criados pela CLI `landmass-emu clan` (inferido, mesma regra de D10; D55). | features §7 |
+| R-CLAN-02 | No login, `NotifyInMessageServer` (121) traz `clan_code = clans.id` quando a conta tem clã. Com clã, o cliente pede dados (171) e membros (174). Mudança de clã aparece no próximo login (D27, D55). | features §0.1, §7 |
 | R-CLAN-03 | Chat de clã só para membros (`clan_code > 0`). | features §5.3 |
+| R-CLAN-04 | Chat de clã (177 → 178) vai a todos os membros online, inclusive a quem enviou. Quem não tem clã não envia (D58, inferido). | features §5.3 |
+| R-CLAN-05 | Uma conta, um clã; nome único de 1 a 16 caracteres (D60). O mestre não sai enquanto houver outros membros; o último a sair apaga o clã (D59, shortcut). | D59, D60 |
 | R-ABN | Abandono = `(total_gamecount − total_win − total_lose) × 100 / total_gamecount`. Calculado pelo cliente. Não há coluna. | features §12 (`OnDetailPlayerInfo`, 32813) |
 
 ## 6. Mapeamento opcode → caso de uso → tabelas
@@ -481,12 +486,15 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 160 | C→S | Sussurro | `accounts`, `friends`, `blocks` | `char[18]` @0 destinatário; `u16 @0x12` tamanho (máx. 0x78); texto @0x14 | implementado (F12) |
 | 161 | S→C | Sussurro recebido | — | `char[18]` @0 remetente; `u16 @0x12`; texto @0x14 | implementado (F12) |
 | 162 | S→C | Erro de sussurro | — | `i32 @0` result (-11 nick inexistente; -19 offline ou bloqueado); `char[18]` @4; `u16 @0x16`; texto @0x18 | implementado (F12) |
-| 170 / 171 | C→S / S→C | Ranking (§4.10) | `accounts` (consulta) | 170: sem corpo; 171: entradas de 0x20 a partir de `@4`, até `u16 == 0`, máx. 100; campos não decodificados | falta |
-| 172 | S→C | Lista do clã | `clans`, `clan_members` | falta; pedido não medido | falta |
-| 173 | S→C | Clã removido | `clans` | `i32 @0` | falta |
-| 175 | S→C | Membro do clã | `clan_members` | `i16 @0` chave; string a partir de `@2`; `u8 @0x14`; `i32 @0x18`; `u8 @0x1c` | falta |
-| 176 | S→C | Membro removido | `clan_members` | `i16 @4` | falta |
-| 178 | S→C | Chat de clã | — | `u16 @0x12` tamanho; texto a partir de `@0x14` | falta |
+| 170 / 171 | C→S / S→C | Ranking (§4.10) | `accounts` (consulta) | 170: sem corpo; 171: entradas de 0x20 a partir de `@0` (`i32` índice; `u16` posição @4, zero encerra; nick @6; exp @0x18; clã `u16` @0x1C), máx. 100 | implementado (F14) |
+| 171 | C→S | Pedir dados do clã | `clans`, `clan_members` | responde 172 | implementado (F13) |
+| 172 | S→C | Dados do clã | `clans`, `clan_members` | 88 bytes: `i32` @0 índice (0); nome `char[17]` @4; `i32` id @0x18; mestre `char[17]` @0x1D; `i32` marca @0x4C; `u8` @0x50 zero. Nome e mestre inferidos (D57) | implementado (F13) |
+| 173 | S→C | Clã removido | — | não emitido: nada no cliente o dispara (D55) | não emitido |
+| 174 | C→S | Pedir membros do clã | `clan_members`, `accounts` | responde 175 por membro | implementado (F13) |
+| 175 | S→C | Membro do clã | `clan_members`, `accounts` | 32 bytes: `i16` @0 chave (contas acima de 32767 omitidas); nick `char[17]` @2; `u8` @0x14 estado (0x22 online); `i32` exp @0x18; `u8` @0x1C zero (grau não sai) | implementado (F13) |
+| 176 | S→C | Membro removido | — | não emitido (D55) | não emitido |
+| 177 | C→S | Chat de clã | `clan_members` | `u16` @0 tamanho (máx. 0x78); texto a partir de @2 | implementado (F13) |
+| 178 | S→C | Chat de clã (recebido) | — | remetente `char[18]` @0; `u16` @0x12 tamanho; texto @0x14; vai a todos os membros online, inclusive o remetente (D58, inferido) | implementado (F13) |
 | 180 | C→S | Pedir lista de amigos | `friends`, `blocks` | corpo vazio; responde 183 por amigo e 188 por bloqueado | implementado (F12) |
 | 181 | C→S | Adicionar amigo | `friends`, `accounts` | `char[17]` @0 nick, NUL-terminado; responde 183 | implementado (F12) |
 | 182 | C→S | Remover amigo | `friends` | `i32 @0` id do amigo; responde 184 | implementado (F12) |
@@ -500,11 +508,12 @@ Legenda de layout: **completo** = campos nomeados; **parcial** = tamanho ou algu
 | 191 | S→C | Lote de amigos | `friends` | `u8 @0` contagem; registros de 0x14 a partir de @4 (id, exp, nest, estado) | implementado (F12) |
 | 192 | C→S | Atualizar bloqueados | `blocks` | igual a 190; responde 193 | implementado (F12) |
 | 193 | S→C | Lote de bloqueados | `blocks` | igual a 191 | implementado (F12) |
-| 194 | C→S | Atualizar clãs | `clans` | 60 bytes | falta (F13) |
-| 195 | S→C | Lote de membros | `clan_members` | cabeçalho e registros de 0x0C parciais | falta (F13) |
-| — | C→S | Pedidos de lista de clã, membros de clã e chat de clã | — | não medidos (dúvida 16) | falta (F13) |
+| 194 | C→S | Atualizar clãs | `clan_members` | `MS_RELATION_IDS_IN`, como 190; responde 195 só com os ids do próprio clã | implementado (F13) |
+| 195 | S→C | Lote de membros do clã | `clan_members` | cabeçalho de 12 bytes: `i32` clã @0, `i32` marca @4, `u8` zero @8, `u8` contagem @9; registros de 0x0C a partir de @0x0C: `i32` conta @0, `i32` exp @4, `u8` estado @8 | implementado (F13) |
 
 Correção a [features.md §15](../../re/features.md): `GetRankingInfo` tem opcode medido, **170** ([message_server.md §1](../../re/message_server.md)). O item "lacuna" de §15 está desatualizado.
+
+O opcode **171** vale nas duas direções: C→S pede os dados do clã (responde 172) e S→C é a lista de ranking. O roteador usa só o valor C→S (`MsOp.GET_CLAN_INFO`; comentário em `protocol/message.py`).
 
 ### 6.3 Pontos de contato com a partida
 
@@ -530,8 +539,8 @@ Cada fatia é testável isoladamente. O critério de aceite é verificado no cli
 | F10 | Presente (615, 616, 610, 611). | F8; dúvidas 2, 3 | A envia item a B por nick; B vê na lista paginada de 12; resgate conforme dúvida 3. |
 | F11 | Gacha (591). | F3, F4; dúvida 6 | Usar "Item Surpresa" abre popup com prêmio do servidor; item aparece no inventário. |
 | F12 (implementada, sem teste no cliente real) | Amigos, bloqueio e sussurro (Message 160–162, 180–193). Clã fica na F13. | Opcodes de amigo e bloqueio medidos (dúvida 16 parcial) | Adicionar amigo, reconectar: permanece. Bloquear e desbloquear. Sussurro chega ao outro cliente online. |
-| F13 | Clã (Message 172–178, 194–195). | F0 (172, 175); dúvida 18 | Conta com clã mostra nome e membros. Chat de clã chega aos membros. |
-| F14 | Ranking (Message 170/171). | F0 (171), F3 | Lista com top 100 por `total_exp`; empates com a mesma posição (1, 1, 3). |
+| F13 (implementada, sem teste no cliente real) | Clã: dados (171/172), membros (174/175), chat (177/178) e lote (194/195). Criar, entrar e sair só pela CLI (D55). | F0 (172, 175); dúvida 18 (respondida por D55) | Conta com clã mostra nome e membros. Chat de clã chega aos membros online. |
+| F14 (implementada, sem teste no cliente real) | Ranking (Message 170/171). Ranking por nest, ver dúvida 22. | F0 (171), F3 | Lista com top 100 por `total_exp`; empates com a mesma posição (1, 1, 3). |
 
 ## 8. Lacunas e dúvidas para o usuário
 
@@ -559,13 +568,13 @@ Itens marcados **[bloqueia Fx]** impedem a fatia indicada até resposta.
 13. **Arredondamento** de exp e LD (float para inteiro): proposta, truncar. Confirmar.
 14. **Recompensa:** `playRate` usa tempo no DM e rodadas no OP (ver R-REW-07). Origem de `BonusExpMult` e `BonusMoneyMult`. Fórmulas de TDM e BR não foram lidas.
 15. **Resposta do tutorial:** código 601 (inferido). `Point` é `iPoint` (`@4` de 601, layouts_f0 §7.6). **Resolvida em F2:** o servidor responde com o LD atual.
-16. **Opcodes não medidos (parcial, F12):** os de amigo e bloqueio (181, 182, 186, 187) foram medidos nos wrappers e no dispatcher. Faltam lista de clã, membros, chat de clã e corpo de 152. `NotifyFriendLog` não tem opcode.
+16. **Opcodes não medidos (parcial, F12 e F13):** os de amigo e bloqueio (181, 182, 186, 187) foram medidos nos wrappers e no dispatcher. Os pedidos de clã (171, 174, 177, 194) têm cabeçalho medido, mas os pares de resposta não foram observados em captura. Faltam o corpo de 152 e `NotifyFriendLog`, que não tem opcode.
 17. **Resultado da partida:** opcode do GS_* que entrega o resultado ao canal [bloqueia F9]. Limite de amigos e de bloqueados.
-18. **Clã:** criação e gestão só pela CLI? Confirmar.
+18. **Clã:** criação e gestão só pela CLI (`landmass-emu clan`, D55), porque o cliente não tem pedido para isso. Confirmar com o usuário.
 19. **Índice de inventário (resolvida em F4/F5, [D30](../decisions/README.md)):** `account_items` e `account_morats` têm namespaces separados. Morat usa o gate como índice; item começa em 1. Inferido do dump de `GetMoratsInfoByGate`: confirmar no cliente real.
 20. **Campo de exp e saldo no registro do jogador:** qual pacote (151, 317 ou 549) entrega `iTotalExp`, `iPoint` e `iCash` ao cliente [bloqueia F3]. **Resolvida em F3 (inferido, confirmar no cliente real):** o 101 entrega `iTutorialClear`, `iTotalExp`, `iCash` e `iPoint` (`@0x28`, `@0x2c`, `@0x48`, `@0x4c`), pelo layout de `LM_PLAYER_INFO`. O 121 de quem entra entrega `iTotalExp` em `@4`. 151, 317 e 549 também trazem `iTotalExp` (`R+0x04`): quem implementar salas precisa preenchê-lo, senão zera o nó do próprio jogador.
 21. **Penalidades:** entram neste escopo? O cliente não tem tela de penalidade (features §12).
-22. **Ranking por nest** (`oddeye`, `shadow`, `leon` do legado): não migrado no primeiro corte. Confirmar.
+22. **Ranking por nest** (`oddeye`, `shadow`, `leon` do legado): o usuário pôs no escopo (ver Decisões), mas 170 não tem corpo e 171 não tem campo de nest (D56). Precisa de um pacote que traga o nest, ainda não medido. Até lá, não entra.
 23. **Pacotes `gift_okcashback1..3`:** quem os concede e quando?
 24. **Conta sem morat trava a sala (observado ao vivo) [bloqueia a sala para contas sem morat].** O cliente trava em `LM_RoomPage` quando nenhum gate tem morat. Habilitar gate sem morat não resolve ([layouts_f0 §8](../../re/layouts_f0.md)). Conceder o kit no login quando a conta não tem morat muda o login e escreve no banco. Decisão do usuário: conceder no login, ou só pela CLI (`account kit apply`)?
 

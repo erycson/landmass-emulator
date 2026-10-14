@@ -8,12 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from landmass_emu.db.accounts import SqlAccountRepository
 from landmass_emu.db.catalog import WdbCatalog
+from landmass_emu.db.clans import SqlClanRepository
 from landmass_emu.db.engine import Migrator
 from landmass_emu.db.inventory import SqlInventoryRepository
 from landmass_emu.db.item_catalog import LazyItemCatalog
 from landmass_emu.db.matches import SqlMatchRepository
 from landmass_emu.db.options import SqlOptionsRepository
 from landmass_emu.db.progression import SqlProgressionRepository
+from landmass_emu.db.ranking import SqlRankingRepository
 from landmass_emu.db.shop import SqlShopRepository
 from landmass_emu.db.social import SqlSocialRepository
 from landmass_emu.domain.channel import Channel
@@ -29,11 +31,13 @@ from landmass_emu.hosting.fixed import FixedMatchHost
 from landmass_emu.hosting.process import ProcessHostConfig, ProcessMatchHost
 from landmass_emu.net.server import Service
 from landmass_emu.ports.accounts import AccountRepository
+from landmass_emu.ports.clans import ClanRepository
 from landmass_emu.ports.inventory import InventoryRepository
 from landmass_emu.ports.match_host import GameEndpoint, MatchHost
 from landmass_emu.ports.matches import MatchRepository
 from landmass_emu.ports.options import OptionsRepository
 from landmass_emu.ports.progression import ProgressionRepository
+from landmass_emu.ports.ranking import RankingRepository
 from landmass_emu.ports.session_keys import SessionKeyRegistry
 from landmass_emu.ports.social import SocialRepository
 from landmass_emu.protocol.channel import CsHeartbeat
@@ -91,10 +95,19 @@ async def message_server(
     accounts: AccountRepository,
     options: OptionsRepository,
     social: SocialRepository,
+    clans: ClanRepository,
+    ranking: RankingRepository,
 ) -> AsyncIterator[asyncio.Server]:
     presence = MessagePresence()
     handlers = MessageHandlers(
-        accounts, channels_from(settings), sessions, options, social, presence
+        accounts,
+        channels_from(settings),
+        sessions,
+        options,
+        social,
+        presence,
+        clans,
+        ranking,
     )
     server = await Service(
         net_code=MESSAGE_NET_CODE,
@@ -179,10 +192,14 @@ async def game_servers(settings: Settings) -> AsyncIterator[tuple[asyncio.Server
         progression = SqlProgressionRepository(db)
         inventory = SqlInventoryRepository(db)
         social = SqlSocialRepository(db)
+        clans = SqlClanRepository(db)
+        ranking = SqlRankingRepository(db)
         shop = _shop_service(settings, accounts, progression, inventory, SqlShopRepository(db))
         matches = SqlMatchRepository(db)
         async with (
-            message_server(settings, sessions, accounts, options, social) as message,
+            message_server(
+                settings, sessions, accounts, options, social, clans, ranking
+            ) as message,
             channel_server(
                 settings, sessions, options, progression, accounts, inventory, shop, matches
             ) as channel,

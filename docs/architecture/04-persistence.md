@@ -81,12 +81,23 @@ Fonte: [07-progression.md §4.7](07-progression.md). Modelos: `db/models.py` (`F
 - Sem log: só o par e as datas (D12). Remoção apaga a linha.
 - Adição repetida: a violação do único vira `False` (idempotente). Remoção: lê a linha e apaga.
 
+## Tabelas `clans` e `clan_members` (F13)
+
+Fonte: [07-progression.md §4.8](07-progression.md). Modelos: `db/models.py` (`ClanRow`, `ClanMemberRow`). Migração: `db/migrations/versions/3f8a1c0d9e27_create_clans_and_clan_members_tables.py`, sobre `ce9926b0fcad`.
+
+- `clans`: `id`, `name` (`String(16)`, único `clans_name_unique`), `master_account_id` (FK `clans_master_account_id_foreign`), `mark` (`Integer`, padrão 0), `created_at`, `updated_at`.
+- `clan_members`: `id`, `clan_id` (FK `clan_members_clan_id_foreign`, índice `clan_members_clan_id_index`), `account_id` (FK `clan_members_account_id_foreign`, único `clan_members_account_id_unique`), `grade` (`Integer`, padrão 0), `created_at`, `updated_at`.
+- Uma conta, um clã (D60). O mestre entra como membro de grau 0 (D61).
+- Apagar o clã remove os membros e depois o clã, numa transação (D59). Sair apaga a linha do membro.
+
 ## Repositório
 
 - Contrato: `ports/accounts.py` (`AccountRepository`, Protocol). Handlers e CLI dependem só dele.
 - Implementação: `db/accounts.py` (`SqlAccountRepository`). Violação de unicidade vira `AccountConflict`.
 - Opções: `ports/options.py` (`OptionsRepository`) e `db/options.py` (`SqlOptionsRepository`). O Message lê no 111; o Channel grava no 544.
 - Progressão: `ports/progression.py` (`ProgressionRepository`) e `db/progression.py` (`SqlProgressionRepository`). O tutorial é um `UPDATE` com OR no banco (`bitwise_or`), sem leitura antes da escrita. O grant soma no próprio `UPDATE`.
+- Clãs: `ports/clans.py` (`ClanRepository`) e `db/clans.py` (`SqlClanRepository`). Violação de unicidade vira `ClanConflict`.
+- Ranking: `ports/ranking.py` (`RankingRepository`) e `db/ranking.py` (`SqlRankingRepository`), uma consulta sobre `accounts` sem tabela (D18).
 - Leitura do `landmass.wdb`: `db/catalog.py` (`WdbCatalog`), somente leitura, `mode=ro`, textos em cp1252.
 
 ## Origem do schema
