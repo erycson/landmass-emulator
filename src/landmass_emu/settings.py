@@ -1,10 +1,24 @@
-"""Configuração: variáveis `LANDMASS_*` (docs/architecture/05-configuration.md)."""
+"""Configuração: variáveis `LANDMASS_*` e arquivo TOML (docs/architecture/05-configuration.md).
 
+Precedência, da maior para a menor: argumentos, variáveis de ambiente (`.env` conta como ambiente),
+`LANDMASS_<CAMPO>_FILE` (segredo lido de arquivo), arquivo TOML e padrão do código.
+"""
+
+import os
+import tomllib
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    TomlConfigSettingsSource,
+)
+
+ENV_PREFIX = "LANDMASS_"
+CONFIG_ENV = "LANDMASS_CONFIG"
 
 
 class ChannelConfig(BaseModel):
@@ -14,8 +28,39 @@ class ChannelConfig(BaseModel):
     port: int | None = None
 
 
+class _SecretFiles(PydanticBaseSettingsSource):
+    """`LANDMASS_<CAMPO>_FILE` lê o valor do arquivo (padrão dos segredos do Docker). Com a variável
+    e o arquivo juntos, é erro: não se sabe qual vale."""
+
+    def get_field_value(self, field: Any, field_name: str) -> tuple[Any, str, bool]:
+        return None, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for name in self.settings_cls.model_fields:
+            var = ENV_PREFIX + name.upper()
+            path = os.environ.get(var + "_FILE")
+            if path is None:
+                continue
+            if var in os.environ:
+                raise ValueError(f"{var} e {var}_FILE definidas juntas; use só uma")
+            out[name] = _read_secret(var + "_FILE", path)
+        return out
+
+
+def _read_secret(var: str, path: str) -> str:
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as e:
+        raise ValueError(f"{var}: arquivo não lido: {e}") from e
+    # Só o fim de linha sai: um segredo com espaço no meio ou no início fica como está.
+    if text.endswith("\r\n"):
+        return text[:-2]
+    return text[:-1] if text.endswith("\n") else text
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="LANDMASS_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix=ENV_PREFIX, env_file=".env", extra="ignore")
 
     database_url: str = "sqlite+aiosqlite:///data/landmass.db"
     bind_host: str = "0.0.0.0"
@@ -41,6 +86,23 @@ class Settings(BaseSettings):
     match_login_num: Annotated[str | None, Field(max_length=36)] = None
     # Log de economia (compra, destruição, extensão), uma linha JSON por evento (D120).
     audit_log: Path = Path("data/audit/economy.jsonl")
+    # Desligamento (D202): prazo máximo para sair, avisos antes do prazo e arquivo do comando
+    # `shutdown` (D203).
+    shutdown_grace_seconds: Annotated[float, Field(ge=0, le=3600)] = 300.0
+    shutdown_notice_seconds: list[Annotated[int, Field(ge=1, le=3600)]] = Field(
+        default_factory=lambda: [300, 60, 10]
+    )
+    control_file: Path = Path("data/control/shutdown.json")
+    # Logs no stdout (D205): nível e formato JSON opcional.
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_json: bool = False
+
+    @field_validator("shutdown_notice_seconds")
+    @classmethod
+    def _avisos_unicos(cls, value: list[int]) -> list[int]:
+        if len(set(value)) != len(value):
+            raise ValueError("LANDMASS_SHUTDOWN_NOTICE_SECONDS não pode repetir valores")
+        return sorted(value, reverse=True)
 
     @model_validator(mode="after")
     def _check_match(self) -> Settings:
@@ -49,3 +111,71 @@ class Settings(BaseSettings):
         if self.match_server_dir is not None and not self.match_login_num:
             raise ValueError("LANDMASS_MATCH_LOGIN_NUM é obrigatório com LANDMASS_MATCH_SERVER_DIR")
         return self
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return _sources(settings_cls, init_settings, env_settings, dotenv_settings, None)
+
+
+def _sources(
+    settings_cls: type[BaseSettings],
+    init_settings: PydanticBaseSettingsSource,
+    env_settings: PydanticBaseSettingsSource,
+    dotenv_settings: PydanticBaseSettingsSource,
+    toml_file: Path | None,
+) -> tuple[PydanticBaseSettingsSource, ...]:
+    return (
+        init_settings,
+        env_settings,
+        dotenv_settings,
+        _SecretFiles(settings_cls),
+        TomlConfigSettingsSource(settings_cls, toml_file=toml_file),
+    )
+
+
+def load_settings(config: Path | None = None) -> Settings:
+    """Settings com o arquivo TOML dado (`--config`) ou o de `LANDMASS_CONFIG`. Arquivo informado
+    que não existe, e chave que o Settings não conhece, são erro: o TOML ignora em silêncio, e um
+    erro de digitação viraria o padrão sem aviso."""
+    path = config if config is not None else _config_from_env()
+    if path is None:
+        return Settings()
+    if not path.is_file():
+        raise ValueError(f"arquivo de configuração não existe: {path}")
+    _check_toml_keys(path)
+
+    class _Configured(Settings):  # classe por chamada: o caminho do TOML entra na fonte
+        @classmethod
+        def settings_customise_sources(
+            cls,
+            settings_cls: type[BaseSettings],
+            init_settings: PydanticBaseSettingsSource,
+            env_settings: PydanticBaseSettingsSource,
+            dotenv_settings: PydanticBaseSettingsSource,
+            file_secret_settings: PydanticBaseSettingsSource,
+        ) -> tuple[PydanticBaseSettingsSource, ...]:
+            return _sources(settings_cls, init_settings, env_settings, dotenv_settings, path)
+
+    return _Configured()
+
+
+def _config_from_env() -> Path | None:
+    value = os.environ.get(CONFIG_ENV, "")
+    return Path(value) if value else None
+
+
+def _check_toml_keys(path: Path) -> None:
+    try:
+        data = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        raise ValueError(f"{path}: TOML inválido: {e}") from e
+    desconhecidas = sorted(set(data) - set(Settings.model_fields))
+    if desconhecidas:
+        raise ValueError(f"{path}: chaves desconhecidas: {', '.join(desconhecidas)}")

@@ -1,6 +1,14 @@
 # Configuração
 
-Carregue com `pydantic-settings` (`settings.py`), prefixo `LANDMASS_`, de variáveis de ambiente e de `.env` opcional no diretório de execução.
+Carregue com `pydantic-settings` (`settings.py`), prefixo `LANDMASS_`. Precedência, da maior para a menor (D200):
+
+1. Argumentos da linha de comando (`--config`).
+2. Variáveis de ambiente, e `.env` no diretório de execução (conta como ambiente).
+3. `LANDMASS_<CAMPO>_FILE`: o valor vem do arquivo. Com a variável e o `_FILE` juntos, é erro.
+4. Arquivo TOML: `landmass-emu serve --config <arquivo>` ou `LANDMASS_CONFIG`. Chaves são os nomes dos campos sem o prefixo (`message_port = 7313`). Chave desconhecida e arquivo inexistente são erro. Modelo com todas as chaves: [`config.example.toml`](../../config.example.toml).
+5. Padrão do código (tabela abaixo).
+
+Segredos com `_FILE` (padrão do Docker secrets, `/run/secrets/...`): `LANDMASS_DATABASE_URL_FILE` e `LANDMASS_MATCH_LOGIN_NUM_FILE`. O fim de linha do arquivo sai; o resto fica como está. Um arquivo ilegível é erro que nomeia a variável. Produção: [`operations/production.md`](../operations/production.md).
 
 | Variável | Padrão | Uso | Marco |
 |----------|--------|-----|:-----:|

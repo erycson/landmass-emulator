@@ -27,7 +27,7 @@ from landmass_emu.domain.starter_kit import StarterKit
 from landmass_emu.ports.accounts import AccountConflict
 from landmass_emu.ports.clans import ClanConflict
 from landmass_emu.ports.inventory import InventoryConflict
-from landmass_emu.settings import Settings
+from landmass_emu.settings import Settings, load_settings
 
 
 class Cli:
@@ -154,11 +154,14 @@ class Cli:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="landmass-emu")
+    parser.add_argument("--config", type=Path, help="arquivo TOML (ou LANDMASS_CONFIG)")
     sub = parser.add_subparsers(dest="cmd", required=True)
     sniff = sub.add_parser("sniff", help="grava os bytes enviados pelo cliente, sem responder")
     sniff.add_argument("--out", type=Path, default=Path("captures"))
     sniff.add_argument("--ports", type=int, nargs="+", default=list(sniffer.DEFAULT_PORTS))
-    sub.add_parser("serve", help="sobe o Message (TCP 7313) e o Channel (TCP 7314)")
+    serve = sub.add_parser("serve", help="sobe o Message (TCP 7313) e o Channel (TCP 7314)")
+    # SUPPRESS: sem `--config` aqui, vale o do nível principal, sem sobrescrevê-lo.
+    serve.add_argument("--config", type=Path, default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     account = sub.add_parser("account", help="contas e tokens de login")
     actions = account.add_subparsers(dest="action", required=True)
     create = actions.add_parser("create", help="cria conta, gera token e grava o .bat")
@@ -240,9 +243,12 @@ def _parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = _parser().parse_args()
+    try:
+        settings = load_settings(args.config)
+    except ValueError as e:  # ValidationError do pydantic também é ValueError
+        raise SystemExit(f"configuração inválida: {e}") from None
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    settings = Settings()
+    logging.basicConfig(level=settings.log_level, format="%(asctime)s %(message)s")
     cli = Cli(settings)
     with contextlib.suppress(KeyboardInterrupt):
         if args.cmd == "sniff":
