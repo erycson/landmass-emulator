@@ -95,3 +95,26 @@ def test_espectador_no_bloco_gameended_nao_entra_no_historico() -> None:
 
     assert [p.nickname for p in resultado.players] == ["Ana", "Bia"]
     assert all(p.exp is None and p.money is None for p in resultado.players)
+
+
+def test_bot_com_o_apelido_de_um_jogador_nao_leva_a_recompensa_dele() -> None:
+    # D252: a recompensa casa pelo apelido, mas o bot (flag bBot) fica de fora mesmo com o
+    # nome igual.
+    bloco = (
+        GameEndedPlayer(
+            nickname="Ana",
+            reason="TimeLimit",
+            kills=30,
+            ranking=1,
+            played_percent=100.0,
+            total_exp=9000,
+            total_money=5000,
+            winner=None,
+            mission_score=None,
+            bot=True,
+        ),
+    )
+
+    ana, _ = with_game_end(_partida(), bloco).players
+
+    assert (ana.kills, ana.exp, ana.money) == (None, None, None)

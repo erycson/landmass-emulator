@@ -38,6 +38,17 @@ static function UseLMPRI()
         class'LM_xPawn'.default.ControllerClass.default.PlayerReplicationInfoClass = class'LM_xPlayerReplicationInfo';
 }
 
+// Bots no fim da partida pela flag bBot do PRI, não pelo apelido (D252). O bloco GameEnded do LM só traz o
+// apelido; o emulador tira da recompensa quem aparece nesta linha.
+static function LogEnd(LevelInfo L)
+{
+    local Controller C;
+
+    for (C = L.ControllerList; C != None; C = C.NextController)
+        if (C.PlayerReplicationInfo != None && C.PlayerReplicationInfo.bBot)
+            Log("LMEmu: bot no fim " $ C.PlayerReplicationInfo.PlayerName);
+}
+
 // Próxima linha: a primeira cujo apelido ainda não foi usado na partida (D231). Com o pool gasto, o
 // apelido que não está em bot presente (shortcut: pool = MaxPlayers, um apelido sai da lista só ao gastar).
 // Skill do /bot add vai antes da linha, porque ParseOption devolve a primeira ocorrência.

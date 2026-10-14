@@ -130,8 +130,9 @@ partida, 16 bytes com o prefixo, sem caractere fora de ASCII. O prefixo `[BOT]` 
   `Botset.Add`, mas não o caminho `AcceptBroadcastText`.
 - Ordem de `CalcPawnSpeedValues` no jogador humano (D141): não testada sem cliente.
 - Ping 0 do bot: gravado no PRI, mas o placar não foi visto.
-- Recompensa: o bloco `GameEnded` por jogador só saiu com bots. O emulador casa por apelido, então um humano
-  chamado `[BOT] ...` seria confundido. O prefixo reservado impede isso pelo cadastro.
+- Recompensa: o LM escreve um bloco `GameEnded` por jogador, bots incluídos. O emulador separa os bots pela flag
+  `bBot` do PRI, que o `LMEmu` registra no fim (`LMEmu: bot no fim <apelido>`), e não pelo apelido (D252). O
+  prefixo `[BOT]` continua reservado no cadastro, só para ninguém se passar por bot no chat.
 - Símbolo de clã nos bots: não implementado (fora desta fase).
 
 ## Rotas (D225 a D227)

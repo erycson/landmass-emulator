@@ -87,6 +87,12 @@ function CheckLastMan()
     }
 }
 
+function EndGame(PlayerReplicationInfo Winner, string Reason)
+{
+    Super.EndGame(Winner, Reason);
+    class'LMEmuBots'.static.LogEnd(Level);
+}
+
 // O XGame arredonda o mínimo para par em time. Aqui o mínimo é o total exato de jogadores e bots, para
 // que /bot add crie um bot e não dois (D229). Times com diferença de um jogador: ver docs/architecture/08-bots.md.
 function int GetMinPlayers()

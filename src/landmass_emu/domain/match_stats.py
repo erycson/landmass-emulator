@@ -80,12 +80,14 @@ class GameEndedPlayer:
     total_money: int | None
     winner: bool | None  # só OP e time: `Winner` do bloco
     mission_score: int | None  # só OP: `MissionScore`
+    bot: bool = False  # `bBot` do PRI no fim (linha `LMEmu: bot no fim`, D252)
 
 
 def with_game_end(record: MatchRecord, jogadores: Iterable[GameEndedPlayer]) -> MatchRecord:
     """Leva kills, colocação, exp e LD do bloco para cada jogador, pelo nick. Quem não aparece no
-    bloco fica como está (None): sem dado, sem recompensa."""
-    por_nick = {j.nickname: j for j in jogadores}
+    bloco fica como está (None): sem dado, sem recompensa. Bot nunca casa com jogador, mesmo com o
+    apelido igual (D252)."""
+    por_nick = {j.nickname: j for j in jogadores if not j.bot}
     players = []
     for player in record.players:
         j = por_nick.get(player.nickname)

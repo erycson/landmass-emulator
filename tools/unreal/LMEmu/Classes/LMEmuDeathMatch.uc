@@ -70,6 +70,12 @@ event PostLogin(PlayerController NewPlayer)
         Botset.Grow(self);
 }
 
+function EndGame(PlayerReplicationInfo Winner, string Reason)
+{
+    Super.EndGame(Winner, Reason);
+    class'LMEmuBots'.static.LogEnd(Level);
+}
+
 // O LastMan do LM conta só humanos: um humano sozinho (ou um time só de bots) encerrava a partida em
 // segundos, com o motivo trocado para TimeLimit (ControlEndReason). Com bots, só encerra sem humano.
 function CheckLastMan()

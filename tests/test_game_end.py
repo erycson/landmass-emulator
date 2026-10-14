@@ -63,8 +63,12 @@ def test_bloco_incompleto_sem_fechamento_e_ignorado() -> None:
     assert parse_game_ended(cortado) == ()
 
 
-def test_usa_o_ultimo_bloco_completo_e_le_todos_os_jogadores() -> None:
-    primeiro = LOG_REAL.replace("Tester2", "Velho")
+def test_le_um_bloco_por_jogador_e_vale_o_ultimo_do_mesmo_apelido() -> None:
+    # O LM escreve um bloco por jogador (headless com 4 bots: 4 cabeçalhos seguidos).
+    # Apelido repetido (fim escrito duas vezes): vale o último.
+    primeiro = LOG_REAL.replace("Tester2", "Ana").replace(
+        "Kills            = 0", "Kills            = 7"
+    )
     segundo = """\
 GameEnded: XGame.LM_TeamGame Ended Deathmatch Exp/Money ==============================
 GameEnded:     Player           = Ana
@@ -74,6 +78,8 @@ GameEnded:     Kills            = 12
 GameEnded:     Played           = 62.50%
 GameEnded:     TotalExp         = 3340.6
 GameEnded:     TotalMoney       = 1710
+GameEnded: ==============================================================
+GameEnded: XGame.LM_TeamGame Ended Deathmatch Exp/Money ==============================
 GameEnded:     Player           = Bia
 GameEnded:     Ranking          = 2
 GameEnded:     Kills            = 3
@@ -109,3 +115,13 @@ GameEnded: ==============================================================
 
     assert (caio.winner, caio.mission_score, caio.played_percent) == (True, 12, 37.5)
     assert (caio.total_exp, caio.total_money) == (800, 420)
+
+
+def test_bot_vem_da_flag_do_lmemu_nao_do_apelido() -> None:
+    # D252: o bloco não diz quem é bot; a linha `LMEmu: bot no fim` (flag bBot do PRI) diz.
+    bot = LOG_REAL.replace("Player           = Tester2", "Player           = Saber")
+    texto = LOG_REAL + bot + "ScriptLog: LMEmu: bot no fim Saber\n"
+
+    jogadores = parse_game_ended(texto)
+
+    assert [(j.nickname, j.bot) for j in jogadores] == [("Tester2", False), ("Saber", True)]

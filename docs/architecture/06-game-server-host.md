@@ -45,7 +45,7 @@ Quem entra de novo na própria sala depois da partida (311) recebe 312, 314 e 31
 
 Quem sai antes do fim (500 com outros ainda em jogo, ou o 311 de volta nesse caso) fica na sala sem pronto (D210). O canal zera o pronto e manda o 317 só a quem saiu. Sem isso, o cliente trava Sair, Opções e Iniciar, que dependem de sala jogando sem pronto (`LM_RoomPage.RefreshPlayers`).
 
-O bloco `GameEnded` é lido ao fim da partida. O servidor o escreve no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador pede a saída pelo console (`exit`), espera o motor gravar o `LOG=` da partida e só então derruba o processo (D153). `hosting/game_end.py` lê o último bloco completo e os jogadores casam pelo nick (D154). Quem não aparece no bloco fica com métricas nulas e sem recompensa (`tools/re/game_server_host.md`, seções 11.4 e 11.7).
+O bloco `GameEnded` é lido ao fim da partida. O servidor o escreve no `EndGame`, que pode ocorrer por último jogador, tempo ou pontuação. O emulador pede a saída pelo console (`exit`), espera o motor gravar o `LOG=` da partida e só então derruba o processo (D153). `hosting/game_end.py` lê todos os blocos completos, um por jogador, e os jogadores casam pelo nick (D154, D252). Bots ficam de fora pela flag `bBot`, registrada pelo `LMEmu` no fim, e não pelo apelido. Quem não aparece no bloco fica com métricas nulas e sem recompensa (`tools/re/game_server_host.md`, seções 11.4 e 11.7).
 
 ## Partida em memória
 
