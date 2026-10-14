@@ -12,7 +12,7 @@ Carregue com `pydantic-settings` (`settings.py`), prefixo `LANDMASS_`, de variá
 | `LANDMASS_CLIENT_VERSION` | `1245776779` | Versão em `version=` do `.bat` gerado. | 1 |
 | `LANDMASS_CLIENT_DIR` | `../cliente/system` | Pasta onde `account create/token` grava `jogar_<user>.bat`. `account grant`, `account create`, `account item add`, `account morat add` e `account kit apply` e `shop sync` leem dela o `landmass.wdb` (catálogo, somente leitura). | 1 |
 | `LANDMASS_RECV_TIMEOUT` | `300` | Segundos sem tráfego antes de desconectar, em Message e Channel. Mínimo `60`. | 1, 2 |
-| `LANDMASS_CHANNELS` | `[{"name": "Canal 1", "max_clients": 100}]` | Lista JSON de canais. `address` (máx. 15) e `port` são opcionais; ausentes usam `LANDMASS_PUBLIC_HOST` e `LANDMASS_CHANNEL_PORT`. `name` tem no máximo 35 caracteres. Entre 1 e 255 canais. | 1 |
+| `LANDMASS_CHANNELS` | `[{"name": "Canal 1", "max_clients": 100}]` | Lista JSON de canais. `address` (máx. 15) e `port` são opcionais; ausentes usam `LANDMASS_PUBLIC_HOST` e `LANDMASS_CHANNEL_PORT`. `name` tem no máximo 35 caracteres. `mode` é o `channel_mode` do canal (0 normal; 6 clã, D199). Entre 1 e 255 canais. | 1 |
 | `LANDMASS_SERVER_NAME` | `Norian` | Nome do servidor exibido no cliente. | 2 |
 | `LANDMASS_GAME_HOST` | `127.0.0.1` | Endereço do servidor de partida anunciado no 403 (`NotifyStartGame`). Máximo 15 caracteres (campo `char[16]` NUL-terminado). Mínimo 1. Com `LANDMASS_MATCH_SERVER_DIR`, é o endereço do 403 de toda partida. | 3, 4 |
 | `LANDMASS_GAME_PORT` | `7777` | Porta do servidor de partida anunciada no 403 quando a partida é fixa (sem `LANDMASS_MATCH_SERVER_DIR`). Entre 1 e 65535. | 3, 4 |

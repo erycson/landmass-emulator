@@ -26,6 +26,7 @@ class ChannelListHandlers:
                 max_client_count=c.max_clients,
                 server_name=c.name,
                 service_address=c.address,
+                channel_mode=c.mode,
             )
             for c in self._channels
         )
