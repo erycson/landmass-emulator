@@ -37,7 +37,9 @@ A partida acaba em um de três casos (D48):
 
 1. Todos os jogadores que estavam na partida mandaram 500 (ExitPlay). O canal responde 501 a cada um.
 2. O último jogador em jogo sai da sala sem ter mandado 500.
-3. O processo do servidor cai depois de pronto (`on_exit`).
+3. O processo do servidor sai depois de pronto (`on_exit`). Inclui o fim por tempo ou pontos: o `MatchOver` do LM
+   desconecta todos e fica parado, e o cliente volta à sala sem mandar 500. O `LMEmu` então digita `exit`, e o
+   `end` chamado pelo `on_exit` ainda lê o bloco `GameEnded` do log (D253).
 
 Nos três casos o canal faz o mesmo: encerra o servidor pelo console (`MatchHost.end`, digita `exit` e espera o `LOG=`, D153), volta a sala à espera (412 WAITING ao lobby, 402 sem pronto para cada membro, o dono incluído (D77), 317 à sala) e grava o histórico uma vez (D52). Sala que esvazia no meio da partida é encerrada sem gravar.
 

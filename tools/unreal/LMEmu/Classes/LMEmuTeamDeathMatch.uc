@@ -93,6 +93,20 @@ function EndGame(PlayerReplicationInfo Winner, string Reason)
     class'LMEmuBots'.static.LogEnd(Level);
 }
 
+// Mesmo fim do LMEmuDeathMatch: o MatchOver do LM desconecta todos e para; o servidor sai (D253).
+state MatchOver
+{
+    function Timer()
+    {
+        Super.Timer();
+        if (bMatchOver)
+        {
+            Log("LMEmu: fim da partida, servidor saindo");
+            Level.ConsoleCommand("exit");
+        }
+    }
+}
+
 // O XGame arredonda o mínimo para par em time. Aqui o mínimo é o total exato de jogadores e bots, para
 // que /bot add crie um bot e não dois (D229). Times com diferença de um jogador: ver docs/architecture/08-bots.md.
 function int GetMinPlayers()

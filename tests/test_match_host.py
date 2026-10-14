@@ -159,6 +159,29 @@ async def test_queda_depois_de_pronto_chama_on_exit(tmp_path: Path) -> None:
         await host.close()
 
 
+async def test_saida_sozinha_no_fim_ainda_le_o_bloco_do_log(tmp_path: Path) -> None:
+    """D253: no fim por tempo, o LMEmu sai sozinho; o `end` chamado pelo `on_exit` lê o log."""
+    falso = _Falso(argv=[sys.executable, "-c", "import time; time.sleep(0.5)"])
+    host = _host(tmp_path, falso)
+    lidos: list[tuple[str, ...]] = []
+
+    async def ao_sair() -> None:
+        (tmp_path / falso.logs[-1]).write_text(LOG_PARTIDA, encoding="utf-8")
+        lidos.append(tuple(j.nickname for j in await host.end(7)))
+
+    try:
+        await host.start(7, PLANO, ao_sair)
+        await asyncio.wait_for(falso.processos[-1].wait(), 10)
+        for _ in range(50):
+            if lidos:
+                break
+            await asyncio.sleep(0.1)
+    finally:
+        await host.close()
+
+    assert lidos == [("Tester2",)]
+
+
 async def test_sem_porta_livre_na_faixa_falha_antes_de_lancar(tmp_path: Path) -> None:
     ocupada = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     ocupada.bind(("0.0.0.0", 48230))

@@ -203,16 +203,20 @@ class ProcessMatchHost:
         await match.process.wait()
         if self._running.get(match.room_id) is not match:
             return  # encerrado por finish ou end: não é queda
-        del self._running[match.room_id]
-        self._loadouts.remove(match.loadout_key)
         if not match.ready:
+            del self._running[match.room_id]
+            self._loadouts.remove(match.loadout_key)
             log.warning("servidor da sala %d encerrou antes de ficar pronto", match.room_id)
             return
-        log.warning("servidor de partida da sala %d caiu sozinho", match.room_id)
+        # Fim por tempo ou pontos também chega aqui: o LMEmu sai no fim (D253). A partida fica em
+        # `_running` para o `end` do `on_exit` ler o bloco `GameEnded` do log.
+        log.info("servidor de partida da sala %d encerrou sozinho", match.room_id)
         try:
             await match.on_exit()
         except Exception:
-            log.exception("erro ao tratar a queda do servidor da sala %d", match.room_id)
+            log.exception("erro ao tratar a saída do servidor da sala %d", match.room_id)
+        if self._running.get(match.room_id) is match:
+            self.finish(match.room_id)
 
 
 def udp_port_free(port: int) -> bool:

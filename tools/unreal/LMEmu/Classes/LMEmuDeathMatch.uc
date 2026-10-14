@@ -76,6 +76,21 @@ function EndGame(PlayerReplicationInfo Winner, string Reason)
     class'LMEmuBots'.static.LogEnd(Level);
 }
 
+// O MatchOver do LM desconecta todos depois do RestartWait e para (bMatchOver), sem viajar nem sair. O
+// cliente volta à sala sem mandar 500; o servidor sai e o emulador fecha a partida pela saída (D253).
+state MatchOver
+{
+    function Timer()
+    {
+        Super.Timer();
+        if (bMatchOver)
+        {
+            Log("LMEmu: fim da partida, servidor saindo");
+            Level.ConsoleCommand("exit");
+        }
+    }
+}
+
 // O LastMan do LM conta só humanos: um humano sozinho (ou um time só de bots) encerrava a partida em
 // segundos, com o motivo trocado para TimeLimit (ControlEndReason). Com bots, só encerra sem humano.
 function CheckLastMan()
