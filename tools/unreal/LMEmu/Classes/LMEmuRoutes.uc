@@ -193,11 +193,9 @@ function float NodeDist(int a, int b)
     return VSize(Pos[a] - Pos[b]);
 }
 
-// Custo multiplicador do flag: pulo e booster custam mais que andar (o A* prefere andar). Na aresta de booster, o Boost liga.
+// Custo multiplicador do flag: pulo custa mais que andar (o A* prefere andar).
 function float CostMul(string F)
 {
-    if (InStr(F, "b") >= 0)
-        return 3.0;
     if (InStr(F, "j") >= 0)
         return 2.0;
     return 1.0;
@@ -305,6 +303,10 @@ function bool Plan(int i, int from, int to)
             continue;
         for (e = FirstLink[u]; e < FirstLink[u + 1]; e++)
         {
+            // Aresta b (subida acima do pulo) fica fora: o booster do LM só dá velocidade, não sobe. Com ela,
+            // o A* tirava os bots do spawn do ONS-Airport por uma subida de 276 uu impossível (D247).
+            if (InStr(LinkFlag[e], "b") >= 0)
+                continue;
             v = LinkTo[e];
             ng = Gs[u] + NodeDist(u, v) * CostMul(LinkFlag[e]) * (1.0 + Penal[e]);
             if (ng < Gs[v])
@@ -424,7 +426,7 @@ function bool NewGoal(Bot B, int i, int cur, int G)
     return true;
 }
 
-// Booster do bot: liga com carga num trecho longo ou numa aresta de booster; desliga sem carga ou fora disso.
+// Booster do bot: liga com carga num trecho longo; desliga sem carga ou perto do destino.
 function Boost(Bot B, bool bQuer)
 {
     local LM_xPawn P;
@@ -536,7 +538,7 @@ function bool Assign(Bot B)
         B.Pawn.bCanJump = true;
         B.Pawn.DoJump(false);
     }
-    Boost(B, (e >= 0 && InStr(LinkFlag[e], "b") >= 0) || NodeDist(cur, Goal[i]) > BOOST_DIST);
+    Boost(B, NodeDist(cur, Goal[i]) > BOOST_DIST);
     B.MoveTarget = M;
     B.GoalString = "rota no " $ string(nxt);
     B.GotoState('Roaming');
